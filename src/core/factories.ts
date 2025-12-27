@@ -10,11 +10,13 @@ const xpGeometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
 const xpMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
 
 // --- ENEMY DEFINITIONS (Restored) ---
-export enum EnemyType {
-  GLITCH = 'glitch',
-  VIRUS = 'virus',
-  FIREWALL = 'firewall',
-}
+export const EnemyType = {
+  GLITCH: 'glitch',
+  VIRUS: 'virus',
+  FIREWALL: 'firewall',
+} as const;
+
+export type EnemyType = (typeof EnemyType)[keyof typeof EnemyType];
 
 type EnemyStats = { hp: number; speed: number; size: number; color: number; xp: number };
 
