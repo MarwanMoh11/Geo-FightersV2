@@ -14,12 +14,12 @@ First off, thank you for considering contributing to Geofighters 2.0! It's peopl
 - Explain why this feature would be useful.
 
 ### Pull Requests
-1. Fork the repo and create your branch from `main`.
+1. Fork the repo and create your branch from `staging`.
 2. Install dependencies: `npm install`.
 3. If you've added code that should be tested, add tests.
 4. Ensure the test suite passes.
 5. Make sure your code follows the existing style (run `npm run lint`).
-6. Issue that pull request!
+6. Issue that pull request to the `staging` branch!
 
 ## Code Style
 Please follow the standard TypeScript and Three.js practices. We use ESLint and Prettier to maintain code quality.
