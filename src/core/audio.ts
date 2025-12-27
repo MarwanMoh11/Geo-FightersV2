@@ -2,18 +2,9 @@
 let ctx: AudioContext | null = null;
 let isMusicPlaying = false;
 
-// --- MUSIC STATE ---
-// We track 'bars' to change the chord progression over time
-let currentBar = 0;
-let currentStep = 0;
-let rootNote = 55; // Start at A1
-
-// Cyberpunk Chord Progression (A Minor -> F Major -> G Major -> D Minor)
-// Frequencies for Bass: A1(55), F1(43.65), G1(49), D1(36.7)
-const PROGRESSION = [55, 43.65, 49, 36.7];
-
-// Pentatonic Scale for "Solos" (A Minor Pentatonic: A, C, D, E, G)
-const LEAD_SCALE = [880, 1046, 1174, 1318, 1568];
+// --- BUFFER CACHE (Mobile Optimization) ---
+// We pre-render expensive synth sounds into buffers so we don't creating 10+ AudioNodes per shot.
+const buffers: Record<string, AudioBuffer> = {};
 
 export function getCtx() {
   if (!ctx) {
@@ -22,248 +13,159 @@ export function getCtx() {
   return ctx;
 }
 
-// --- SOUNDTRACK ENGINE ---
+// Helper: Generate SFX Buffers once
+async function generateBuffers() {
+  const c = new (window.AudioContext || (window as any).webkitAudioContext)();
+
+  // 1. SHOOT (Laser)
+  buffers['shoot'] = await renderSynthToBuffer(c, 0.1, (t, osc, gain) => {
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(800, t);
+    osc.frequency.exponentialRampToValueAtTime(100, t + 0.1);
+    gain.gain.setValueAtTime(0.05, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+  });
+
+  // 2. EXPLOSION (Noise)
+  // Manually write noise buffer (faster)
+  const noiseLen = c.sampleRate * 0.5;
+  const noiseBuf = c.createBuffer(1, noiseLen, c.sampleRate);
+  const data = noiseBuf.getChannelData(0);
+  for (let i = 0; i < noiseLen; i++) data[i] = Math.random() * 2 - 1;
+  buffers['explosion'] = noiseBuf;
+
+  // 3. COLLECT
+  buffers['collect'] = await renderSynthToBuffer(c, 0.1, (t, osc, gain) => {
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1200, t);
+    osc.frequency.exponentialRampToValueAtTime(2000, t + 0.1);
+    gain.gain.setValueAtTime(0.05, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+  });
+}
+
+// Helper: Render a synth patch to a buffer
+function renderSynthToBuffer(
+  ctx: AudioContext,
+  duration: number,
+  setup: (t: number, osc: OscillatorNode, gain: GainNode) => void,
+): Promise<AudioBuffer> {
+  const offline = new OfflineAudioContext(1, ctx.sampleRate * duration, ctx.sampleRate);
+  const osc = offline.createOscillator();
+  const gain = offline.createGain();
+  osc.connect(gain);
+  gain.connect(offline.destination);
+  setup(0, osc, gain);
+  osc.start(0);
+  return offline.startRendering();
+}
+
+// --- MUSIC STATE ---
+let currentBar = 0;
+let currentStep = 0;
+let rootNote = 55;
+const PROGRESSION = [55, 43.65, 49, 36.7];
+const LEAD_SCALE = [880, 1046, 1174, 1318, 1568];
+
+// --- MAIN FUNCTIONALITY ---
+
+// Mobile Audio Unlock
+export function unlockAudio() {
+  const c = getCtx();
+  if (!c) return;
+  if (c.state === 'suspended') c.resume();
+
+  // 1. Play silent buffer
+  const silent = c.createBuffer(1, 1, 22050);
+  const source = c.createBufferSource();
+  source.buffer = silent;
+  source.connect(c.destination);
+  source.start(0);
+
+  // 2. Pre-generate heavy SFX
+  if (!buffers['shoot']) generateBuffers();
+}
 
 export function startMusic() {
   if (isMusicPlaying) return;
   const c = getCtx();
   if (!c) return;
-
   isMusicPlaying = true;
+  if (!buffers['shoot']) generateBuffers();
 
-  // A. THE DRONE (Atmosphere)
-  // Runs constantly to glue the track together
+  // ... (Music Code omitted for brevity, keeping existing implementation structure in mind, but since I'm replacing the file I need to include it) ...
+  // Actually, to save space/complexity I'll re-implement the drone engine simply or paste it back.
+  // Re-pasting the music engine:
+
   const droneOsc = c.createOscillator();
   const droneGain = c.createGain();
   const droneFilter = c.createBiquadFilter();
-
   droneOsc.type = 'sawtooth';
-  droneOsc.frequency.value = 55; // Base Root
-
+  droneOsc.frequency.value = 55;
   droneFilter.type = 'lowpass';
-  droneFilter.frequency.value = 100; // Deep rumble
-
-  // Slow LFO to breathe
+  droneFilter.frequency.value = 100;
   const lfo = c.createOscillator();
-  lfo.frequency.value = 0.05; // Very slow shift
+  lfo.frequency.value = 0.05;
   const lfoGain = c.createGain();
   lfoGain.gain.value = 50;
   lfo.connect(lfoGain);
   lfoGain.connect(droneFilter.frequency);
   lfo.start();
-
   droneGain.gain.value = 0.15;
-
   droneOsc.connect(droneFilter);
   droneFilter.connect(droneGain);
   droneGain.connect(c.destination);
   droneOsc.start();
 
-  // B. THE SEQUENCER LOOP
-  // 16th notes at ~110 BPM (approx 135ms per step)
   setInterval(() => {
     if (c.state === 'suspended') c.resume();
     const t = c.currentTime;
-
-    // 1. CONDUCTOR: Change Chords every 4 Bars (64 steps)
     if (currentStep % 64 === 0) {
       currentBar++;
-      const chordIndex = currentBar % PROGRESSION.length;
-      rootNote = PROGRESSION[chordIndex];
-
-      // Subtle: Shift drone pitch to match chord
+      rootNote = PROGRESSION[currentBar % PROGRESSION.length];
       droneOsc.frequency.setTargetAtTime(rootNote, t, 0.1);
     }
-
-    // 2. KICK (Four-on-the-floor)
-    if (currentStep % 4 === 0) {
-      playKick(t);
-    }
-
-    // 3. HI-HATS (Generative / Random)
-    // Instead of every off-beat, we use probability.
-    // - Always play on the off-beat (2, 6, 10, 14)
-    // - 30% chance to play "ghost notes" on other steps for groove
+    if (currentStep % 4 === 0) playKick(t);
     const isOffBeat = currentStep % 4 === 2;
-    if (isOffBeat || Math.random() > 0.7) {
-      playHiHat(t, isOffBeat ? 0.05 : 0.02); // Ghost notes are quieter
-    }
-
-    // 4. BASS (Rolling 16ths)
-    // Plays a driving rhythm but skips the kick beat to let the kick punch through
-    if (currentStep % 4 !== 0) {
-      // Alternate octaves: Low - High - Low
-      const octave = currentStep % 2 === 0 ? 1 : 2;
-      playBassNote(t, rootNote * octave);
-    }
-
-    // 5. LEAD MELODY (Improvisation)
-    // Rarely (10% chance), play a high digital pluck from the scale
-    if (Math.random() > 0.9) {
-      const note = LEAD_SCALE[Math.floor(Math.random() * LEAD_SCALE.length)];
-      playLead(t, note);
-    }
-
+    if (isOffBeat || Math.random() > 0.7) playHiHat(t, isOffBeat ? 0.05 : 0.02);
+    if (currentStep % 4 !== 0) playBassNote(t, rootNote * (currentStep % 2 === 0 ? 1 : 2));
+    if (Math.random() > 0.9) playLead(t, LEAD_SCALE[Math.floor(Math.random() * LEAD_SCALE.length)]);
     currentStep++;
   }, 135);
 }
 
-// --- INSTRUMENTS ---
+// --- OPTIMIZED SFX PLAYBACK ---
 
-function playKick(t: number) {
+function playBuffer(name: string, playbackRate = 1.0, vol = 1.0) {
   const c = getCtx();
-  if (!c) return;
-  const osc = c.createOscillator();
+  if (!c || !buffers[name]) return;
+
+  const source = c.createBufferSource();
+  source.buffer = buffers[name];
+  source.playbackRate.value = playbackRate;
+
   const gain = c.createGain();
+  gain.gain.value = vol;
 
-  osc.frequency.setValueAtTime(150, t);
-  osc.frequency.exponentialRampToValueAtTime(0.01, t + 0.5);
-
-  gain.gain.setValueAtTime(0.5, t);
-  gain.gain.exponentialRampToValueAtTime(0.01, t + 0.5);
-
-  osc.connect(gain);
+  source.connect(gain);
   gain.connect(c.destination);
-  osc.start(t);
-  osc.stop(t + 0.5);
+  source.start();
 }
-
-function playHiHat(t: number, vol: number) {
-  const c = getCtx();
-  if (!c) return;
-  const osc = c.createOscillator();
-  const gain = c.createGain();
-
-  osc.type = 'square';
-  osc.frequency.setValueAtTime(8000, t);
-
-  // Snappy envelope
-  gain.gain.setValueAtTime(vol, t);
-  gain.gain.exponentialRampToValueAtTime(0.01, t + 0.05);
-
-  const filter = c.createBiquadFilter();
-  filter.type = 'highpass';
-  filter.frequency.value = 7000;
-
-  osc.connect(filter);
-  filter.connect(gain);
-  gain.connect(c.destination);
-  osc.start(t);
-  osc.stop(t + 0.05);
-}
-
-function playBassNote(t: number, freq: number) {
-  const c = getCtx();
-  if (!c) return;
-  const osc = c.createOscillator();
-  const gain = c.createGain();
-
-  osc.type = 'sawtooth';
-  osc.frequency.setValueAtTime(freq, t);
-
-  gain.gain.setValueAtTime(0.1, t); // Mix it low so it doesn't mud
-  gain.gain.exponentialRampToValueAtTime(0.01, t + 0.2);
-
-  // Lowpass filter on bass to make it "dark"
-  const filter = c.createBiquadFilter();
-  filter.type = 'lowpass';
-  filter.frequency.setValueAtTime(600, t);
-  filter.frequency.exponentialRampToValueAtTime(100, t + 0.1); // "Pluck" the filter
-
-  osc.connect(filter);
-  filter.connect(gain);
-  gain.connect(c.destination);
-  osc.start(t);
-  osc.stop(t + 0.2);
-}
-
-function playLead(t: number, freq: number) {
-  const c = getCtx();
-  if (!c) return;
-  const osc = c.createOscillator();
-  const gain = c.createGain();
-
-  osc.type = 'triangle'; // Clear tone
-  osc.frequency.setValueAtTime(freq, t);
-
-  gain.gain.setValueAtTime(0.05, t);
-  gain.gain.exponentialRampToValueAtTime(0.01, t + 0.4);
-
-  // Add delay effect (fake Echo)
-  const delay = c.createDelay();
-  delay.delayTime.value = 0.25;
-  const delayGain = c.createGain();
-  delayGain.gain.value = 0.3; // 30% feedback
-
-  osc.connect(gain);
-  gain.connect(c.destination);
-
-  // Echo path
-  gain.connect(delay);
-  delay.connect(delayGain);
-  delayGain.connect(c.destination);
-
-  osc.start(t);
-  osc.stop(t + 0.4);
-}
-
-// --- SFX (UNCHANGED) ---
 
 export function playShoot() {
-  const c = getCtx();
-  if (!c) return;
-  const osc = c.createOscillator();
-  const gain = c.createGain();
-  osc.type = 'square';
-  osc.frequency.setValueAtTime(800, c.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(100, c.currentTime + 0.1);
-  gain.gain.setValueAtTime(0.05, c.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.1);
-  osc.connect(gain);
-  gain.connect(c.destination);
-  osc.start();
-  osc.stop(c.currentTime + 0.1);
+  playBuffer('shoot', 0.9 + Math.random() * 0.2); // Pitch var
 }
 
 export function playExplosion() {
-  const c = getCtx();
-  if (!c) return;
-  const bufferSize = c.sampleRate * 0.5;
-  const buffer = c.createBuffer(1, bufferSize, c.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
-  const noise = c.createBufferSource();
-  noise.buffer = buffer;
-  const filter = c.createBiquadFilter();
-  filter.type = 'lowpass';
-  filter.frequency.setValueAtTime(1000, c.currentTime);
-  filter.frequency.exponentialRampToValueAtTime(100, c.currentTime + 0.3);
-  const gain = c.createGain();
-  gain.gain.setValueAtTime(0.3, c.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.01, c.currentTime + 0.3);
-  noise.connect(filter);
-  filter.connect(gain);
-  gain.connect(c.destination);
-  noise.start();
+  playBuffer('explosion', 0.8 + Math.random() * 0.4);
 }
 
 export function playCollect() {
-  const c = getCtx();
-  if (!c) return;
-  const osc = c.createOscillator();
-  const gain = c.createGain();
-  osc.type = 'sine';
-  osc.frequency.setValueAtTime(1200, c.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(2000, c.currentTime + 0.1);
-  gain.gain.setValueAtTime(0.05, c.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.1);
-  osc.connect(gain);
-  gain.connect(c.destination);
-  osc.start();
-  osc.stop(c.currentTime + 0.1);
+  playBuffer('collect');
 }
 
 export function playLevelUp() {
+  // Level Up is rare enough to keep synthesized
   const c = getCtx();
   if (!c) return;
   const osc = c.createOscillator();
@@ -277,4 +179,79 @@ export function playLevelUp() {
   gain.connect(c.destination);
   osc.start();
   osc.stop(c.currentTime + 0.5);
+}
+
+// --- MUSIC INSTRUMENTS (Lightweight) ---
+// Kept inline for simplicity as they run on interval, not usually the cause of "spike on shoot" logic.
+function playKick(t: number) {
+  const c = getCtx();
+  if (!c) return;
+  const osc = c.createOscillator();
+  const gain = c.createGain();
+  osc.frequency.setValueAtTime(150, t);
+  osc.frequency.exponentialRampToValueAtTime(0.01, t + 0.5);
+  gain.gain.setValueAtTime(0.5, t);
+  gain.gain.exponentialRampToValueAtTime(0.01, t + 0.5);
+  osc.connect(gain);
+  gain.connect(c.destination);
+  osc.start(t);
+  osc.stop(t + 0.5);
+}
+function playHiHat(t: number, vol: number) {
+  const c = getCtx();
+  if (!c) return;
+  const osc = c.createOscillator();
+  const gain = c.createGain();
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(8000, t);
+  gain.gain.setValueAtTime(vol, t);
+  gain.gain.exponentialRampToValueAtTime(0.01, t + 0.05);
+  const f = c.createBiquadFilter();
+  f.type = 'highpass';
+  f.frequency.value = 7000;
+  osc.connect(f);
+  f.connect(gain);
+  gain.connect(c.destination);
+  osc.start(t);
+  osc.stop(t + 0.05);
+}
+function playBassNote(t: number, freq: number) {
+  const c = getCtx();
+  if (!c) return;
+  const osc = c.createOscillator();
+  const gain = c.createGain();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(freq, t);
+  gain.gain.setValueAtTime(0.1, t);
+  gain.gain.exponentialRampToValueAtTime(0.01, t + 0.2);
+  const f = c.createBiquadFilter();
+  f.type = 'lowpass';
+  f.frequency.setValueAtTime(600, t);
+  f.frequency.exponentialRampToValueAtTime(100, t + 0.1);
+  osc.connect(f);
+  f.connect(gain);
+  gain.connect(c.destination);
+  osc.start(t);
+  osc.stop(t + 0.2);
+}
+function playLead(t: number, freq: number) {
+  const c = getCtx();
+  if (!c) return;
+  const osc = c.createOscillator();
+  const gain = c.createGain();
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(freq, t);
+  gain.gain.setValueAtTime(0.05, t);
+  gain.gain.exponentialRampToValueAtTime(0.01, t + 0.4);
+  const d = c.createDelay();
+  d.delayTime.value = 0.25;
+  const dg = c.createGain();
+  dg.gain.value = 0.3;
+  osc.connect(gain);
+  gain.connect(c.destination);
+  gain.connect(d);
+  d.connect(dg);
+  dg.connect(c.destination);
+  osc.start(t);
+  osc.stop(t + 0.4);
 }
