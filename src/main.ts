@@ -6,11 +6,11 @@ import { world } from './core/world';
 // --- SYSTEMS ---
 import { InputSystem } from './systems/InputSystem';
 import { PlayerControlSystem } from './systems/PlayerControlSystem'; // Replaces MovementSystem
-import { PhysicsSystem } from './systems/PhysicsSystem';             // Handles all movement
-import { RenderSystem } from './systems/RenderSystem';               // Syncs visuals + Juice
-import { AimSystem } from './systems/AimSystem';                     // Radar
-import { WeaponSystem } from './systems/WeaponSystem';               // Spawns bullets
-import { LifecycleSystem } from './systems/LifecycleSystem';         // Cleans up bullets
+import { PhysicsSystem } from './systems/PhysicsSystem'; // Handles all movement
+import { RenderSystem } from './systems/RenderSystem'; // Syncs visuals + Juice
+import { AimSystem } from './systems/AimSystem'; // Radar
+import { WeaponSystem } from './systems/WeaponSystem'; // Spawns bullets
+import { LifecycleSystem } from './systems/LifecycleSystem'; // Cleans up bullets
 
 // 1. Initialize Renderer
 const { scene, camera, renderer } = initRenderer();
@@ -34,12 +34,12 @@ function createPlayer() {
     // NEW: Weapon Stats
     weapon: {
       cooldownTimer: 0,
-      fireRate: 0.1,         // Fast fire (10 shots/sec)
+      fireRate: 0.1, // Fast fire (10 shots/sec)
       damage: 10,
       bulletSpeed: 20,
       bulletColor: 0xffff00, // Yellow
-      bulletLifetime: 2.0    // Range cap (time based)
-    }
+      bulletLifetime: 2.0, // Range cap (time based)
+    },
   });
 }
 
@@ -55,7 +55,7 @@ function createEnemy(x: number, z: number) {
   world.add({
     isEnemy: true,
     position: mesh.position, // Static for now
-    transform: mesh
+    transform: mesh,
   });
 }
 
@@ -73,19 +73,19 @@ function animate() {
   const dt = clock.getDelta();
 
   // --- LOGIC PHASE ---
-  InputSystem();               // Read keyboard
-  AimSystem();                 // Update aimTarget (Radar)
-  PlayerControlSystem();       // Update velocity based on Input
+  InputSystem(); // Read keyboard
+  AimSystem(); // Update aimTarget (Radar)
+  PlayerControlSystem(); // Update velocity based on Input
 
   // --- COMBAT PHASE ---
-  WeaponSystem(dt, scene);     // Spawn projectiles if shooting
+  WeaponSystem(dt, scene); // Spawn projectiles if shooting
 
   // --- PHYSICS PHASE ---
-  PhysicsSystem(dt);           // Move Player AND Projectiles
-  LifecycleSystem(dt, scene);  // Delete old projectiles
+  PhysicsSystem(dt); // Move Player AND Projectiles
+  LifecycleSystem(dt, scene); // Delete old projectiles
 
   // --- RENDER PHASE ---
-  RenderSystem(dt);            // Sync meshes + Tilt/Bob juice
+  RenderSystem(dt); // Sync meshes + Tilt/Bob juice
 
   // Camera Follow
   const player = world.with('isPlayer', 'transform').first;
