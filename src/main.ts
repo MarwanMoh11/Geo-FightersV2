@@ -27,10 +27,12 @@ import { isGameOver } from './systems/GameManager';
 const unlockAudio = () => {
   const ctx = getCtx();
   if (ctx && ctx.state === 'suspended') {
-    ctx.resume();
+    ctx.resume().then(() => {
+      startMusic();
+    });
+  } else {
+    startMusic();
   }
-  // Start the Cyberpunk Loop
-  startMusic();
 };
 
 // Listen for first interaction

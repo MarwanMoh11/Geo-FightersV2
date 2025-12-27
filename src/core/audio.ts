@@ -66,6 +66,7 @@ export function startMusic() {
 
   // B. THE SEQUENCER LOOP
   setInterval(() => {
+    if (c.state !== 'running') return;
     const t = c.currentTime; // Always get fresh time
 
     // 1. CONDUCTOR: Change Chords every 4 Bars (64 steps)
