@@ -4,7 +4,6 @@ import { initRenderer } from './core/renderer';
 
 import { spawnPlayer } from './core/factories';
 import { getCtx, startMusic } from './core/audio';
-import { Profiler } from './core/profiler';
 
 // Systems
 import { InputSystem } from './systems/InputSystem';
@@ -44,39 +43,6 @@ const { scene, camera, renderer } = initRenderer();
 // --- INITIAL SETUP ---
 spawnPlayer(scene);
 
-// --- DEBUG BUTTON ---
-const btn = document.createElement('button');
-btn.innerText = '🔍 PROFILE';
-btn.style.cssText = `
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 10001;
-  padding: 8px 16px;
-  background: rgba(255, 0, 85, 0.9);
-  color: white;
-  border: 1px solid white;
-  font-family: monospace;
-  font-weight: bold;
-  font-size: 14px;
-  pointer-events: auto;
-`;
-btn.onclick = async () => {
-  Profiler.log('Manually requesting debug report');
-  const report = Profiler.getDetailedReport();
-  try {
-    await navigator.clipboard.writeText(report);
-    const originalText = btn.innerText;
-    btn.innerText = '✅ COPIED!';
-    setTimeout(() => (btn.innerText = originalText), 2000);
-  } catch (e) {
-    console.error('Copy failed', e);
-    console.log(report);
-    alert('Detailed report logged to console (Copy unsupported)');
-  }
-};
-document.body.appendChild(btn);
-
 // --- GAME LOOP ---
 const clock = new THREE.Clock();
 
@@ -113,9 +79,6 @@ function animate() {
   UISystem();
 
   renderer.render(scene, camera);
-
-  // 5. Profiling
-  Profiler.captureFrame(renderer, dt);
 }
 
 animate();
