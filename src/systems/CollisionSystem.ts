@@ -125,6 +125,7 @@ function applyDamage(
 // --- FX ---
 
 function spawnExplosionFX(pos: THREE.Vector3, scene: THREE.Scene) {
+  const start = performance.now();
   // Quick enemy death particles
   const particleCount = 5;
   const geometry = new THREE.BoxGeometry(0.12, 0.12, 0.12);
@@ -147,6 +148,8 @@ function spawnExplosionFX(pos: THREE.Vector3, scene: THREE.Scene) {
       maxLife: 0.3,
     });
   }
+  const dur = performance.now() - start;
+  if (dur > 1.0) console.warn(`[FX LAG] spawnExplosionFX took ${dur.toFixed(2)}ms`);
 }
 
 function spawnBlastFX(pos: THREE.Vector3, radius: number, scene: THREE.Scene) {

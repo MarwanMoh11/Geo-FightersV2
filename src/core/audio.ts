@@ -217,6 +217,7 @@ export function playShoot() {
 }
 
 export function playExplosion() {
+  const start = performance.now();
   const c = getCtx();
   if (!c) return;
   const bufferSize = c.sampleRate * 0.5;
@@ -236,6 +237,9 @@ export function playExplosion() {
   filter.connect(gain);
   gain.connect(c.destination);
   noise.start();
+
+  const dur = performance.now() - start;
+  if (dur > 2.0) console.warn(`[AUDIO LAG] playExplosion took ${dur.toFixed(2)}ms`);
 }
 
 export function playCollect() {
