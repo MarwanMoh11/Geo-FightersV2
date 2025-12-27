@@ -47,8 +47,8 @@ function getWireframeMaterial(color: number) {
 }
 
 // 3. Reusable Math Objects (No "new" keyword in loops!)
-const _tempVec = new THREE.Vector3();
-const _tempDir = new THREE.Vector3();
+const _shootDir = new THREE.Vector3();
+const _posVec = new THREE.Vector3();
 const _axisY = new THREE.Vector3(0, 1, 0);
 const _axisZ = new THREE.Vector3(0, 0, 1);
 
@@ -105,8 +105,8 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
   const mods = owner.modifiers || { damageAdd: 0, speedMult: 1.0 };
 
   // Calculate Direction (Reuse Vectors)
-  _tempDir.subVectors(owner.aimTarget, owner.position).normalize();
-  if (_tempDir.lengthSq() === 0) _tempDir.set(0, 0, 1);
+  _shootDir.subVectors(owner.aimTarget, owner.position).normalize();
+  if (_shootDir.lengthSq() === 0) _shootDir.set(0, 0, 1);
 
   // Feedback
   const isHeavy = stats.bulletCount > 1 || stats.knockback > 15;
@@ -118,8 +118,8 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
   (flashMesh.material as THREE.MeshBasicMaterial).color.setHex(stats.bulletColor);
 
   // Position: Owner + (Dir * 0.8)
-  _tempVec.copy(_tempDir).multiplyScalar(0.8).add(owner.position);
-  flashMesh.position.copy(_tempVec);
+  _posVec.copy(_shootDir).multiplyScalar(0.8).add(owner.position);
+  flashMesh.position.copy(_posVec);
 
   scene.add(flashMesh);
   world.add({
@@ -137,13 +137,14 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
   const finalDamage = stats.damage + mods.damageAdd;
   const finalSpeed = stats.bulletSpeed * mods.speedMult;
   const style = stats.visualStyle || 'BOLT';
+  const pierce = stats.bulletPierce || 1;
 
   // Reuse Material
   const material = getBulletMaterial(stats.bulletColor);
 
   for (let i = 0; i < count; i++) {
-    // Clone direction so we don't mess up the original
-    const dir = _tempVec.copy(_tempDir); // Borrow _tempVec as a temp direction holder
+    // Clone direction locally so we don't mess up the global _shootDir
+    const dir = _shootDir.clone();
 
     if (count > 1 || spread > 0) {
       const angleDeg = (Math.random() - 0.5) * spread;
@@ -183,15 +184,15 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
     }
 
     // Set Position: Owner + (Dir * 0.6)
-    _tempDir.copy(dir).multiplyScalar(0.6).add(owner.position);
-    mesh.position.copy(_tempDir);
+    // Safe use of _posVec since we don't need it after this line for this iteration
+    _posVec.copy(dir).multiplyScalar(0.6).add(owner.position);
+    mesh.position.copy(_posVec);
 
     mesh.castShadow = true;
     scene.add(mesh);
 
-    // NOTE: We must create a NEW vector for velocity because it's stored in the entity
-    // We cannot reuse _tempVec for persistent data
-    const velocity = dir.multiplyScalar(finalSpeed).clone();
+    // Velocity must be a new instance
+    const velocity = dir.multiplyScalar(finalSpeed);
 
     world.add({
       isProjectile: true,
@@ -202,7 +203,7 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
       transform: mesh,
       damage: finalDamage,
       projectile: {
-        pierce: stats.bulletPierce || 1,
+        pierce: pierce,
         explodeRadius: stats.bulletExplodeRadius || 0,
         knockback: stats.knockback || 5,
         hitList: [],
