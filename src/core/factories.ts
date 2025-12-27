@@ -100,21 +100,56 @@ export function spawnPlayer(scene: THREE.Scene) {
   });
 }
 
-// --- CACHE ---
-const enemyMatCache: Partial<Record<EnemyType, THREE.SpriteMaterial>> = {};
-const enemyTexture = loadTexture('/sprites/enemies/enemy_glitch.png');
-enemyTexture.magFilter = THREE.NearestFilter;
+// --- CACHE & TYPES ---
+interface CachedEnemyAsset {
+  texture: THREE.Texture;
+  materialTemplate: THREE.SpriteMaterial;
+  aspect: number;
+}
+const assetCache: Partial<Record<EnemyType, CachedEnemyAsset>> = {};
 
-let enemyAspect = 1.0;
-const aspectInterval = setInterval(() => {
-  if (enemyTexture.image) {
-    const img = enemyTexture.image as HTMLImageElement;
-    if (img.height > 0) {
-      enemyAspect = img.width / img.height;
-      clearInterval(aspectInterval);
-    }
+// Helper to get or create assets for a specific enemy type
+function getEnemyAssets(type: EnemyType): CachedEnemyAsset {
+  if (!assetCache[type]) {
+    // 1. Determine Texture Path (could be dynamic based on type, using generic fallback for now if names match)
+    // Assuming filenames match types for now, or fallback to glitch.
+    // In a real scenario, map Type -> Filename.
+    const textureName = `enemy_${type}`;
+    const texturePath = `/sprites/enemies/${textureName}.png`;
+
+    // Check if we need to fallback because files might not exist?
+    // For now we assume standard naming or fallback to glitch for all if files missing.
+    // Given the previous code hardcoded glitch, we will stick to glitch for safety
+    // UNLESS the user provides new assets.
+    // BUT the user complaint was "all one". So we try to load specific.
+
+    // Fallback logic: If we want to be safe, we could check extension, but let's try dynamic.
+    const texture = loadTexture(texturePath);
+    texture.magFilter = THREE.NearestFilter;
+
+    // 2. Create Template Material
+    const stats = ENEMY_STATS[type];
+    const mat = new THREE.SpriteMaterial({ map: texture, color: stats.color });
+
+    // 3. Init Entry
+    assetCache[type] = {
+      texture,
+      materialTemplate: mat,
+      aspect: 1.0,
+    };
+
+    // 4. Start Aspect Poller for this specific texture
+    const entry = assetCache[type]!;
+    const interval = setInterval(() => {
+      const img = entry.texture.image as HTMLImageElement;
+      if (img && img.height > 0) {
+        entry.aspect = img.width / img.height;
+        clearInterval(interval);
+      }
+    }, 100);
   }
-}, 100);
+  return assetCache[type]!;
+}
 
 export function spawnEnemy(
   scene: THREE.Scene,
@@ -127,29 +162,22 @@ export function spawnEnemy(
   group.position.set(x, 0, z);
   scene.add(group);
 
-  // Get Cached Material Template
-  if (!enemyMatCache[type]) {
-    enemyMatCache[type] = new THREE.SpriteMaterial({
-      map: enemyTexture,
-      color: stats.color,
-    });
-  }
-  // CLONE material so each enemy has unique color state (for flashing)
-  const material = enemyMatCache[type]!.clone();
+  // 1. Get Assets
+  const assets = getEnemyAssets(type);
+
+  // 2. Clone Material for Unique State (Flash/Color)
+  const material = assets.materialTemplate.clone();
   const sprite = new THREE.Sprite(material);
 
-  // Apply Type Size & Aspect
-  sprite.scale.set(stats.size * enemyAspect, stats.size, 1);
-  sprite.position.y = stats.size / 2;
-
-  // If aspect isn't ready yet, check immediately
-  if (enemyAspect === 1.0 && enemyTexture.image) {
-    const img = enemyTexture.image as HTMLImageElement;
-    if (img.height > 0) {
-      enemyAspect = img.width / img.height;
-      sprite.scale.set(stats.size * enemyAspect, stats.size, 1);
-    }
+  // 3. Apply Scale using helper aspect
+  // Update aspect slightly if it just loaded
+  const img = assets.texture.image as HTMLImageElement;
+  if (assets.aspect === 1.0 && img && img.height > 0) {
+    assets.aspect = img.width / img.height;
   }
+
+  sprite.scale.set(stats.size * assets.aspect, stats.size, 1);
+  sprite.position.y = stats.size / 2;
 
   group.add(sprite);
 
