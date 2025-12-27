@@ -3,10 +3,26 @@ import { world } from './world';
 import { loadTexture } from './assets';
 import { STARTER_WEAPON } from './definitions';
 
+// --- SHARED RESOURCES ---
 const shadowGeo = new THREE.CircleGeometry(0.4, 16);
 const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4 });
 const xpGeometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
 const xpMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+
+// --- ENEMY DEFINITIONS (Restored) ---
+export enum EnemyType {
+  GLITCH = 'glitch',
+  VIRUS = 'virus',
+  FIREWALL = 'firewall',
+}
+
+type EnemyStats = { hp: number; speed: number; size: number; color: number; xp: number };
+
+const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
+  [EnemyType.GLITCH]: { hp: 12, speed: 2.0, size: 2.0, color: 0xffffff, xp: 10 },
+  [EnemyType.VIRUS]: { hp: 5, speed: 4.5, size: 1.5, color: 0xffff00, xp: 5 },
+  [EnemyType.FIREWALL]: { hp: 40, speed: 1.0, size: 3.5, color: 0xff0055, xp: 30 },
+};
 
 export function spawnPlayer(scene: THREE.Scene) {
   const playerGroup = new THREE.Group();
@@ -70,9 +86,9 @@ export function spawnPlayer(scene: THREE.Scene) {
       bulletColor: STARTER_WEAPON.color,
       bulletLifetime: STARTER_WEAPON.range,
 
-      // --- VISUAL MAPPING ---
       bulletWidth: STARTER_WEAPON.width,
       bulletLength: STARTER_WEAPON.length,
+      visualStyle: STARTER_WEAPON.visualStyle,
 
       bulletCount: STARTER_WEAPON.count,
       bulletSpread: STARTER_WEAPON.spread,
@@ -82,42 +98,59 @@ export function spawnPlayer(scene: THREE.Scene) {
   });
 }
 
-export function spawnEnemy(scene: THREE.Scene, x: number, z: number) {
+// --- UPDATED SPAWN ENEMY (Restored Variety) ---
+export function spawnEnemy(
+  scene: THREE.Scene,
+  x: number,
+  z: number,
+  type: EnemyType = EnemyType.GLITCH,
+) {
+  const stats = ENEMY_STATS[type];
   const group = new THREE.Group();
   group.position.set(x, 0, z);
   scene.add(group);
+
   const texture = loadTexture('/sprites/enemies/enemy_glitch.png').clone();
   texture.magFilter = THREE.NearestFilter;
-  texture.minFilter = THREE.NearestFilter;
-  texture.colorSpace = THREE.SRGBColorSpace;
-  const material = new THREE.SpriteMaterial({ map: texture, color: 0xffffff });
+
+  // Apply Type Color
+  const material = new THREE.SpriteMaterial({ map: texture, color: stats.color });
   const sprite = new THREE.Sprite(material);
-  const BASE_HEIGHT = 2.0;
-  sprite.scale.set(BASE_HEIGHT, BASE_HEIGHT, 1);
-  sprite.position.y = BASE_HEIGHT / 2;
+
+  // Apply Type Size
+  sprite.scale.set(stats.size, stats.size, 1);
+  sprite.position.y = stats.size / 2;
+
+  // Aspect Ratio Fix
   const interval = setInterval(() => {
     if (texture.image) {
       const img = texture.image as HTMLImageElement;
       const h = img.height;
       if (h > 0) {
         const aspect = img.width / h;
-        sprite.scale.set(BASE_HEIGHT * aspect, BASE_HEIGHT, 1);
+        sprite.scale.set(stats.size * aspect, stats.size, 1);
         clearInterval(interval);
       }
     }
   }, 100);
+
   group.add(sprite);
+
   const shadow = new THREE.Mesh(shadowGeo, shadowMat);
   shadow.rotation.x = -Math.PI / 2;
+  shadow.scale.setScalar(stats.size / 2);
   shadow.position.y = 0.05;
   group.add(shadow);
+
   world.add({
     isEnemy: true,
     position: group.position,
     velocity: new THREE.Vector3(0, 0, 0),
-    health: { current: 12, max: 12 },
+    health: { current: stats.hp, max: stats.hp },
+    moveSpeed: stats.speed, // <--- IMPORTANT: Speed restored
     transform: group,
     aimTarget: new THREE.Vector3(),
+    xpValue: stats.xp,
   });
 }
 

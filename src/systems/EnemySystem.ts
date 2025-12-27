@@ -1,59 +1,62 @@
 import { world } from '../core/world';
 import * as THREE from 'three';
 
-const ENEMY_SPEED = 4;
-const SEPARATION_FORCE = 2.0;
-const FRICTION = 0.9; // Slows down knockback
+const SEPARATION_RADIUS = 1.0;
+const _dir = new THREE.Vector3(); // Reusable
+const _push = new THREE.Vector3(); // Reusable
 
 export function EnemySystem(dt: number) {
   const player = world.with('isPlayer', 'position').first;
+  if (!player) return;
 
-  // If player is dead, enemies stop
-  if (!player) {
-    for (const enemy of world.with('isEnemy', 'velocity')) {
-      enemy.velocity.set(0, 0, 0);
-    }
-    return;
-  }
+  const enemies = Array.from(world.with('isEnemy', 'position', 'velocity'));
 
-  for (const enemy of world.with('isEnemy', 'position', 'velocity')) {
-    // 1. UPDATE EYES (Look at player)
-    if (!enemy.aimTarget) enemy.aimTarget = new THREE.Vector3();
-    enemy.aimTarget.copy(player.position);
-
-    // --- JUICE: STUN LOGIC ---
-    // If enemy was recently shot, do NOT run chase AI.
-    // Instead, apply friction to the knockback force.
+  for (const enemy of enemies) {
     if (enemy.stunTimer && enemy.stunTimer > 0) {
       enemy.stunTimer -= dt;
+      // Friction during stun
+      enemy.velocity.multiplyScalar(0.9);
+    } else {
+      // 1. Calculate Desired Velocity (Towards Player)
+      _dir.subVectors(player.position, enemy.position).normalize();
+      const speed = enemy.moveSpeed || 2.0;
 
-      // Slide physics
-      enemy.velocity.multiplyScalar(FRICTION);
+      // Target Velocity
+      _push.copy(_dir).multiplyScalar(speed);
 
-      // Skip the Chase/Separation logic below
-      continue;
+      // 2. Steering Force (Soft Turn)
+      // Steer towards desired velocity with a factor (0.1s smoothing)
+      // velocity += (target - velocity) * factor * dt
+      const steerStrength = 8.0;
+      enemy.velocity.x += (_push.x - enemy.velocity.x) * steerStrength * dt;
+      enemy.velocity.z += (_push.z - enemy.velocity.z) * steerStrength * dt;
     }
 
-    // 2. CHASE MOVEMENT (Normal AI)
-    const direction = new THREE.Vector3().subVectors(player.position, enemy.position);
-    direction.y = 0; // Don't fly up/down
+    // 3. Separation (Crowd Control)
+    for (const other of enemies) {
+      if (other === enemy) continue;
+      const distSq = enemy.position.distanceToSquared(other.position);
 
-    if (direction.lengthSq() > 0.1) {
-      direction.normalize().multiplyScalar(ENEMY_SPEED);
-      enemy.velocity.copy(direction);
+      if (distSq < SEPARATION_RADIUS) {
+        _push.subVectors(enemy.position, other.position).normalize();
+        // Force inversely proportional to distance (stronger when closer)
+        const force = (1.0 - distSq / SEPARATION_RADIUS) * 20 * dt;
+        enemy.velocity.x += _push.x * force;
+        enemy.velocity.z += _push.z * force;
+      }
     }
 
-    // 3. SEPARATION (Don't stack)
-    for (const otherEnemy of world.with('isEnemy', 'position')) {
-      if (enemy === otherEnemy) continue;
+    // 4. Move
+    enemy.position.x += enemy.velocity.x * dt;
+    enemy.position.z += enemy.velocity.z * dt;
 
-      const dist = enemy.position.distanceToSquared(otherEnemy.position);
-
-      if (dist < 1.0) {
-        const push = new THREE.Vector3().subVectors(enemy.position, otherEnemy.position);
-        push.y = 0;
-        push.normalize().multiplyScalar(SEPARATION_FORCE);
-        enemy.velocity.add(push);
+    // 5. Visuals
+    if (enemy.transform) {
+      enemy.transform.position.copy(enemy.position);
+      // Face direction of movement
+      if (Math.abs(enemy.velocity.x) > 0.1) {
+        const scale = Math.abs(enemy.transform.scale.x);
+        enemy.transform.scale.x = enemy.velocity.x > 0 ? -scale : scale;
       }
     }
   }

@@ -7,67 +7,66 @@ const MAGNET_RADIUS = 5.0;
 const MAGNET_FORCE = 25.0;
 const FRICTION = 0.95;
 
+// Reusables
+const _dir = new THREE.Vector3();
+
 export function LootSystem(dt: number, scene: THREE.Scene) {
-  // 1. Get Player
   const player = world.with('isPlayer', 'position', 'xp', 'xpMax', 'score', 'level').first;
   if (!player) return;
 
-  // 2. Iterate all XP Orbs
   for (const xp of world.with('isXP', 'position', 'velocity', 'xpValue')) {
     const distSq = xp.position.distanceToSquared(player.position);
 
-    // A. COLLECTION (Close range)
+    // A. COLLECTION
     if (distSq < 1.5) {
       if (xp.xpValue && player.xp !== undefined && player.score !== undefined) {
-        // Apply Stats
         player.xp += xp.xpValue;
         player.score += 1;
+        playCollect();
 
-        playCollect(); // Sound
-
-        // Level Up Check
         if (player.xp >= (player.xpMax || 100)) {
           player.xp = 0;
           player.level = (player.level || 1) + 1;
           player.xpMax = Math.floor((player.xpMax || 100) * 1.2);
-
-          playLevelUp(); // Sound
-          triggerLevelUp(); // Pause & Show Cards
+          playLevelUp();
+          triggerLevelUp();
         }
       }
       despawn(xp, scene);
       continue;
     }
 
-    // B. MAGNETISM (Medium range)
+    // B. MAGNETISM (Optimized)
     if (distSq < MAGNET_RADIUS * MAGNET_RADIUS) {
-      const direction = new THREE.Vector3().subVectors(player.position, xp.position).normalize();
+      _dir.subVectors(player.position, xp.position).normalize();
 
-      // Accelerate towards player
-      xp.velocity.add(direction.multiplyScalar(MAGNET_FORCE * dt));
-      xp.velocity.multiplyScalar(0.92); // Drag to prevent orbiting
+      // Apply accel
+      xp.velocity.x += _dir.x * MAGNET_FORCE * dt;
+      xp.velocity.z += _dir.z * MAGNET_FORCE * dt;
+
+      xp.velocity.multiplyScalar(0.92);
     } else {
-      // Friction when idle
       xp.velocity.x *= FRICTION;
       xp.velocity.z *= FRICTION;
     }
 
-    // C. BOUNCE (Gravity)
+    // C. GRAVITY
     if (xp.position.y > 0.3) {
-      xp.velocity.y -= 20 * dt; // Gravity
+      xp.velocity.y -= 20 * dt;
     } else {
-      xp.position.y = 0.3; // Floor
-      xp.velocity.y *= -0.5; // Bounce dampening
+      xp.position.y = 0.3;
+      xp.velocity.y *= -0.5;
       if (Math.abs(xp.velocity.y) < 1) xp.velocity.y = 0;
     }
 
-    // D. APPLY MOVEMENT
-    xp.position.add(xp.velocity.clone().multiplyScalar(dt));
+    // D. MOVE (No clones)
+    xp.position.x += xp.velocity.x * dt;
+    xp.position.y += xp.velocity.y * dt;
+    xp.position.z += xp.velocity.z * dt;
 
-    // Update Mesh
     if (xp.transform) {
       xp.transform.position.copy(xp.position);
-      xp.transform.rotation.y += 3 * dt; // Spin
+      xp.transform.rotation.y += 3 * dt;
       xp.transform.rotation.x += 2 * dt;
     }
   }
