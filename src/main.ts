@@ -1,8 +1,7 @@
 import './style.css';
 import * as THREE from 'three';
 import { initRenderer } from './core/renderer';
-import { world } from './core/world';
-import { spawnPlayer } from './core/factories'; // <--- Import Factory
+import { spawnPlayer } from './core/factories';
 
 // Systems
 import { InputSystem } from './systems/InputSystem';
@@ -14,15 +13,15 @@ import { WeaponSystem } from './systems/WeaponSystem';
 import { LifecycleSystem } from './systems/LifecycleSystem';
 import { EnemySystem } from './systems/EnemySystem';
 import { CollisionSystem } from './systems/CollisionSystem';
-import { SpawnerSystem } from './systems/SpawnerSystem'; // <--- Import Spawner
+import { SpawnerSystem } from './systems/SpawnerSystem';
+import { ParticleSystem } from './systems/ParticleSystem';
+import { CameraSystem } from './systems/CameraSystem';
+import { LootSystem } from './systems/LootSystem'; // <--- NEW IMPORT
 
 const { scene, camera, renderer } = initRenderer();
 
 // --- INITIAL SETUP ---
 spawnPlayer(scene);
-
-// Note: We don't manually spawn enemies anymore!
-// The SpawnerSystem will start doing it automatically.
 
 // --- GAME LOOP ---
 const clock = new THREE.Clock();
@@ -36,7 +35,7 @@ function animate() {
   AimSystem();
   PlayerControlSystem();
   EnemySystem(dt);
-  SpawnerSystem(dt, scene); // <--- Run Spawner
+  SpawnerSystem(dt, scene);
 
   // 2. Combat
   WeaponSystem(dt, scene);
@@ -45,15 +44,13 @@ function animate() {
   // 3. Physics/Visuals
   PhysicsSystem(dt);
   LifecycleSystem(dt, scene);
-  RenderSystem(dt);
+  ParticleSystem(dt);
 
-  // Camera Follow
-  const player = world.with('isPlayer', 'transform').first;
-  if (player) {
-    camera.position.x = player.transform.position.x;
-    camera.position.z = player.transform.position.z + 15;
-    camera.lookAt(player.transform.position);
-  }
+  // 4. Loot
+  LootSystem(dt, scene); // <--- RUN LOOT LOGIC
+
+  RenderSystem(dt);
+  CameraSystem(dt, camera);
 
   renderer.render(scene, camera);
 }

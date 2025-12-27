@@ -1,48 +1,48 @@
 import { world } from '../core/world';
 
-// 1. Track Raw Key States
+// State to track keys
 const keys = {
-  up: false,
-  down: false,
-  left: false,
-  right: false,
+  up: 0,
+  down: 0,
+  left: 0,
+  right: 0,
   shoot: false,
 };
 
-// 2. Listen to the Browser
+// Event Listeners
 window.addEventListener('keydown', (e) => {
   switch (e.code) {
     case 'KeyW':
-      keys.up = true;
+      keys.up = 1;
       break;
     case 'KeyS':
-      keys.down = true;
+      keys.down = 1;
       break;
     case 'KeyA':
-      keys.left = true;
+      keys.left = 1;
       break;
     case 'KeyD':
-      keys.right = true;
+      keys.right = 1;
       break;
     case 'Space':
       keys.shoot = true;
-      break;
+      break; // Space to shoot
   }
 });
 
 window.addEventListener('keyup', (e) => {
   switch (e.code) {
     case 'KeyW':
-      keys.up = false;
+      keys.up = 0;
       break;
     case 'KeyS':
-      keys.down = false;
+      keys.down = 0;
       break;
     case 'KeyA':
-      keys.left = false;
+      keys.left = 0;
       break;
     case 'KeyD':
-      keys.right = false;
+      keys.right = 0;
       break;
     case 'Space':
       keys.shoot = false;
@@ -50,23 +50,26 @@ window.addEventListener('keyup', (e) => {
   }
 });
 
-// 3. The System Function
 export function InputSystem() {
-  // Find every entity that HAS an input component (The Player)
-  // "with" is a Miniplex filter
+  // We want all entities that CAN receive input
+  // The query returns entities, but doesn't guarantee type safety on optional fields
   for (const entity of world.with('input')) {
-    // Reset Intent
-    let dx = 0;
-    let dy = 0;
+    // Normalize vector (so diagonal isn't faster)
+    let dx = keys.right - keys.left;
+    let dy = keys.down - keys.up;
 
-    if (keys.up) dy -= 1;
-    if (keys.down) dy += 1;
-    if (keys.left) dx -= 1;
-    if (keys.right) dx += 1;
+    // Simple normalization for 8-direction movement
+    if (dx !== 0 || dy !== 0) {
+      const length = Math.sqrt(dx * dx + dy * dy);
+      dx /= length;
+      dy /= length;
+    }
 
-    // Update the Entity's "Brain"
-    entity.input.x = dx;
-    entity.input.y = dy;
-    entity.input.isShooting = keys.shoot;
+    // FIX: Check if input exists
+    if (entity.input) {
+      entity.input.x = dx;
+      entity.input.y = dy;
+      entity.input.isShooting = keys.shoot;
+    }
   }
 }

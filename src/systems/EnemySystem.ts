@@ -3,8 +3,9 @@ import * as THREE from 'three';
 
 const ENEMY_SPEED = 4;
 const SEPARATION_FORCE = 2.0;
+const FRICTION = 0.9; // Slows down knockback
 
-export function EnemySystem(_dt: number) {
+export function EnemySystem(dt: number) {
   const player = world.with('isPlayer', 'position').first;
 
   // If player is dead, enemies stop
@@ -16,12 +17,24 @@ export function EnemySystem(_dt: number) {
   }
 
   for (const enemy of world.with('isEnemy', 'position', 'velocity')) {
-    // 1. UPDATE EYES (The Fix)
-    // Ensure the enemy knows where the player is so RenderSystem flips the sprite
+    // 1. UPDATE EYES (Look at player)
     if (!enemy.aimTarget) enemy.aimTarget = new THREE.Vector3();
     enemy.aimTarget.copy(player.position);
 
-    // 2. CHASE MOVEMENT
+    // --- JUICE: STUN LOGIC ---
+    // If enemy was recently shot, do NOT run chase AI.
+    // Instead, apply friction to the knockback force.
+    if (enemy.stunTimer && enemy.stunTimer > 0) {
+      enemy.stunTimer -= dt;
+
+      // Slide physics
+      enemy.velocity.multiplyScalar(FRICTION);
+
+      // Skip the Chase/Separation logic below
+      continue;
+    }
+
+    // 2. CHASE MOVEMENT (Normal AI)
     const direction = new THREE.Vector3().subVectors(player.position, enemy.position);
     direction.y = 0; // Don't fly up/down
 
@@ -38,7 +51,7 @@ export function EnemySystem(_dt: number) {
 
       if (dist < 1.0) {
         const push = new THREE.Vector3().subVectors(enemy.position, otherEnemy.position);
-        push.y = 0; // Keep push flat
+        push.y = 0;
         push.normalize().multiplyScalar(SEPARATION_FORCE);
         enemy.velocity.add(push);
       }

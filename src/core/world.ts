@@ -1,46 +1,87 @@
-import { World } from 'miniplex';
 import * as THREE from 'three';
 
+// 1. Define the Shape of an Entity
 export type Entity = {
+  // core
   id?: number;
 
-  // Tags
+  // flags
   isPlayer?: boolean;
-  isEnemy?: boolean; // <--- New Tag
+  isEnemy?: boolean;
   isProjectile?: boolean;
+  isParticle?: boolean;
+  isXP?: boolean; // <--- NEW FLAG
 
-  // Physics
-  position?: THREE.Vector3;
-  velocity?: THREE.Vector3;
+  // data
+  position: THREE.Vector3;
+  velocity: THREE.Vector3;
   transform?: THREE.Object3D;
 
-  // Stats
-  health?: { current: number; max: number };
-  damage?: number;
-
-  // Input & Aiming
+  // input
   input?: {
     x: number;
     y: number;
     isShooting: boolean;
   };
 
-  // <--- NEW: Where is this entity aiming?
+  // combat
+  health?: {
+    current: number;
+    max: number;
+  };
   aimTarget?: THREE.Vector3;
 
-  // --- WEAPONRY ---
+  // weapon
   weapon?: {
-    cooldownTimer: number; // Counts down to 0
-    fireRate: number; // Time between shots (e.g., 0.2s)
+    cooldownTimer: number;
+    fireRate: number;
     damage: number;
     bulletSpeed: number;
     bulletColor: number;
-    bulletLifetime: number; // How long bullets last
+    bulletLifetime: number;
   };
 
-  // --- PROJECTILE STATS ---
-  lifeTimer?: number; // Counts UP to expire
-  maxLife?: number; // When to die
+  // misc
+  lifeTimer?: number;
+  maxLife?: number;
+  damage?: number;
+  xpValue?: number; // <--- NEW PROPERTY
+
+  // juice
+  hitFlashTimer?: number;
+  stunTimer?: number;
 };
 
-export const world = new World<Entity>();
+// 2. Create the ECS World
+function createECS() {
+  const entities: Entity[] = [];
+
+  return {
+    add: (entity: Entity) => {
+      entities.push(entity);
+      return entity;
+    },
+    remove: (entity: Entity) => {
+      const index = entities.indexOf(entity);
+      if (index > -1) {
+        entities.splice(index, 1);
+      }
+    },
+    with: (...components: (keyof Entity)[]) => {
+      return {
+        get first() {
+          return entities.find((e) => components.every((c) => e[c] !== undefined));
+        },
+        [Symbol.iterator]: function* () {
+          for (const e of entities) {
+            if (components.every((c) => e[c] !== undefined)) {
+              yield e;
+            }
+          }
+        },
+      };
+    },
+  };
+}
+
+export const world = createECS();

@@ -1,43 +1,31 @@
-import { world } from '../core/world';
+import { world, type Entity } from '../core/world';
 import * as THREE from 'three';
-
-interface Shooter {
-  position: THREE.Vector3;
-  aimTarget: THREE.Vector3;
-  weapon: {
-    bulletColor: number;
-    bulletSpeed: number;
-    bulletLifetime: number;
-  };
-}
+import { addTrauma } from './CameraSystem';
 
 export function WeaponSystem(dt: number, scene: THREE.Scene) {
-  // Query entities that have a Weapon, Position, and Aim
   for (const entity of world.with('weapon', 'position', 'aimTarget')) {
-    // 1. Tick down cooldown
+    if (!entity.weapon || !entity.aimTarget) continue;
+
     if (entity.weapon.cooldownTimer > 0) {
       entity.weapon.cooldownTimer -= dt;
     }
 
-    // 2. Check Firing Condition
     const wantsToFire = entity.input?.isShooting || entity.aimTarget.lengthSq() > 0;
 
-    // 3. Fire!
     if (wantsToFire && entity.weapon.cooldownTimer <= 0) {
-      spawnProjectile(entity as unknown as Shooter, scene);
-      entity.weapon.cooldownTimer = entity.weapon.fireRate; // Reset cooldown
+      spawnProjectile(entity, scene);
+      entity.weapon.cooldownTimer = entity.weapon.fireRate;
     }
   }
 }
 
-function spawnProjectile(shooter: Shooter, scene: THREE.Scene) {
-  // Calculate Direction
+function spawnProjectile(shooter: Entity, scene: THREE.Scene) {
+  if (!shooter.weapon || !shooter.aimTarget) return;
+
   const direction = new THREE.Vector3().subVectors(shooter.aimTarget, shooter.position).normalize();
 
-  // Handle edge case: if shooter is exactly on target, shoot forward
   if (direction.lengthSq() === 0) direction.set(0, 0, 1);
 
-  // Create Visuals (Yellow Cube Bullet)
   const geometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
   const material = new THREE.MeshStandardMaterial({
     color: shooter.weapon.bulletColor,
@@ -46,18 +34,23 @@ function spawnProjectile(shooter: Shooter, scene: THREE.Scene) {
   });
   const mesh = new THREE.Mesh(geometry, material);
 
-  // Start at shooter position (plus a little offset forward)
   mesh.position.copy(shooter.position).add(direction.clone().multiplyScalar(1.0));
   mesh.castShadow = true;
   scene.add(mesh);
 
-  // Create Entity
+  // --- TUNING: SUBTLE KICKBACK ---
+  if (shooter.isPlayer) {
+    // Was 0.1 (Too shaky). Now 0.02 (Just a hum).
+    addTrauma(0.02);
+  }
+
   world.add({
     isProjectile: true,
     position: mesh.position,
-    velocity: direction.multiplyScalar(shooter.weapon.bulletSpeed), // PhysicsSystem handles the moving!
+    velocity: direction.multiplyScalar(shooter.weapon.bulletSpeed),
     lifeTimer: 0,
     maxLife: shooter.weapon.bulletLifetime,
     transform: mesh,
+    damage: shooter.weapon.damage,
   });
 }

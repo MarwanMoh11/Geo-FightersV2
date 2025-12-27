@@ -1,31 +1,44 @@
-import { world } from '../core/world';
+import { world, type Entity } from '../core/world';
 import * as THREE from 'three';
+import { addTrauma } from './CameraSystem';
+import { spawnXP } from '../core/factories'; // <--- NEW IMPORT
 
 export function CollisionSystem(scene: THREE.Scene) {
-  // A. Bullet vs Enemy
-  const enemies = world.with('isEnemy', 'position', 'health');
-  const bullets = world.with('isProjectile', 'position');
+  const enemies = world.with('isEnemy', 'position', 'health', 'velocity');
+  const bullets = world.with('isProjectile', 'position', 'velocity');
 
-  // Brute force check (Fine for < 100 objects)
+  // A. Bullet vs Enemy
   for (const bullet of bullets) {
     for (const enemy of enemies) {
       const distance = bullet.position.distanceTo(enemy.position);
 
-      // Hit Radius: 0.8 units
       if (distance < 0.8) {
-        // 1. Damage Enemy
-        enemy.health.current -= 10; // 1 shot kill for now
+        if (enemy.health) {
+          // 1. DAMAGE
+          const dmg = bullet.damage || 1;
+          enemy.health.current -= dmg;
 
-        // 2. Destroy Bullet (It absorbed the hit)
-        despawn(bullet, scene);
+          // 2. JUICE
+          enemy.hitFlashTimer = 0.1;
+          const pushDir = bullet.velocity.clone().normalize();
+          pushDir.y = 0;
+          enemy.velocity.add(pushDir.multiplyScalar(10));
+          enemy.stunTimer = 0.2;
 
-        // 3. Check Enemy Death
-        if (enemy.health.current <= 0) {
-          despawn(enemy, scene);
-          // Optional: Spawn particle effect here later
+          despawn(bullet, scene);
+
+          // 4. CHECK DEATH
+          if (enemy.health.current <= 0) {
+            addTrauma(0.15);
+            spawnExplosion(enemy.position, scene);
+
+            // --- NEW: DROP LOOT ---
+            spawnXP(scene, enemy.position.x, enemy.position.z, 10);
+
+            despawn(enemy, scene);
+          }
         }
-
-        break; // Bullet hit something, stop checking other enemies
+        break;
       }
     }
   }
@@ -36,23 +49,47 @@ export function CollisionSystem(scene: THREE.Scene) {
     for (const enemy of enemies) {
       const distance = player.position.distanceTo(enemy.position);
 
-      // Player Hit Radius
       if (distance < 1.0) {
-        console.log('%c GAME OVER ', 'background: red; color: white; font-size: 20px');
-        // For now, we just respawn the enemy away so you don't get log-spammed
-        enemy.position.x += 20;
-        // Later: world.remove(player) or Trigger Game Over State
+        addTrauma(0.4);
+        const push = new THREE.Vector3()
+          .subVectors(enemy.position, player.position)
+          .normalize()
+          .multiplyScalar(5);
+        enemy.velocity.add(push);
+        enemy.stunTimer = 0.5;
       }
     }
   }
 }
 
-// Helper to clean up entities
-interface DespawnableEntity {
-  transform?: THREE.Object3D;
+function spawnExplosion(pos: THREE.Vector3, scene: THREE.Scene) {
+  const particleCount = 8;
+  const geometry = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+  const material = new THREE.MeshBasicMaterial({ color: 0xff0055 });
+
+  for (let i = 0; i < particleCount; i++) {
+    const vel = new THREE.Vector3(
+      (Math.random() - 0.5) * 10,
+      Math.random() * 5 + 2,
+      (Math.random() - 0.5) * 10,
+    );
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.copy(pos);
+    scene.add(mesh);
+
+    world.add({
+      isParticle: true,
+      position: mesh.position,
+      velocity: vel,
+      transform: mesh,
+      lifeTimer: 0,
+      maxLife: 0.5 + Math.random() * 0.3,
+    });
+  }
 }
 
-function despawn(entity: DespawnableEntity, scene: THREE.Scene) {
+function despawn(entity: Entity, scene: THREE.Scene) {
   if (entity.transform) {
     scene.remove(entity.transform);
   }

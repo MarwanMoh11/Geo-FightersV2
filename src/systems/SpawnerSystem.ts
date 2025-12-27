@@ -3,9 +3,10 @@ import { spawnEnemy } from '../core/factories';
 import * as THREE from 'three';
 
 let spawnTimer = 0;
-// Difficulty Settings
-const SPAWN_RATE = 1.0; // Seconds between spawns (Lower = Harder)
-const SPAWN_DISTANCE = 20; // How far away to spawn
+
+// DIFFICULTY SETTINGS
+const SPAWN_RATE = 0.5; // Spawn 2 enemies per second (Was 1.0)
+const SPAWN_DISTANCE = 20; // Radius around player
 
 export function SpawnerSystem(dt: number, scene: THREE.Scene) {
   spawnTimer -= dt;
@@ -21,9 +22,7 @@ export function SpawnerSystem(dt: number, scene: THREE.Scene) {
     // 3. Pick a Random Angle
     const angle = Math.random() * Math.PI * 2;
 
-    // 4. Calculate Position (Circle around player)
-    // x = center_x + radius * cos(angle)
-    // z = center_z + radius * sin(angle)
+    // 4. Calculate Position
     const x = player.position.x + Math.cos(angle) * SPAWN_DISTANCE;
     const z = player.position.z + Math.sin(angle) * SPAWN_DISTANCE;
 
