@@ -127,14 +127,15 @@ export function spawnEnemy(
   group.position.set(x, 0, z);
   scene.add(group);
 
-  // Get Cached Material
+  // Get Cached Material Template
   if (!enemyMatCache[type]) {
     enemyMatCache[type] = new THREE.SpriteMaterial({
       map: enemyTexture,
       color: stats.color,
     });
   }
-  const material = enemyMatCache[type]!;
+  // CLONE material so each enemy has unique color state (for flashing)
+  const material = enemyMatCache[type]!.clone();
   const sprite = new THREE.Sprite(material);
 
   // Apply Type Size & Aspect
