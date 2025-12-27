@@ -9,7 +9,7 @@ export function PhysicsSystem(dt: number) {
     // If it is NOT a bullet, force it to the floor.
     if (!entity.isProjectile) {
       entity.position.y = 0.5; // Hard lock to ground height
-      entity.velocity.y = 0;   // Cancel any vertical launch forces
+      entity.velocity.y = 0; // Cancel any vertical launch forces
     }
   }
 }

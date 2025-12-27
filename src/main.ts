@@ -2,6 +2,7 @@ import './style.css';
 import * as THREE from 'three';
 import { initRenderer } from './core/renderer';
 import { world } from './core/world';
+import { spawnPlayer } from './core/factories'; // <--- Import Factory
 
 // Systems
 import { InputSystem } from './systems/InputSystem';
@@ -11,64 +12,19 @@ import { RenderSystem } from './systems/RenderSystem';
 import { AimSystem } from './systems/AimSystem';
 import { WeaponSystem } from './systems/WeaponSystem';
 import { LifecycleSystem } from './systems/LifecycleSystem';
-import { EnemySystem } from './systems/EnemySystem';         // NEW
-import { CollisionSystem } from './systems/CollisionSystem'; // NEW
+import { EnemySystem } from './systems/EnemySystem';
+import { CollisionSystem } from './systems/CollisionSystem';
+import { SpawnerSystem } from './systems/SpawnerSystem'; // <--- Import Spawner
 
 const { scene, camera, renderer } = initRenderer();
 
-// --- PLAYER ---
-function createPlayer() {
-  // Same as before
-  const geometry = new THREE.BoxGeometry(0.8, 0.8, 1.5);
-  const material = new THREE.MeshStandardMaterial({ color: 0xff0044 });
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.castShadow = true;
-  scene.add(mesh);
+// --- INITIAL SETUP ---
+spawnPlayer(scene);
 
-  world.add({
-    isPlayer: true,
-    position: new THREE.Vector3(0, 0.5, 0),
-    velocity: new THREE.Vector3(0, 0, 0),
-    input: { x: 0, y: 0, isShooting: false },
-    aimTarget: new THREE.Vector3(),
-    transform: mesh,
-    weapon: {
-      cooldownTimer: 0,
-      fireRate: 0.1,
-      damage: 10,
-      bulletSpeed: 20,
-      bulletColor: 0xffff00,
-      bulletLifetime: 2.0
-    }
-  });
-}
+// Note: We don't manually spawn enemies anymore!
+// The SpawnerSystem will start doing it automatically.
 
-// --- ENEMY ---
-function createEnemy(x: number, z: number) {
-  const geometry = new THREE.BoxGeometry(1, 1, 1);
-  const material = new THREE.MeshStandardMaterial({ color: 0x0088ff });
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.position.set(x, 0.5, z);
-  mesh.castShadow = true;
-  scene.add(mesh);
-
-  world.add({
-    isEnemy: true,
-    position: mesh.position,
-    velocity: new THREE.Vector3(0, 0, 0), // NEW: Needs velocity to move
-    health: { current: 10, max: 10 },     // NEW: Needs health to die
-    transform: mesh
-  });
-}
-
-// Spawn
-createPlayer();
-createEnemy(10, 10);
-createEnemy(-10, 10);
-createEnemy(10, -10);
-createEnemy(-10, -10);
-
-// --- LOOP ---
+// --- GAME LOOP ---
 const clock = new THREE.Clock();
 
 function animate() {
@@ -79,18 +35,19 @@ function animate() {
   InputSystem();
   AimSystem();
   PlayerControlSystem();
-  EnemySystem(dt); // Move Enemies
+  EnemySystem(dt);
+  SpawnerSystem(dt, scene); // <--- Run Spawner
 
   // 2. Combat
   WeaponSystem(dt, scene);
-  CollisionSystem(scene); // Kill Enemies
+  CollisionSystem(scene);
 
   // 3. Physics/Visuals
   PhysicsSystem(dt);
   LifecycleSystem(dt, scene);
   RenderSystem(dt);
 
-  // Camera
+  // Camera Follow
   const player = world.with('isPlayer', 'transform').first;
   if (player) {
     camera.position.x = player.transform.position.x;
