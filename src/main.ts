@@ -4,7 +4,7 @@ import { initRenderer } from './core/renderer';
 
 import { spawnPlayer } from './core/factories';
 import { getCtx, startMusic } from './core/audio';
-import { Profiler } from './core/debug';
+import { Profiler } from './core/profiler';
 
 // Systems
 import { InputSystem } from './systems/InputSystem';
@@ -46,40 +46,39 @@ spawnPlayer(scene);
 
 // --- DEBUG BUTTON ---
 const btn = document.createElement('button');
-btn.innerText = '📋 COPY DEBUG LOGS';
-btn.style.position = 'absolute';
-btn.style.bottom = '10px';
-btn.style.left = '50%';
-btn.style.transform = 'translateX(-50%)';
-btn.style.zIndex = '10000';
-btn.style.padding = '12px 24px';
-btn.style.background = '#ff0055';
-btn.style.color = 'white';
-btn.style.border = '2px solid white';
-btn.style.fontSize = '16px';
-btn.style.borderRadius = '8px';
-btn.style.fontFamily = 'monospace';
+btn.innerText = '🔍 PROFILE';
+btn.style.cssText = `
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 10001;
+  padding: 8px 16px;
+  background: rgba(255, 0, 85, 0.9);
+  color: white;
+  border: 1px solid white;
+  font-family: monospace;
+  font-weight: bold;
+  font-size: 14px;
+  pointer-events: auto;
+`;
 btn.onclick = async () => {
-  const report = Profiler.getReport();
+  Profiler.log('Manually requesting debug report');
+  const report = Profiler.getDetailedReport();
   try {
     await navigator.clipboard.writeText(report);
+    const originalText = btn.innerText;
     btn.innerText = '✅ COPIED!';
-    setTimeout(() => (btn.innerText = '📋 COPY DEBUG LOGS'), 2000);
+    setTimeout(() => (btn.innerText = originalText), 2000);
   } catch (e) {
-    alert('Failed to copy. Check console.');
+    console.error('Copy failed', e);
     console.log(report);
+    alert('Detailed report logged to console (Copy unsupported)');
   }
 };
 document.body.appendChild(btn);
 
 // --- GAME LOOP ---
 const clock = new THREE.Clock();
-
-function measure(name: string, fn: () => void) {
-  const start = performance.now();
-  fn();
-  Profiler.record(name, performance.now() - start);
-}
 
 function animate() {
   requestAnimationFrame(animate);
@@ -92,30 +91,31 @@ function animate() {
   }
 
   // 1. Logic
-  measure('Input', () => InputSystem());
-  measure('Aim', () => AimSystem());
-  measure('PlayerCtrl', () => PlayerControlSystem());
-  measure('Enemy', () => EnemySystem(dt));
-  measure('Spawner', () => SpawnerSystem(dt, scene));
+  InputSystem();
+  AimSystem();
+  PlayerControlSystem();
+  EnemySystem(dt);
+  SpawnerSystem(dt, scene);
 
   // 2. Combat
-  measure('Weapon', () => WeaponSystem(dt, scene));
-  measure('Collision', () => CollisionSystem(scene));
+  WeaponSystem(dt, scene);
+  CollisionSystem(scene);
 
   // 3. Physics/Visuals
-  measure('Physics', () => PhysicsSystem(dt));
-  measure('Lifecycle', () => LifecycleSystem(dt, scene));
-  measure('Particle', () => ParticleSystem(dt));
-  measure('Loot', () => LootSystem(dt, scene));
+  PhysicsSystem(dt);
+  LifecycleSystem(dt, scene);
+  ParticleSystem(dt);
+  LootSystem(dt, scene);
 
   // 4. UI & Camera
-  measure('RenderSys', () => RenderSystem(dt));
-  measure('Camera', () => CameraSystem(dt, camera));
-  measure('UI', () => UISystem());
+  RenderSystem(dt);
+  CameraSystem(dt, camera);
+  UISystem();
 
-  const rStart = performance.now();
   renderer.render(scene, camera);
-  Profiler.record('Renderer', performance.now() - rStart);
+
+  // 5. Profiling
+  Profiler.captureFrame(renderer, dt);
 }
 
 animate();

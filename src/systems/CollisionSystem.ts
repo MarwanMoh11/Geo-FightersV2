@@ -124,19 +124,19 @@ function applyDamage(
 
 // --- FX ---
 
-const explosionGeo = new THREE.BoxGeometry(0.12, 0.12, 0.12);
-const explosionMat = new THREE.MeshBasicMaterial({ color: 0xff0055 });
-
 function spawnExplosionFX(pos: THREE.Vector3, scene: THREE.Scene) {
   const start = performance.now();
+  // Quick enemy death particles
   const particleCount = 5;
+  const geometry = new THREE.BoxGeometry(0.12, 0.12, 0.12);
+  const material = new THREE.MeshBasicMaterial({ color: 0xff0055 });
   for (let i = 0; i < particleCount; i++) {
     const vel = new THREE.Vector3(
       (Math.random() - 0.5) * 15,
       Math.random() * 8 + 2,
       (Math.random() - 0.5) * 15,
     );
-    const mesh = new THREE.Mesh(explosionGeo, explosionMat);
+    const mesh = new THREE.Mesh(geometry, material);
     mesh.position.copy(pos);
     scene.add(mesh);
     world.add({
@@ -152,17 +152,16 @@ function spawnExplosionFX(pos: THREE.Vector3, scene: THREE.Scene) {
   if (dur > 1.0) console.warn(`[FX LAG] spawnExplosionFX took ${dur.toFixed(2)}ms`);
 }
 
-const blastGeo = new THREE.RingGeometry(0.1, 0.2, 16);
-const blastMat = new THREE.MeshBasicMaterial({
-  color: 0x9900ff,
-  transparent: true,
-  opacity: 0.8,
-  side: THREE.DoubleSide,
-});
-
 function spawnBlastFX(pos: THREE.Vector3, radius: number, scene: THREE.Scene) {
   // Big Purple Shockwave
-  const mesh = new THREE.Mesh(blastGeo, blastMat);
+  const geometry = new THREE.RingGeometry(0.1, 0.2, 16);
+  const material = new THREE.MeshBasicMaterial({
+    color: 0x9900ff,
+    transparent: true,
+    opacity: 0.8,
+    side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
   mesh.rotation.x = -Math.PI / 2;
   mesh.position.copy(pos);
   mesh.position.y = 0.5;
