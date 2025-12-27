@@ -3,20 +3,22 @@ import * as THREE from 'three';
 import { initRenderer } from './core/renderer';
 import { world } from './core/world';
 
-// --- SYSTEMS ---
+// Systems
 import { InputSystem } from './systems/InputSystem';
-import { PlayerControlSystem } from './systems/PlayerControlSystem'; // Replaces MovementSystem
-import { PhysicsSystem } from './systems/PhysicsSystem'; // Handles all movement
-import { RenderSystem } from './systems/RenderSystem'; // Syncs visuals + Juice
-import { AimSystem } from './systems/AimSystem'; // Radar
-import { WeaponSystem } from './systems/WeaponSystem'; // Spawns bullets
-import { LifecycleSystem } from './systems/LifecycleSystem'; // Cleans up bullets
+import { PlayerControlSystem } from './systems/PlayerControlSystem';
+import { PhysicsSystem } from './systems/PhysicsSystem';
+import { RenderSystem } from './systems/RenderSystem';
+import { AimSystem } from './systems/AimSystem';
+import { WeaponSystem } from './systems/WeaponSystem';
+import { LifecycleSystem } from './systems/LifecycleSystem';
+import { EnemySystem } from './systems/EnemySystem';         // NEW
+import { CollisionSystem } from './systems/CollisionSystem'; // NEW
 
-// 1. Initialize Renderer
 const { scene, camera, renderer } = initRenderer();
 
-// 2. Spawn Player (The Red Box with a Gun)
+// --- PLAYER ---
 function createPlayer() {
+  // Same as before
   const geometry = new THREE.BoxGeometry(0.8, 0.8, 1.5);
   const material = new THREE.MeshStandardMaterial({ color: 0xff0044 });
   const mesh = new THREE.Mesh(geometry, material);
@@ -30,23 +32,21 @@ function createPlayer() {
     input: { x: 0, y: 0, isShooting: false },
     aimTarget: new THREE.Vector3(),
     transform: mesh,
-
-    // NEW: Weapon Stats
     weapon: {
       cooldownTimer: 0,
-      fireRate: 0.1, // Fast fire (10 shots/sec)
+      fireRate: 0.1,
       damage: 10,
       bulletSpeed: 20,
-      bulletColor: 0xffff00, // Yellow
-      bulletLifetime: 2.0, // Range cap (time based)
-    },
+      bulletColor: 0xffff00,
+      bulletLifetime: 2.0
+    }
   });
 }
 
-// 3. Spawn Enemy (The Blue Target Dummies)
+// --- ENEMY ---
 function createEnemy(x: number, z: number) {
   const geometry = new THREE.BoxGeometry(1, 1, 1);
-  const material = new THREE.MeshStandardMaterial({ color: 0x0088ff }); // Blue
+  const material = new THREE.MeshStandardMaterial({ color: 0x0088ff });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.position.set(x, 0.5, z);
   mesh.castShadow = true;
@@ -54,40 +54,43 @@ function createEnemy(x: number, z: number) {
 
   world.add({
     isEnemy: true,
-    position: mesh.position, // Static for now
-    transform: mesh,
+    position: mesh.position,
+    velocity: new THREE.Vector3(0, 0, 0), // NEW: Needs velocity to move
+    health: { current: 10, max: 10 },     // NEW: Needs health to die
+    transform: mesh
   });
 }
 
-// Execute Spawns
+// Spawn
 createPlayer();
-createEnemy(5, 5);
-createEnemy(-5, 5);
+createEnemy(10, 10);
+createEnemy(-10, 10);
+createEnemy(10, -10);
+createEnemy(-10, -10);
 
-// 4. The Game Loop
+// --- LOOP ---
 const clock = new THREE.Clock();
 
 function animate() {
   requestAnimationFrame(animate);
-
   const dt = clock.getDelta();
 
-  // --- LOGIC PHASE ---
-  InputSystem(); // Read keyboard
-  AimSystem(); // Update aimTarget (Radar)
-  PlayerControlSystem(); // Update velocity based on Input
+  // 1. Logic
+  InputSystem();
+  AimSystem();
+  PlayerControlSystem();
+  EnemySystem(dt); // Move Enemies
 
-  // --- COMBAT PHASE ---
-  WeaponSystem(dt, scene); // Spawn projectiles if shooting
+  // 2. Combat
+  WeaponSystem(dt, scene);
+  CollisionSystem(scene); // Kill Enemies
 
-  // --- PHYSICS PHASE ---
-  PhysicsSystem(dt); // Move Player AND Projectiles
-  LifecycleSystem(dt, scene); // Delete old projectiles
+  // 3. Physics/Visuals
+  PhysicsSystem(dt);
+  LifecycleSystem(dt, scene);
+  RenderSystem(dt);
 
-  // --- RENDER PHASE ---
-  RenderSystem(dt); // Sync meshes + Tilt/Bob juice
-
-  // Camera Follow
+  // Camera
   const player = world.with('isPlayer', 'transform').first;
   if (player) {
     camera.position.x = player.transform.position.x;
@@ -98,5 +101,4 @@ function animate() {
   renderer.render(scene, camera);
 }
 
-// Start
 animate();
