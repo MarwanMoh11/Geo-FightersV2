@@ -3,7 +3,8 @@ import * as THREE from 'three';
 import { initRenderer } from './core/renderer';
 
 import { spawnPlayer } from './core/factories';
-import { getCtx, startMusic } from './core/audio'; // <--- NEW IMPORT
+import { getCtx, startMusic } from './core/audio';
+import { Profiler } from './core/debug';
 
 // Systems
 import { InputSystem } from './systems/InputSystem';
@@ -43,8 +44,42 @@ const { scene, camera, renderer } = initRenderer();
 // --- INITIAL SETUP ---
 spawnPlayer(scene);
 
+// --- DEBUG BUTTON ---
+const btn = document.createElement('button');
+btn.innerText = '📋 COPY DEBUG LOGS';
+btn.style.position = 'absolute';
+btn.style.bottom = '10px';
+btn.style.left = '50%';
+btn.style.transform = 'translateX(-50%)';
+btn.style.zIndex = '10000';
+btn.style.padding = '12px 24px';
+btn.style.background = '#ff0055';
+btn.style.color = 'white';
+btn.style.border = '2px solid white';
+btn.style.fontSize = '16px';
+btn.style.borderRadius = '8px';
+btn.style.fontFamily = 'monospace';
+btn.onclick = async () => {
+  const report = Profiler.getReport();
+  try {
+    await navigator.clipboard.writeText(report);
+    btn.innerText = '✅ COPIED!';
+    setTimeout(() => (btn.innerText = '📋 COPY DEBUG LOGS'), 2000);
+  } catch (e) {
+    alert('Failed to copy. Check console.');
+    console.log(report);
+  }
+};
+document.body.appendChild(btn);
+
 // --- GAME LOOP ---
 const clock = new THREE.Clock();
+
+function measure(name: string, fn: () => void) {
+  const start = performance.now();
+  fn();
+  Profiler.record(name, performance.now() - start);
+}
 
 function animate() {
   requestAnimationFrame(animate);
@@ -57,28 +92,30 @@ function animate() {
   }
 
   // 1. Logic
-  InputSystem();
-  AimSystem();
-  PlayerControlSystem();
-  EnemySystem(dt);
-  SpawnerSystem(dt, scene);
+  measure('Input', () => InputSystem());
+  measure('Aim', () => AimSystem());
+  measure('PlayerCtrl', () => PlayerControlSystem());
+  measure('Enemy', () => EnemySystem(dt));
+  measure('Spawner', () => SpawnerSystem(dt, scene));
 
   // 2. Combat
-  WeaponSystem(dt, scene);
-  CollisionSystem(scene);
+  measure('Weapon', () => WeaponSystem(dt, scene));
+  measure('Collision', () => CollisionSystem(scene));
 
   // 3. Physics/Visuals
-  PhysicsSystem(dt);
-  LifecycleSystem(dt, scene);
-  ParticleSystem(dt);
-  LootSystem(dt, scene);
+  measure('Physics', () => PhysicsSystem(dt));
+  measure('Lifecycle', () => LifecycleSystem(dt, scene));
+  measure('Particle', () => ParticleSystem(dt));
+  measure('Loot', () => LootSystem(dt, scene));
 
   // 4. UI & Camera
-  RenderSystem(dt);
-  CameraSystem(dt, camera);
-  UISystem();
+  measure('RenderSys', () => RenderSystem(dt));
+  measure('Camera', () => CameraSystem(dt, camera));
+  measure('UI', () => UISystem());
 
+  const rStart = performance.now();
   renderer.render(scene, camera);
+  Profiler.record('Renderer', performance.now() - rStart);
 }
 
 animate();
