@@ -128,7 +128,8 @@ export function spawnPlayer(scene: THREE.Scene) {
 
 // --- CACHE & TYPES ---
 interface CachedEnemyAsset {
-  texture: THREE.Texture;
+  texture: THREE.Texture;        // Standard left-facing texture
+  textureFlipped: THREE.Texture; // Flipped right-facing texture
   materialTemplate: THREE.SpriteMaterial;
   aspect: number;
 }
@@ -137,34 +138,34 @@ const assetCache: Partial<Record<EnemyType, CachedEnemyAsset>> = {};
 // Helper to get or create assets for a specific enemy type
 function getEnemyAssets(type: EnemyType): CachedEnemyAsset {
   if (!assetCache[type]) {
-    // 1. Determine Texture Path (could be dynamic based on type, using generic fallback for now if names match)
-    // Assuming filenames match types for now, or fallback to glitch.
-    // In a real scenario, map Type -> Filename.
+    // 1. Determine Texture Path
     const textureName = `enemy_${type}`;
     const texturePath = `/sprites/enemies/${textureName}.png`;
 
-    // Check if we need to fallback because files might not exist?
-    // For now we assume standard naming or fallback to glitch for all if files missing.
-    // Given the previous code hardcoded glitch, we will stick to glitch for safety
-    // UNLESS the user provides new assets.
-    // BUT the user complaint was "all one". So we try to load specific.
-
-    // Fallback logic: If we want to be safe, we could check extension, but let's try dynamic.
+    // 2. Load Standard Texture (Left Facing)
     const texture = loadTexture(texturePath);
     texture.magFilter = THREE.NearestFilter;
 
-    // 2. Create Template Material
+    // 3. Create Flipped Texture (Right Facing)
+    const textureFlipped = texture.clone();
+    textureFlipped.repeat.x = -1;
+    textureFlipped.offset.x = 1;
+    textureFlipped.needsUpdate = true;
+
+    // 4. Create Template Material
     const stats = ENEMY_STATS[type];
     const mat = new THREE.SpriteMaterial({ map: texture, color: stats.color });
 
-    // 3. Init Entry
+    // 5. Init Entry
     assetCache[type] = {
       texture,
+      textureFlipped,
       materialTemplate: mat,
       aspect: 1.0,
     };
 
-    // 4. Start Aspect Poller for this specific texture
+    // 6. Start Aspect Poller
+    // We only need to check one texture since they share the image source
     const entry = assetCache[type]!;
     const interval = setInterval(() => {
       const img = entry.texture.image as HTMLImageElement;
@@ -191,20 +192,14 @@ export function spawnEnemy(
   // 1. Get Assets (texture is cached, material template is reference only)
   const assets = getEnemyAssets(type);
 
-  // 2. Clone texture for right-facing sprite and flip it horizontally
-  // (original enemy sprite faces left, so flip for right-facing)
-  const textureRight = assets.texture.clone();
-  textureRight.repeat.x = -1;
-  textureRight.offset.x = 1;
-  textureRight.needsUpdate = true;
-
-  // 3. Create TWO materials and sprites - one for each facing direction
+  // 2. Create TWO materials and sprites - one for each facing direction
+  // Optimization: Use cached textures instead of cloning per instance
   const materialRight = new THREE.SpriteMaterial({
-    map: textureRight,
+    map: assets.textureFlipped, // Flipped (Right-facing if original is Left)
     color: stats.color,
   });
   const materialLeft = new THREE.SpriteMaterial({
-    map: assets.texture,
+    map: assets.texture, // Standard (Left-facing)
     color: stats.color,
   });
 
