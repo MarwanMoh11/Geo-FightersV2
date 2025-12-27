@@ -50,15 +50,9 @@ export function EnemySystem(dt: number) {
     enemy.position.x += enemy.velocity.x * dt;
     enemy.position.z += enemy.velocity.z * dt;
 
-    // 5. Visuals
+    // 5. Visuals - Position sync (facing handled by RenderSystem)
     if (enemy.transform) {
       enemy.transform.position.copy(enemy.position);
-    }
-
-    if (enemy.sprite && Math.abs(enemy.velocity.x) > 0.1) {
-      const absScale = Math.abs(enemy.sprite.scale.x);
-      // Face Right (Positive Scale) if moving Right
-      enemy.sprite.scale.x = enemy.velocity.x > 0 ? absScale : -absScale;
     }
   }
 }

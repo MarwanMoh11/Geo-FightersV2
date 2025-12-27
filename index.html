@@ -10,6 +10,117 @@
 <body>
   <div id="app"></div>
 
+  <!-- Main Menu -->
+  <div id="main-menu">
+    <div class="menu-content">
+      <h1 class="game-title">GEO<span class="title-accent">FIGHTERS</span></h1>
+      <p class="menu-tagline">SURVIVE THE DIGITAL ONSLAUGHT</p>
+      <div class="menu-buttons">
+        <button id="start-btn" class="menu-btn primary">START GAME</button>
+        <button id="settings-btn" class="menu-btn">SETTINGS</button>
+      </div>
+      <div class="version-info">v2.0</div>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="hidden">
+    <div class="modal-content settings-content">
+      <h2>SYSTEM CONFIGURATION</h2>
+      <div class="settings-tabs">
+        <button class="tab-btn active" data-tab="audio">AUDIO</button>
+        <button class="tab-btn" data-tab="display">DISPLAY</button>
+        <button class="tab-btn" data-tab="gameplay">GAMEPLAY</button>
+      </div>
+      <div class="settings-panels">
+        <!-- Audio Panel -->
+        <div class="settings-panel active" id="audio-panel">
+          <div class="setting-row">
+            <label>MASTER VOLUME</label>
+            <input type="range" id="master-volume" min="0" max="100" value="80">
+            <span class="value-display" id="master-volume-val">80%</span>
+          </div>
+          <div class="setting-row">
+            <label>MUSIC VOLUME</label>
+            <input type="range" id="music-volume" min="0" max="100" value="60">
+            <span class="value-display" id="music-volume-val">60%</span>
+          </div>
+          <div class="setting-row">
+            <label>SFX VOLUME</label>
+            <input type="range" id="sfx-volume" min="0" max="100" value="80">
+            <span class="value-display" id="sfx-volume-val">80%</span>
+          </div>
+          <div class="setting-row">
+            <label>MUSIC ENABLED</label>
+            <label class="toggle-switch">
+              <input type="checkbox" id="music-enabled" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+        <!-- Display Panel -->
+        <div class="settings-panel" id="display-panel">
+          <div class="setting-row">
+            <label>SCREEN SHAKE</label>
+            <label class="toggle-switch">
+              <input type="checkbox" id="screen-shake" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="setting-row">
+            <label>SHOW FPS</label>
+            <label class="toggle-switch">
+              <input type="checkbox" id="show-fps">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="setting-row">
+            <label>QUALITY</label>
+            <select id="quality-level">
+              <option value="low">LOW</option>
+              <option value="medium" selected>MEDIUM</option>
+              <option value="high">HIGH</option>
+            </select>
+          </div>
+        </div>
+        <!-- Gameplay Panel -->
+        <div class="settings-panel" id="gameplay-panel">
+          <div class="setting-row">
+            <label>DAMAGE NUMBERS</label>
+            <label class="toggle-switch">
+              <input type="checkbox" id="damage-numbers" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="setting-row">
+            <label>JOYSTICK SENSITIVITY</label>
+            <input type="range" id="joystick-sensitivity" min="25" max="150" value="100">
+            <span class="value-display" id="joystick-sensitivity-val">100%</span>
+          </div>
+        </div>
+      </div>
+      <div class="settings-footer">
+        <button id="reset-settings-btn" class="menu-btn small">RESET DEFAULTS</button>
+        <button id="close-settings-btn" class="menu-btn small primary">BACK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pause Modal -->
+  <div id="pause-modal" class="hidden">
+    <div class="modal-content">
+      <h2>SYSTEM PAUSED</h2>
+      <div class="menu-buttons">
+        <button id="resume-btn" class="menu-btn primary">RESUME</button>
+        <button id="pause-settings-btn" class="menu-btn">SETTINGS</button>
+        <button id="main-menu-btn" class="menu-btn">MAIN MENU</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FPS Counter -->
+  <div id="fps-counter" class="hidden">FPS: 60</div>
+
   <div id="ui-layer">
     <div class="hud-panel" id="health-panel">
       <div class="label">INTEGRITY</div>

@@ -1,6 +1,17 @@
 // 1. Init Audio Context
 let ctx: AudioContext | null = null;
 let isMusicPlaying = false;
+let isMusicStopped = false;
+
+// --- GAIN NODES FOR VOLUME CONTROL ---
+let masterGainNode: GainNode | null = null;
+let musicGainNode: GainNode | null = null;
+let sfxGainNode: GainNode | null = null;
+
+// Volume multipliers (0-1)
+let masterVolume = 0.8;
+let musicVolume = 0.6;
+let sfxVolume = 0.8;
 
 // --- MUSIC STATE ---
 let currentBar = 0;
@@ -11,11 +22,64 @@ let rootNote = 55; // Start at A1
 const PROGRESSION = [55, 43.65, 49, 36.7];
 const LEAD_SCALE = [880, 1046, 1174, 1318, 1568];
 
+// Music oscillators (for stopping)
+let droneOsc: OscillatorNode | null = null;
+let lfoOsc: OscillatorNode | null = null;
+
 export function getCtx() {
   if (!ctx) {
     ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+
+    // Create gain node hierarchy: source -> category gain -> master gain -> destination
+    masterGainNode = ctx.createGain();
+    masterGainNode.gain.value = masterVolume;
+    masterGainNode.connect(ctx.destination);
+
+    musicGainNode = ctx.createGain();
+    musicGainNode.gain.value = musicVolume;
+    musicGainNode.connect(masterGainNode);
+
+    sfxGainNode = ctx.createGain();
+    sfxGainNode.gain.value = sfxVolume;
+    sfxGainNode.connect(masterGainNode);
   }
   return ctx;
+}
+
+// --- VOLUME CONTROL ---
+export function setMasterGain(value: number): void {
+  masterVolume = Math.max(0, Math.min(1, value));
+  if (masterGainNode) {
+    masterGainNode.gain.setValueAtTime(masterVolume, ctx?.currentTime || 0);
+  }
+}
+
+export function setMusicGain(value: number): void {
+  musicVolume = Math.max(0, Math.min(1, value));
+  if (musicGainNode) {
+    musicGainNode.gain.setValueAtTime(musicVolume, ctx?.currentTime || 0);
+  }
+}
+
+export function setSFXGain(value: number): void {
+  sfxVolume = Math.max(0, Math.min(1, value));
+  if (sfxGainNode) {
+    sfxGainNode.gain.setValueAtTime(sfxVolume, ctx?.currentTime || 0);
+  }
+}
+
+export function stopMusic(): void {
+  isMusicStopped = true;
+  if (musicGainNode && ctx) {
+    musicGainNode.gain.setValueAtTime(0, ctx.currentTime);
+  }
+}
+
+export function resumeMusic(): void {
+  isMusicStopped = false;
+  if (musicGainNode && ctx) {
+    musicGainNode.gain.setValueAtTime(musicVolume, ctx.currentTime);
+  }
 }
 
 // --- SOUNDTRACK ENGINE ---
@@ -24,7 +88,7 @@ export function startMusic() {
   if (isMusicPlaying) return;
 
   const c = getCtx();
-  if (!c) return;
+  if (!c || !musicGainNode) return;
 
   // Safety: Resume context if suspended
   if (c.state === 'suspended') {
@@ -37,7 +101,7 @@ export function startMusic() {
   isMusicPlaying = true;
 
   // A. THE DRONE (Atmosphere)
-  const droneOsc = c.createOscillator();
+  droneOsc = c.createOscillator();
   const droneGain = c.createGain();
   const droneFilter = c.createBiquadFilter();
 
@@ -48,25 +112,26 @@ export function startMusic() {
   droneFilter.frequency.value = 120; // Slightly brighter
 
   // LFO for movement
-  const lfo = c.createOscillator();
-  lfo.frequency.value = 0.1;
+  lfoOsc = c.createOscillator();
+  lfoOsc.frequency.value = 0.1;
   const lfoGain = c.createGain();
   lfoGain.gain.value = 50;
-  lfo.connect(lfoGain);
+  lfoOsc.connect(lfoGain);
   lfoGain.connect(droneFilter.frequency);
-  lfo.start();
+  lfoOsc.start();
 
   // Volume
   droneGain.gain.value = 0.15;
 
   droneOsc.connect(droneFilter);
   droneFilter.connect(droneGain);
-  droneGain.connect(c.destination);
+  droneGain.connect(musicGainNode);
   droneOsc.start();
 
   // B. THE SEQUENCER LOOP
+  const localDroneOsc = droneOsc; // Capture for closure
   setInterval(() => {
-    if (c.state !== 'running') return;
+    if (c.state !== 'running' || isMusicStopped) return;
     const t = c.currentTime; // Always get fresh time
 
     // 1. CONDUCTOR: Change Chords every 4 Bars (64 steps)
@@ -74,7 +139,7 @@ export function startMusic() {
       currentBar++;
       const chordIndex = currentBar % PROGRESSION.length;
       rootNote = PROGRESSION[chordIndex];
-      droneOsc.frequency.setTargetAtTime(rootNote, t, 0.1);
+      localDroneOsc.frequency.setTargetAtTime(rootNote, t, 0.1);
     }
 
     // 2. KICK (Beat)
@@ -108,7 +173,7 @@ export function startMusic() {
 
 function playKick(t: number) {
   const c = getCtx();
-  if (!c) return;
+  if (!c || !musicGainNode) return;
   const osc = c.createOscillator();
   const gain = c.createGain();
 
@@ -119,14 +184,14 @@ function playKick(t: number) {
   gain.gain.linearRampToValueAtTime(0, t + 0.5);
 
   osc.connect(gain);
-  gain.connect(c.destination);
+  gain.connect(musicGainNode);
   osc.start(t);
   osc.stop(t + 0.5);
 }
 
 function playHiHat(t: number, vol: number) {
   const c = getCtx();
-  if (!c) return;
+  if (!c || !musicGainNode) return;
   const osc = c.createOscillator();
   const gain = c.createGain();
 
@@ -142,14 +207,14 @@ function playHiHat(t: number, vol: number) {
 
   osc.connect(filter);
   filter.connect(gain);
-  gain.connect(c.destination);
+  gain.connect(musicGainNode);
   osc.start(t);
   osc.stop(t + 0.05);
 }
 
 function playBassNote(t: number, freq: number) {
   const c = getCtx();
-  if (!c) return;
+  if (!c || !musicGainNode) return;
   const osc = c.createOscillator();
   const gain = c.createGain();
 
@@ -166,14 +231,14 @@ function playBassNote(t: number, freq: number) {
 
   osc.connect(filter);
   filter.connect(gain);
-  gain.connect(c.destination);
+  gain.connect(musicGainNode);
   osc.start(t);
   osc.stop(t + 0.2);
 }
 
 function playLead(t: number, freq: number) {
   const c = getCtx();
-  if (!c) return;
+  if (!c || !musicGainNode) return;
   const osc = c.createOscillator();
   const gain = c.createGain();
 
@@ -190,10 +255,10 @@ function playLead(t: number, freq: number) {
   delayGain.gain.value = 0.3;
 
   osc.connect(gain);
-  gain.connect(c.destination);
+  gain.connect(musicGainNode);
   gain.connect(delay);
   delay.connect(delayGain);
-  delayGain.connect(c.destination);
+  delayGain.connect(musicGainNode);
 
   osc.start(t);
   osc.stop(t + 0.4);
@@ -203,7 +268,7 @@ function playLead(t: number, freq: number) {
 
 export function playShoot() {
   const c = getCtx();
-  if (!c) return;
+  if (!c || !sfxGainNode) return;
   const osc = c.createOscillator();
   const gain = c.createGain();
   osc.type = 'square';
@@ -212,7 +277,7 @@ export function playShoot() {
   gain.gain.setValueAtTime(0.05, c.currentTime);
   gain.gain.linearRampToValueAtTime(0, c.currentTime + 0.1);
   osc.connect(gain);
-  gain.connect(c.destination);
+  gain.connect(sfxGainNode);
   osc.start();
   osc.stop(c.currentTime + 0.1);
 }
@@ -220,7 +285,7 @@ export function playShoot() {
 export function playExplosion() {
   const start = performance.now();
   const c = getCtx();
-  if (!c) return;
+  if (!c || !sfxGainNode) return;
   const bufferSize = c.sampleRate * 0.5;
   const buffer = c.createBuffer(1, bufferSize, c.sampleRate);
   const data = buffer.getChannelData(0);
@@ -236,7 +301,7 @@ export function playExplosion() {
   gain.gain.linearRampToValueAtTime(0, c.currentTime + 0.3);
   noise.connect(filter);
   filter.connect(gain);
-  gain.connect(c.destination);
+  gain.connect(sfxGainNode);
   noise.start();
 
   const dur = performance.now() - start;
@@ -245,7 +310,7 @@ export function playExplosion() {
 
 export function playCollect() {
   const c = getCtx();
-  if (!c) return;
+  if (!c || !sfxGainNode) return;
   const osc = c.createOscillator();
   const gain = c.createGain();
   osc.type = 'sine';
@@ -254,14 +319,14 @@ export function playCollect() {
   gain.gain.setValueAtTime(0.05, c.currentTime);
   gain.gain.linearRampToValueAtTime(0, c.currentTime + 0.1);
   osc.connect(gain);
-  gain.connect(c.destination);
+  gain.connect(sfxGainNode);
   osc.start();
   osc.stop(c.currentTime + 0.1);
 }
 
 export function playLevelUp() {
   const c = getCtx();
-  if (!c) return;
+  if (!c || !sfxGainNode) return;
   const osc = c.createOscillator();
   const gain = c.createGain();
   osc.type = 'triangle';
@@ -270,7 +335,7 @@ export function playLevelUp() {
   gain.gain.setValueAtTime(0.1, c.currentTime);
   gain.gain.linearRampToValueAtTime(0, c.currentTime + 0.5);
   osc.connect(gain);
-  gain.connect(c.destination);
+  gain.connect(sfxGainNode);
   osc.start();
   osc.stop(c.currentTime + 0.5);
 }

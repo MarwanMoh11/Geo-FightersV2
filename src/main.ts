@@ -4,6 +4,7 @@ import { initRenderer } from './core/renderer';
 
 import { spawnPlayer } from './core/factories';
 import { getCtx, startMusic } from './core/audio';
+import { isPlaying } from './core/GameState';
 
 // Systems
 import { InputSystem } from './systems/InputSystem';
@@ -22,6 +23,7 @@ import { LootSystem } from './systems/LootSystem';
 import { UISystem } from './systems/UISystem';
 import { isGamePaused } from './systems/UpgradeSystem';
 import { isGameOver } from './systems/GameManager';
+import { updateFPS } from './systems/MainMenuSystem';
 
 // --- AUDIO UNLOCK & MUSIC START ---
 const unlockAudio = () => {
@@ -51,7 +53,14 @@ function animate() {
 
   const dt = clock.getDelta();
 
-  if (isGamePaused || isGameOver) {
+  // Update FPS counter
+  updateFPS(performance.now());
+
+  // Check if game should run (not in menu, not paused by upgrade modal, not game over)
+  const shouldRunGame = isPlaying() && !isGamePaused && !isGameOver;
+
+  if (!shouldRunGame) {
+    // Still render the scene even when paused
     renderer.render(scene, camera);
     return;
   }

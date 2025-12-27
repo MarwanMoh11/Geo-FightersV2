@@ -1,5 +1,6 @@
 import { world } from '../core/world';
 import * as THREE from 'three';
+import { isScreenShakeEnabled } from '../core/SettingsManager';
 
 // Global "Trauma" state
 export let cameraTrauma = 0;
@@ -17,12 +18,16 @@ export function CameraSystem(dt: number, camera: THREE.Camera) {
     cameraTrauma = Math.max(cameraTrauma - dt * 2.5, 0);
   }
 
-  // 2. Calculate Shake Power
-  const shake = cameraTrauma * cameraTrauma;
-  const MAX_SHAKE_OFFSET = 0.5;
+  // 2. Calculate Shake Power (only if enabled in settings)
+  let offsetX = 0;
+  let offsetZ = 0;
 
-  const offsetX = (Math.random() * 2 - 1) * shake * MAX_SHAKE_OFFSET;
-  const offsetZ = (Math.random() * 2 - 1) * shake * MAX_SHAKE_OFFSET;
+  if (isScreenShakeEnabled()) {
+    const shake = cameraTrauma * cameraTrauma;
+    const MAX_SHAKE_OFFSET = 0.5;
+    offsetX = (Math.random() * 2 - 1) * shake * MAX_SHAKE_OFFSET;
+    offsetZ = (Math.random() * 2 - 1) * shake * MAX_SHAKE_OFFSET;
+  }
 
   // 3. HARD LOCK (The Fix)
   // We removed the smoothing (Lerp). The camera now snaps instantly to the player.

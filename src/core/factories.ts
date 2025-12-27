@@ -30,27 +30,50 @@ export function spawnPlayer(scene: THREE.Scene) {
   const playerGroup = new THREE.Group();
   scene.add(playerGroup);
 
-  const texture = loadTexture('/sprites/player/player_robot.png');
-  const material = new THREE.SpriteMaterial({ map: texture, color: 0xffffff });
-  const sprite = new THREE.Sprite(material);
+  const textureRight = loadTexture('/sprites/player/player_robot.png');
+
+  // Clone texture for left-facing sprite and flip it horizontally
+  const textureLeft = textureRight.clone();
+  textureLeft.repeat.x = -1;
+  textureLeft.offset.x = 1;
+  textureLeft.needsUpdate = true;
+
+  // Create two sprites - one for each facing direction
+  const materialRight = new THREE.SpriteMaterial({ map: textureRight, color: 0xffffff });
+  const materialLeft = new THREE.SpriteMaterial({ map: textureLeft, color: 0xffffff });
+
+  const spriteRight = new THREE.Sprite(materialRight);
+  const spriteLeft = new THREE.Sprite(materialLeft);
+
+  // Name them for easy identification
+  spriteRight.name = 'spriteRight';
+  spriteLeft.name = 'spriteLeft';
 
   const BASE_HEIGHT = 2.5;
-  sprite.scale.set(BASE_HEIGHT, BASE_HEIGHT, 1);
-  sprite.position.y = BASE_HEIGHT / 2;
+  spriteRight.scale.set(BASE_HEIGHT, BASE_HEIGHT, 1);
+  spriteRight.position.y = BASE_HEIGHT / 2;
+
+  // Left sprite uses same positive scale (flipping is via texture)
+  spriteLeft.scale.set(BASE_HEIGHT, BASE_HEIGHT, 1);
+  spriteLeft.position.y = BASE_HEIGHT / 2;
+  spriteLeft.visible = false; // Start facing right
 
   const interval = setInterval(() => {
-    if (texture.image) {
-      const img = texture.image as HTMLImageElement;
+    if (textureRight.image) {
+      const img = textureRight.image as HTMLImageElement;
       const h = img.height;
       if (h > 0) {
         const aspect = img.width / h;
-        sprite.scale.set(BASE_HEIGHT * aspect, BASE_HEIGHT, 1);
+        spriteRight.scale.set(BASE_HEIGHT * aspect, BASE_HEIGHT, 1);
+        spriteLeft.scale.set(BASE_HEIGHT * aspect, BASE_HEIGHT, 1);
         clearInterval(interval);
       }
     }
   }, 100);
 
-  playerGroup.add(sprite);
+  playerGroup.add(spriteRight);
+  playerGroup.add(spriteLeft);
+
   const shadow = new THREE.Mesh(shadowGeo, shadowMat);
   shadow.rotation.x = -Math.PI / 2;
   shadow.position.y = 0.05;
@@ -64,6 +87,9 @@ export function spawnPlayer(scene: THREE.Scene) {
     input: { x: 0, y: 0, isShooting: false },
     aimTarget: new THREE.Vector3(),
     transform: playerGroup,
+    spriteRight: spriteRight,
+    spriteLeft: spriteLeft,
+    facingRight: true,
 
     level: 1,
     xp: 0,
@@ -165,24 +191,46 @@ export function spawnEnemy(
   // 1. Get Assets (texture is cached, material template is reference only)
   const assets = getEnemyAssets(type);
 
-  // 2. Create FRESH Material (shares texture but not internal state)
-  const material = new THREE.SpriteMaterial({
+  // 2. Clone texture for right-facing sprite and flip it horizontally
+  // (original enemy sprite faces left, so flip for right-facing)
+  const textureRight = assets.texture.clone();
+  textureRight.repeat.x = -1;
+  textureRight.offset.x = 1;
+  textureRight.needsUpdate = true;
+
+  // 3. Create TWO materials and sprites - one for each facing direction
+  const materialRight = new THREE.SpriteMaterial({
+    map: textureRight,
+    color: stats.color,
+  });
+  const materialLeft = new THREE.SpriteMaterial({
     map: assets.texture,
     color: stats.color,
   });
-  const sprite = new THREE.Sprite(material);
 
-  // 3. Apply Scale using helper aspect
-  // Update aspect slightly if it just loaded
+  const spriteRight = new THREE.Sprite(materialRight);
+  const spriteLeft = new THREE.Sprite(materialLeft);
+
+  // Name them for identification
+  spriteRight.name = 'spriteRight';
+  spriteLeft.name = 'spriteLeft';
+
+  // 4. Apply Scale using helper aspect
   const img = assets.texture.image as HTMLImageElement;
   if (assets.aspect === 1.0 && img && img.height > 0) {
     assets.aspect = img.width / img.height;
   }
 
-  sprite.scale.set(stats.size * assets.aspect, stats.size, 1);
-  sprite.position.y = stats.size / 2;
+  spriteRight.scale.set(stats.size * assets.aspect, stats.size, 1);
+  spriteRight.position.y = stats.size / 2;
 
-  group.add(sprite);
+  // Left sprite uses same positive scale (flipping is via texture)
+  spriteLeft.scale.set(stats.size * assets.aspect, stats.size, 1);
+  spriteLeft.position.y = stats.size / 2;
+  spriteLeft.visible = false; // Start facing right
+
+  group.add(spriteRight);
+  group.add(spriteLeft);
 
   const shadow = new THREE.Mesh(shadowGeo, shadowMat);
   shadow.rotation.x = -Math.PI / 2;
@@ -197,7 +245,9 @@ export function spawnEnemy(
     health: { current: stats.hp, max: stats.hp },
     moveSpeed: stats.speed,
     transform: group,
-    sprite: sprite,
+    spriteRight: spriteRight,
+    spriteLeft: spriteLeft,
+    facingRight: true,
     aimTarget: new THREE.Vector3(),
     xpValue: stats.xp,
   });
