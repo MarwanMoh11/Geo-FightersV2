@@ -162,11 +162,14 @@ export function spawnEnemy(
   group.position.set(x, 0, z);
   scene.add(group);
 
-  // 1. Get Assets
+  // 1. Get Assets (texture is cached, material template is reference only)
   const assets = getEnemyAssets(type);
 
-  // 2. Clone Material for Unique State (Flash/Color)
-  const material = assets.materialTemplate.clone();
+  // 2. Create FRESH Material (shares texture but not internal state)
+  const material = new THREE.SpriteMaterial({
+    map: assets.texture,
+    color: stats.color,
+  });
   const sprite = new THREE.Sprite(material);
 
   // 3. Apply Scale using helper aspect
