@@ -1,6 +1,6 @@
 import { world } from '../core/world';
 import * as THREE from 'three';
-import { addTrauma } from './CameraSystem';
+
 import { playShoot } from '../core/audio';
 
 const muzzleGeo = new THREE.SphereGeometry(0.4, 8, 8);
@@ -63,8 +63,7 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
   const baseDir = new THREE.Vector3().subVectors(owner.aimTarget, owner.position).normalize();
   if (baseDir.lengthSq() === 0) baseDir.set(0, 0, 1);
 
-  const isHeavy = stats.bulletCount > 1 || stats.knockback > 15;
-  addTrauma(isHeavy ? 0.25 : 0.05);
+  // REMOVED TRAUMA (Too jarring on mobile)
   playShoot();
 
   // Muzzle Flash
