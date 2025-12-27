@@ -1,7 +1,15 @@
 import { world } from '../core/world';
 import * as THREE from 'three';
 
-const dummyOrigin = new THREE.Vector3();
+interface Shooter {
+  position: THREE.Vector3;
+  aimTarget: THREE.Vector3;
+  weapon: {
+    bulletColor: number;
+    bulletSpeed: number;
+    bulletLifetime: number;
+  };
+}
 
 export function WeaponSystem(dt: number, scene: THREE.Scene) {
   // Query entities that have a Weapon, Position, and Aim
@@ -12,19 +20,17 @@ export function WeaponSystem(dt: number, scene: THREE.Scene) {
     }
 
     // 2. Check Firing Condition
-    // In "Survivor" games, you usually fire automatically, or when input.isShooting is true.
-    // Let's assume Auto-Fire for now if a target exists, OR manual fire.
     const wantsToFire = entity.input?.isShooting || entity.aimTarget.lengthSq() > 0;
 
     // 3. Fire!
     if (wantsToFire && entity.weapon.cooldownTimer <= 0) {
-      spawnProjectile(entity, scene);
+      spawnProjectile(entity as unknown as Shooter, scene);
       entity.weapon.cooldownTimer = entity.weapon.fireRate; // Reset cooldown
     }
   }
 }
 
-function spawnProjectile(shooter: any, scene: THREE.Scene) {
+function spawnProjectile(shooter: Shooter, scene: THREE.Scene) {
   // Calculate Direction
   const direction = new THREE.Vector3().subVectors(shooter.aimTarget, shooter.position).normalize();
 
