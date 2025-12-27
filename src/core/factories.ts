@@ -100,7 +100,22 @@ export function spawnPlayer(scene: THREE.Scene) {
   });
 }
 
-// --- UPDATED SPAWN ENEMY (Restored Variety) ---
+// --- CACHE ---
+const enemyMatCache: Partial<Record<EnemyType, THREE.SpriteMaterial>> = {};
+const enemyTexture = loadTexture('/sprites/enemies/enemy_glitch.png');
+enemyTexture.magFilter = THREE.NearestFilter;
+
+let enemyAspect = 1.0;
+const aspectInterval = setInterval(() => {
+  if (enemyTexture.image) {
+    const img = enemyTexture.image as HTMLImageElement;
+    if (img.height > 0) {
+      enemyAspect = img.width / img.height;
+      clearInterval(aspectInterval);
+    }
+  }
+}, 100);
+
 export function spawnEnemy(
   scene: THREE.Scene,
   x: number,
@@ -112,29 +127,28 @@ export function spawnEnemy(
   group.position.set(x, 0, z);
   scene.add(group);
 
-  const texture = loadTexture('/sprites/enemies/enemy_glitch.png').clone();
-  texture.magFilter = THREE.NearestFilter;
-
-  // Apply Type Color
-  const material = new THREE.SpriteMaterial({ map: texture, color: stats.color });
+  // Get Cached Material
+  if (!enemyMatCache[type]) {
+    enemyMatCache[type] = new THREE.SpriteMaterial({
+      map: enemyTexture,
+      color: stats.color,
+    });
+  }
+  const material = enemyMatCache[type]!;
   const sprite = new THREE.Sprite(material);
 
-  // Apply Type Size
-  sprite.scale.set(stats.size, stats.size, 1);
+  // Apply Type Size & Aspect
+  sprite.scale.set(stats.size * enemyAspect, stats.size, 1);
   sprite.position.y = stats.size / 2;
 
-  // Aspect Ratio Fix
-  const interval = setInterval(() => {
-    if (texture.image) {
-      const img = texture.image as HTMLImageElement;
-      const h = img.height;
-      if (h > 0) {
-        const aspect = img.width / h;
-        sprite.scale.set(stats.size * aspect, stats.size, 1);
-        clearInterval(interval);
-      }
+  // If aspect isn't ready yet, check immediately
+  if (enemyAspect === 1.0 && enemyTexture.image) {
+    const img = enemyTexture.image as HTMLImageElement;
+    if (img.height > 0) {
+      enemyAspect = img.width / img.height;
+      sprite.scale.set(stats.size * enemyAspect, stats.size, 1);
     }
-  }, 100);
+  }
 
   group.add(sprite);
 
@@ -149,7 +163,7 @@ export function spawnEnemy(
     position: group.position,
     velocity: new THREE.Vector3(0, 0, 0),
     health: { current: stats.hp, max: stats.hp },
-    moveSpeed: stats.speed, // <--- IMPORTANT: Speed restored
+    moveSpeed: stats.speed,
     transform: group,
     aimTarget: new THREE.Vector3(),
     xpValue: stats.xp,
