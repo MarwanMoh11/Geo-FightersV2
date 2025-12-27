@@ -1,40 +1,55 @@
 import { world } from '../core/world';
 import * as THREE from 'three';
+import { addTrauma } from './CameraSystem';
+import { playShoot } from '../core/audio';
 
 const muzzleGeo = new THREE.SphereGeometry(0.4, 8, 8);
 const muzzleMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 });
 
-// --- BASE GEOMETRIES FOR SCALING ---
-// 1. Cylinder for bolts/beams (Unit size, pointing down Z)
-const baseCylinderGeo = new THREE.CylinderGeometry(0.5, 0.5, 1, 8);
-baseCylinderGeo.rotateX(Math.PI / 2);
+// --- GEOMETRY SKINS ---
+// 1. Bolt (Cylinder)
+const boltGeo = new THREE.CylinderGeometry(0.5, 0.5, 1, 8);
+boltGeo.rotateX(Math.PI / 2);
 
-// 2. Sphere for orbs/plasma (Unit size)
-const baseSphereGeo = new THREE.SphereGeometry(0.5, 16, 16);
+// 2. Shard (Tetrahedron - Jagged)
+const shardGeo = new THREE.TetrahedronGeometry(0.5);
+
+// 3. Orb Core (Low poly sphere)
+const orbGeo = new THREE.IcosahedronGeometry(0.5, 1);
 
 export function WeaponSystem(dt: number, scene: THREE.Scene) {
-  // 1. FIND PLAYER
-  const player = world.with('isPlayer', 'position', 'aimTarget', 'input', 'modifiers').first;
-  if (!player) return;
+  // 1. UPDATE LOOP (Animation & Firing)
 
-  // 2. ITERATE WEAPONS
-  for (const entity of world.with('weapon', 'ownerId')) {
-    if (entity.ownerId !== player.id) continue;
-    if (!entity.weapon) continue;
-
-    if (entity.weapon.cooldownTimer > 0) entity.weapon.cooldownTimer -= dt;
-
-    const wantsToFire =
-      player.input?.isShooting || (player.aimTarget && player.aimTarget.lengthSq() > 0);
-
-    if (wantsToFire && entity.weapon.cooldownTimer <= 0) {
-      fireWeapon(entity, player, scene);
-      const mod = player.modifiers?.fireRateMult || 1.0;
-      entity.weapon.cooldownTimer = entity.weapon.fireRate * mod;
+  // A. Animate Spinning Projectiles (Plasma Orbs)
+  for (const p of world.with('isProjectile', 'transform', 'projectile')) {
+    if (p.projectile && p.projectile.spinSpeed && p.transform) {
+      // Spin on local axes
+      p.transform.rotation.z += p.projectile.spinSpeed * dt;
+      p.transform.rotation.x += p.projectile.spinSpeed * 0.5 * dt;
     }
   }
 
-  // 3. CLEANUP MUZZLE FLASHES
+  // B. Player Weapons
+  const player = world.with('isPlayer', 'position', 'aimTarget', 'input', 'modifiers').first;
+  if (player) {
+    for (const entity of world.with('weapon', 'ownerId')) {
+      if (entity.ownerId !== player.id) continue;
+      if (!entity.weapon) continue;
+
+      if (entity.weapon.cooldownTimer > 0) entity.weapon.cooldownTimer -= dt;
+
+      const wantsToFire =
+        player.input?.isShooting || (player.aimTarget && player.aimTarget.lengthSq() > 0);
+
+      if (wantsToFire && entity.weapon.cooldownTimer <= 0) {
+        fireWeapon(entity, player, scene);
+        const mod = player.modifiers?.fireRateMult || 1.0;
+        entity.weapon.cooldownTimer = entity.weapon.fireRate * mod;
+      }
+    }
+  }
+
+  // 2. CLEANUP MUZZLE FLASHES
   for (const entity of world.with('isParticle', 'lifeTimer', 'transform')) {
     if (
       entity.maxLife &&
@@ -57,9 +72,14 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
   const stats = weaponEntity.weapon;
   const mods = owner.modifiers || { damageAdd: 0, speedMult: 1.0 };
 
-  // Direction & Feedback
+  // Direction
   const baseDir = new THREE.Vector3().subVectors(owner.aimTarget, owner.position).normalize();
   if (baseDir.lengthSq() === 0) baseDir.set(0, 0, 1);
+
+  // Feedback
+  const isHeavy = stats.bulletCount > 1 || stats.knockback > 15;
+  addTrauma(isHeavy ? 0.25 : 0.05);
+  playShoot();
 
   // Muzzle Flash
   const flashMesh = new THREE.Mesh(muzzleGeo, muzzleMat.clone());
@@ -75,20 +95,12 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
     maxLife: 0.08,
   });
 
-  // --- SPAWN PROJECTILES WITH UNIQUE VISUALS ---
+  // Spawn
   const count = stats.bulletCount || 1;
   const spread = stats.bulletSpread || 0;
   const finalDamage = stats.damage + mods.damageAdd;
   const finalSpeed = stats.bulletSpeed * mods.speedMult;
-
-  // Determine Geometry Type based on weapon properties
-  let geometry: THREE.BufferGeometry;
-  const isExplosive = (stats.bulletExplodeRadius || 0) > 0;
-  if (isExplosive) {
-    geometry = baseSphereGeo; // Plasma/Orbs
-  } else {
-    geometry = baseCylinderGeo; // Bolts/Beams
-  }
+  const style = stats.visualStyle || 'BOLT';
 
   for (let i = 0; i < count; i++) {
     const dir = baseDir.clone();
@@ -97,6 +109,10 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
       dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), THREE.MathUtils.degToRad(angleDeg));
     }
 
+    let mesh: THREE.Object3D;
+    let spin = 0;
+
+    // --- VISUAL FACTORY ---
     const material = new THREE.MeshStandardMaterial({
       color: stats.bulletColor,
       emissive: stats.bulletColor,
@@ -105,24 +121,54 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
       metalness: 0.0,
     });
 
-    const mesh = new THREE.Mesh(geometry, material);
+    if (style === 'ORB') {
+      // COMPLEX: Group with Core + Shell
+      const group = new THREE.Group();
 
-    // --- APPLY UNIQUE SCALING ---
-    const width = stats.bulletWidth || 0.2;
-    const length = stats.bulletLength || 1.0;
+      // Core
+      const core = new THREE.Mesh(orbGeo, material);
+      const w = stats.bulletWidth || 0.5;
+      core.scale.setScalar(w);
+      group.add(core);
 
-    if (isExplosive) {
-      // Spheres scale uniformly by width
-      mesh.scale.setScalar(width);
+      // Shell (Wireframe)
+      const shellMat = new THREE.MeshBasicMaterial({
+        color: stats.bulletColor,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.5,
+      });
+      const shell = new THREE.Mesh(orbGeo, shellMat);
+      shell.scale.setScalar(w * 1.5);
+      // Random initial rotation for shell
+      shell.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+      group.add(shell);
+
+      mesh = group;
+      spin = 5.0; // Enable spinning in update loop
+    } else if (style === 'SHARD') {
+      // JAGGED: Tetrahedron
+      mesh = new THREE.Mesh(shardGeo, material);
+      const w = stats.bulletWidth || 0.3;
+      mesh.scale.setScalar(w);
+      // Random Rotation for chaotic look
+      mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
     } else {
-      // Cylinders scale X/Y for width, Z for length
-      mesh.scale.set(width, width, length);
+      // DEFAULT: Bolt Cylinder
+      mesh = new THREE.Mesh(boltGeo, material);
+      const w = stats.bulletWidth || 0.2;
+      const l = stats.bulletLength || 1.0;
+      mesh.scale.set(w, w, l);
+      // Align to direction
+      mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
     }
-    // ---------------------------
 
     mesh.position.copy(owner.position).add(dir.clone().multiplyScalar(0.6));
-    // Rotate to face travel direction
-    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
+
+    // If it's a shard, we don't align it to direction (it tumbles/looks random)
+    // If it's an orb, rotation is handled by spin
+    // If it's a bolt, we already aligned it above
+
     mesh.castShadow = true;
     scene.add(mesh);
 
@@ -139,6 +185,7 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
         explodeRadius: stats.bulletExplodeRadius || 0,
         knockback: stats.knockback || 5,
         hitList: [],
+        spinSpeed: spin,
       },
     });
   }

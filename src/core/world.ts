@@ -27,7 +27,7 @@ export type Entity = {
   health?: { current: number; max: number };
   aimTarget?: THREE.Vector3;
 
-  // WEAPON COMPONENT
+  // WEAPON
   weapon?: {
     cooldownTimer: number;
     fireRate: number;
@@ -36,9 +36,10 @@ export type Entity = {
     bulletColor: number;
     bulletLifetime: number;
 
-    // --- VISUALS (New) ---
-    bulletWidth?: number; // Thickness
-    bulletLength?: number; // Length (along trajectory)
+    // VISUALS
+    bulletWidth?: number;
+    bulletLength?: number;
+    visualStyle?: string; // 'BOLT', 'SHARD', 'ORB'
 
     // BALLISTICS
     bulletCount?: number;
@@ -51,12 +52,14 @@ export type Entity = {
   // MODIFIERS
   modifiers?: { damageAdd: number; fireRateMult: number; speedMult: number };
 
-  // PROJECTILE DATA
+  // PROJECTILE
   projectile?: {
     pierce: number;
     hitList: number[];
     knockback: number;
     explodeRadius: number;
+    // New: visual rotation speed for ORBS
+    spinSpeed?: number;
   };
 
   // stats

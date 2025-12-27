@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { addTrauma } from './CameraSystem';
 import { spawnXP } from '../core/factories';
 import { triggerGameOver } from './GameManager';
+import { playExplosion } from '../core/audio';
 
 export function CollisionSystem(scene: THREE.Scene) {
   const enemies = world.with('isEnemy', 'position', 'health', 'velocity');
@@ -38,7 +39,7 @@ export function CollisionSystem(scene: THREE.Scene) {
           if (bullet.projectile.explodeRadius > 0) {
             spawnBlastFX(bullet.position, bullet.projectile.explodeRadius, scene);
             addTrauma(0.3); // Big shake for boom
-            // playExplosion(); // REMOVED
+            playExplosion();
 
             // Loop ALL enemies to find those in blast radius
             for (const blastTarget of enemies) {

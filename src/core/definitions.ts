@@ -14,6 +14,7 @@ export const STARTER_WEAPON = {
   knockback: 5,
   pierce: 1,
   explodeRadius: 0,
+  visualStyle: 'BOLT', // Standard sleek cylinder
 };
 
 export const SHOTGUN_WEAPON = {
@@ -23,45 +24,46 @@ export const SHOTGUN_WEAPON = {
   speed: 22,
   range: 0.5,
   color: 0xffaa00,
-  width: 0.2,
-  length: 0.4,
+  width: 0.3,
+  length: 0.3, // Chunky
   count: 6,
   spread: 30,
   knockback: 20,
   pierce: 1,
   explodeRadius: 0,
+  visualStyle: 'SHARD', // Jagged Tetrahedrons
 };
 
-// NEW: AREA OF EFFECT
 export const LAUNCHER_WEAPON = {
   name: 'HELIX-7 PLASMA LAUNCHER',
-  damage: 15, // High impact damage
-  fireRate: 1.2, // Slow fire
-  speed: 12, // Slow projectile (dodgeable)
+  damage: 15,
+  fireRate: 1.2,
+  speed: 12,
   range: 2.0,
-  color: 0x9900ff, // Purple
-  width: 0.6, // Fat projectile
-  length: 0.6, // Almost a sphere
+  color: 0x9900ff,
+  width: 0.5,
+  length: 0.5,
   count: 1,
   spread: 0,
   knockback: 10,
   pierce: 1,
-  explodeRadius: 3.5, // Big Boom (3.5 unit radius)
+  explodeRadius: 3.5,
+  visualStyle: 'ORB', // Rotating Core + Shell
 };
 
-// NEW: INFINITE PIERCE
 export const RAILGUN_WEAPON = {
   name: 'OMNI-RAIL CANNON',
-  damage: 25, // One-shots standard enemies
-  fireRate: 1.5, // Very slow cooldown
-  speed: 60, // Instant travel
+  damage: 25,
+  fireRate: 1.5,
+  speed: 60,
   range: 2.0,
-  color: 0xff0055, // Red
-  width: 0.1, // Thin beam
-  length: 4.0, // Very long tracer
+  color: 0xff0055,
+  width: 0.1,
+  length: 4.0,
   count: 1,
   spread: 0,
-  knockback: 30, // Pins enemies back
-  pierce: 999, // Goes through everything
+  knockback: 30,
+  pierce: 999,
   explodeRadius: 0,
+  visualStyle: 'BOLT', // Long beam
 };

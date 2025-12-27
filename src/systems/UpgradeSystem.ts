@@ -2,14 +2,8 @@ import * as THREE from 'three';
 import { world } from '../core/world';
 import { SHOTGUN_WEAPON, LAUNCHER_WEAPON, RAILGUN_WEAPON } from '../core/definitions';
 
-type Upgrade = {
-  id: string;
-  name: string;
-  desc: string;
-  apply: (player: any) => void;
-};
+type Upgrade = { id: string; name: string; desc: string; apply: (player: any) => void };
 
-// Helper to spawn a weapon entity correctly mapping all stats
 function spawnWeapon(player: any, stats: any) {
   world.add({
     isWeapon: true,
@@ -24,9 +18,9 @@ function spawnWeapon(player: any, stats: any) {
       bulletColor: stats.color,
       bulletLifetime: stats.range,
 
-      // --- VISUAL MAPPING ---
       bulletWidth: stats.width,
       bulletLength: stats.length,
+      visualStyle: stats.visualStyle, // <--- MAP THIS
 
       bulletCount: stats.count,
       bulletSpread: stats.spread,
@@ -54,7 +48,6 @@ const UPGRADE_POOL: Upgrade[] = [
       if (p.modifiers) p.modifiers.damageAdd += 1;
     },
   },
-  // --- WEAPONS ---
   {
     id: 'unlock_shotgun',
     name: 'V-8 SCATTERGUN',
