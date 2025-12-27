@@ -53,11 +53,12 @@ export function EnemySystem(dt: number) {
     // 5. Visuals
     if (enemy.transform) {
       enemy.transform.position.copy(enemy.position);
-      // Face direction of movement (Assume Sprite faces RIGHT)
-      if (Math.abs(enemy.velocity.x) > 0.1) {
-        const scale = Math.abs(enemy.transform.scale.x);
-        enemy.transform.scale.x = enemy.velocity.x > 0 ? scale : -scale;
-      }
+    }
+
+    if (enemy.sprite && Math.abs(enemy.velocity.x) > 0.1) {
+      const absScale = Math.abs(enemy.sprite.scale.x);
+      // Face Right (Positive Scale) if moving Right
+      enemy.sprite.scale.x = enemy.velocity.x > 0 ? absScale : -absScale;
     }
   }
 }

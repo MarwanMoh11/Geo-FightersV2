@@ -194,6 +194,7 @@ export function spawnEnemy(
     health: { current: stats.hp, max: stats.hp },
     moveSpeed: stats.speed,
     transform: group,
+    sprite: sprite,
     aimTarget: new THREE.Vector3(),
     xpValue: stats.xp,
   });

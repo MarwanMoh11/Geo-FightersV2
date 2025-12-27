@@ -19,6 +19,7 @@ export type Entity = {
   position: THREE.Vector3;
   velocity: THREE.Vector3;
   transform?: THREE.Object3D;
+  sprite?: THREE.Sprite;
 
   // input
   input?: { x: number; y: number; isShooting: boolean };
