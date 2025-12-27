@@ -3,7 +3,6 @@ import * as THREE from 'three';
 import { initRenderer } from './core/renderer';
 
 import { spawnPlayer } from './core/factories';
-import { getCtx, startMusic } from './core/audio'; // <--- NEW IMPORT
 
 // Systems
 import { InputSystem } from './systems/InputSystem';
@@ -22,20 +21,6 @@ import { LootSystem } from './systems/LootSystem';
 import { UISystem } from './systems/UISystem';
 import { isGamePaused } from './systems/UpgradeSystem';
 import { isGameOver } from './systems/GameManager';
-
-// --- AUDIO UNLOCK & MUSIC START ---
-const unlockAudio = () => {
-  const ctx = getCtx();
-  if (ctx && ctx.state === 'suspended') {
-    ctx.resume();
-  }
-  // Start the Cyberpunk Loop
-  startMusic();
-};
-
-// Listen for first interaction
-document.body.addEventListener('click', unlockAudio, { once: true });
-document.body.addEventListener('touchstart', unlockAudio, { once: true });
 
 const { scene, camera, renderer } = initRenderer();
 

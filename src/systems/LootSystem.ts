@@ -1,7 +1,7 @@
 import { world } from '../core/world';
 import * as THREE from 'three';
 import { triggerLevelUp } from './UpgradeSystem';
-import { playCollect, playLevelUp } from '../core/audio'; // <--- NEW IMPORT
+// import { playCollect, playLevelUp } from '../core/audio'; // REMOVED
 
 const MAGNET_RADIUS = 5.0;
 const MAGNET_FORCE = 25.0;
@@ -21,7 +21,7 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
         player.xp += xp.xpValue;
         player.score += 1;
 
-        playCollect(); // <--- PLAY SOUND
+        // playCollect(); // REMOVED
 
         // LEVEL UP LOGIC
         if (player.xp >= (player.xpMax || 100)) {
@@ -29,7 +29,7 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
           player.level = (player.level || 1) + 1;
           player.xpMax = Math.floor((player.xpMax || 100) * 1.2);
 
-          playLevelUp(); // <--- PLAY SOUND
+          // playLevelUp(); // REMOVED
           triggerLevelUp();
         }
       }
