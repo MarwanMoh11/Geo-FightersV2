@@ -1,6 +1,7 @@
+import * as THREE from 'three';
 import { world } from '../core/world';
+import { SHOTGUN_WEAPON, LAUNCHER_WEAPON, RAILGUN_WEAPON } from '../core/definitions';
 
-// 1. Define Upgrade Types
 type Upgrade = {
   id: string;
   name: string;
@@ -8,91 +9,117 @@ type Upgrade = {
   apply: (player: any) => void;
 };
 
-// 2. The Upgrade Pool
+// Helper to spawn a weapon entity correctly mapping all stats
+function spawnWeapon(player: any, stats: any) {
+  world.add({
+    isWeapon: true,
+    ownerId: player.id,
+    position: new THREE.Vector3(),
+    velocity: new THREE.Vector3(),
+    weapon: {
+      cooldownTimer: 0.5,
+      fireRate: stats.fireRate,
+      damage: stats.damage,
+      bulletSpeed: stats.speed,
+      bulletColor: stats.color,
+      bulletLifetime: stats.range,
+
+      // --- VISUAL MAPPING ---
+      bulletWidth: stats.width,
+      bulletLength: stats.length,
+
+      bulletCount: stats.count,
+      bulletSpread: stats.spread,
+      knockback: stats.knockback,
+      bulletPierce: stats.pierce,
+      bulletExplodeRadius: stats.explodeRadius,
+    },
+  });
+}
+
 const UPGRADE_POOL: Upgrade[] = [
   {
     id: 'fire_rate',
     name: 'OVERCLOCK',
-    desc: 'Fire Rate +20%',
-    // Lower cooldown = faster shooting
+    desc: 'Global Fire Rate +20%',
     apply: (p) => {
-      if (p.weapon) p.weapon.fireRate *= 0.8;
+      if (p.modifiers) p.modifiers.fireRateMult *= 0.8;
     },
   },
   {
     id: 'damage',
     name: 'HIGH VOLTAGE',
-    desc: 'Damage +1',
+    desc: 'Global Damage +1',
     apply: (p) => {
-      if (p.weapon) p.weapon.damage += 1;
+      if (p.modifiers) p.modifiers.damageAdd += 1;
+    },
+  },
+  // --- WEAPONS ---
+  {
+    id: 'unlock_shotgun',
+    name: 'V-8 SCATTERGUN',
+    desc: 'ADD WEAPON: Short range, high spread.',
+    apply: (p) => {
+      spawnWeapon(p, SHOTGUN_WEAPON);
+      console.log('ADDED SCATTERGUN');
     },
   },
   {
-    id: 'bullet_speed',
-    name: 'ACCELERATOR',
-    desc: 'Bullet Speed +20%',
+    id: 'unlock_launcher',
+    name: 'HELIX-7 LAUNCHER',
+    desc: 'ADD WEAPON: Explosive Area Damage.',
     apply: (p) => {
-      if (p.weapon) p.weapon.bulletSpeed *= 1.2;
+      spawnWeapon(p, LAUNCHER_WEAPON);
+      console.log('ADDED LAUNCHER');
     },
   },
   {
-    id: 'multishot',
-    name: 'SPLIT STREAM',
-    desc: 'Range +50%',
+    id: 'unlock_railgun',
+    name: 'OMNI-RAIL CANNON',
+    desc: 'ADD WEAPON: Infinite Pierce Beam.',
     apply: (p) => {
-      if (p.weapon) p.weapon.bulletLifetime *= 1.5;
+      spawnWeapon(p, RAILGUN_WEAPON);
+      console.log('ADDED RAILGUN');
     },
   },
 ];
 
-// DOM Cache
 const modal = document.getElementById('upgrade-modal');
 const container = document.getElementById('cards-container');
-
-// Pause State
 export let isGamePaused = false;
 
-// 3. Trigger Function (Called by LootSystem)
 export function triggerLevelUp() {
   isGamePaused = true;
   if (modal) modal.classList.remove('hidden');
   renderCards();
 }
 
-// 4. Render UI
 function renderCards() {
   if (!container) return;
   container.innerHTML = '';
-
-  // Shuffle and pick 3
   const shuffled = [...UPGRADE_POOL].sort(() => 0.5 - Math.random());
   const choices = shuffled.slice(0, 3);
 
   choices.forEach((upgrade) => {
     const card = document.createElement('div');
     card.className = 'upgrade-card';
+    if (upgrade.id.includes('unlock')) {
+      card.style.borderColor = '#ffaa00';
+      card.style.boxShadow = '0 0 15px rgba(255, 170, 0, 0.4)';
+    }
     card.innerHTML = `
-            <div class="card-title">${upgrade.name}</div>
+            <div class="card-title" style="${upgrade.id.includes('unlock') ? 'color:#ffaa00' : ''}">${upgrade.name}</div>
             <div class="card-desc">${upgrade.desc}</div>
-            <div class="card-rarity">COMMON</div>
+            <div class="card-rarity">${upgrade.id.includes('unlock') ? 'RARE' : 'COMMON'}</div>
         `;
-
-    // Touch Handler
     card.onclick = () => selectUpgrade(upgrade);
-
     container.appendChild(card);
   });
 }
 
-// 5. Select & Resume
 function selectUpgrade(upgrade: Upgrade) {
-  const player = world.with('isPlayer', 'weapon').first;
-  if (player) {
-    upgrade.apply(player);
-    console.log(`Applied Upgrade: ${upgrade.name}`);
-  }
-
-  // Hide Modal & Resume
+  const player = world.with('isPlayer', 'modifiers').first;
+  if (player) upgrade.apply(player);
   if (modal) modal.classList.add('hidden');
   isGamePaused = false;
 }

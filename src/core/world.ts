@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 
-// 1. Define the Shape of an Entity
+let nextId = 0;
+export const generateId = () => ++nextId;
+
 export type Entity = {
   id?: number;
 
@@ -10,6 +12,8 @@ export type Entity = {
   isProjectile?: boolean;
   isParticle?: boolean;
   isXP?: boolean;
+  isWeapon?: boolean;
+  ownerId?: number;
 
   // data
   position: THREE.Vector3;
@@ -17,20 +21,13 @@ export type Entity = {
   transform?: THREE.Object3D;
 
   // input
-  input?: {
-    x: number;
-    y: number;
-    isShooting: boolean;
-  };
+  input?: { x: number; y: number; isShooting: boolean };
 
   // combat
-  health?: {
-    current: number;
-    max: number;
-  };
+  health?: { current: number; max: number };
   aimTarget?: THREE.Vector3;
 
-  // weapon
+  // WEAPON COMPONENT
   weapon?: {
     cooldownTimer: number;
     fireRate: number;
@@ -38,41 +35,58 @@ export type Entity = {
     bulletSpeed: number;
     bulletColor: number;
     bulletLifetime: number;
+
+    // --- VISUALS (New) ---
+    bulletWidth?: number; // Thickness
+    bulletLength?: number; // Length (along trajectory)
+
+    // BALLISTICS
+    bulletCount?: number;
+    bulletSpread?: number;
+    knockback?: number;
+    bulletPierce?: number;
+    bulletExplodeRadius?: number;
   };
 
-  // --- NEW STATS (Fixes the 9 Errors) ---
+  // MODIFIERS
+  modifiers?: { damageAdd: number; fireRateMult: number; speedMult: number };
+
+  // PROJECTILE DATA
+  projectile?: {
+    pierce: number;
+    hitList: number[];
+    knockback: number;
+    explodeRadius: number;
+  };
+
+  // stats
   level?: number;
   xp?: number;
-  xpMax?: number; // XP needed for next level
-  score?: number; // Total kills/data collected
+  xpMax?: number;
+  score?: number;
+  moveSpeed?: number;
 
   // misc
   lifeTimer?: number;
   maxLife?: number;
   damage?: number;
   xpValue?: number;
-
-  // juice
   hitFlashTimer?: number;
   stunTimer?: number;
 };
 
-// 2. Create the ECS World
 function createECS() {
   const entities: Entity[] = [];
-
   return {
     add: (entity: Entity) => {
+      entity.id = generateId();
       entities.push(entity);
       return entity;
     },
     remove: (entity: Entity) => {
       const index = entities.indexOf(entity);
-      if (index > -1) {
-        entities.splice(index, 1);
-      }
+      if (index > -1) entities.splice(index, 1);
     },
-    // Query Helper
     with: (...components: (keyof Entity)[]) => {
       return {
         get first() {
@@ -80,9 +94,7 @@ function createECS() {
         },
         [Symbol.iterator]: function* () {
           for (const e of entities) {
-            if (components.every((c) => e[c] !== undefined)) {
-              yield e;
-            }
+            if (components.every((c) => e[c] !== undefined)) yield e;
           }
         },
       };
