@@ -128,6 +128,7 @@ const explosionGeo = new THREE.BoxGeometry(0.12, 0.12, 0.12);
 const explosionMat = new THREE.MeshBasicMaterial({ color: 0xff0055 });
 
 function spawnExplosionFX(pos: THREE.Vector3, scene: THREE.Scene) {
+  return; // TEMP: DISABLE FX
   const start = performance.now();
   const particleCount = 5;
   for (let i = 0; i < particleCount; i++) {
@@ -161,6 +162,7 @@ const blastMat = new THREE.MeshBasicMaterial({
 });
 
 function spawnBlastFX(pos: THREE.Vector3, radius: number, scene: THREE.Scene) {
+  return; // TEMP: DISABLE FX
   // Big Purple Shockwave
   const mesh = new THREE.Mesh(blastGeo, blastMat);
   mesh.rotation.x = -Math.PI / 2;
