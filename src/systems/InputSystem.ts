@@ -1,75 +1,162 @@
 import { world } from '../core/world';
 
-// State to track keys
-const keys = {
-  up: 0,
-  down: 0,
-  left: 0,
-  right: 0,
-  shoot: false,
+// --- STATE ---
+const inputState = {
+  x: 0,
+  y: 0,
+  isShooting: false,
 };
 
-// Event Listeners
+// --- KEYBOARD SETUP ---
+const keys = { w: 0, a: 0, s: 0, d: 0, space: false };
+
 window.addEventListener('keydown', (e) => {
   switch (e.code) {
     case 'KeyW':
-      keys.up = 1;
+      keys.w = 1;
       break;
     case 'KeyS':
-      keys.down = 1;
+      keys.s = 1;
       break;
     case 'KeyA':
-      keys.left = 1;
+      keys.a = 1;
       break;
     case 'KeyD':
-      keys.right = 1;
+      keys.d = 1;
       break;
     case 'Space':
-      keys.shoot = true;
-      break; // Space to shoot
+      keys.space = true;
+      break;
   }
 });
-
 window.addEventListener('keyup', (e) => {
   switch (e.code) {
     case 'KeyW':
-      keys.up = 0;
+      keys.w = 0;
       break;
     case 'KeyS':
-      keys.down = 0;
+      keys.s = 0;
       break;
     case 'KeyA':
-      keys.left = 0;
+      keys.a = 0;
       break;
     case 'KeyD':
-      keys.right = 0;
+      keys.d = 0;
       break;
     case 'Space':
-      keys.shoot = false;
+      keys.space = false;
       break;
   }
 });
 
-export function InputSystem() {
-  // We want all entities that CAN receive input
-  // The query returns entities, but doesn't guarantee type safety on optional fields
-  for (const entity of world.with('input')) {
-    // Normalize vector (so diagonal isn't faster)
-    let dx = keys.right - keys.left;
-    let dy = keys.down - keys.up;
+// --- TOUCH SETUP (Virtual Joystick) ---
+const joystickZone = document.getElementById('joystick-zone');
+const joystickKnob = document.getElementById('joystick-knob');
 
-    // Simple normalization for 8-direction movement
-    if (dx !== 0 || dy !== 0) {
-      const length = Math.sqrt(dx * dx + dy * dy);
-      dx /= length;
-      dy /= length;
+let touchId: number | null = null;
+let joyCenterX = 0;
+let joyCenterY = 0;
+const MAX_RADIUS = 40;
+
+if (joystickZone && joystickKnob) {
+  // FIX: Force visual reset immediately to align CSS and JS
+  resetJoystick();
+
+  // 1. Touch Start
+  joystickZone.addEventListener(
+    'touchstart',
+    (e) => {
+      e.preventDefault();
+      const touch = e.changedTouches[0];
+      touchId = touch.identifier;
+
+      const rect = joystickZone.getBoundingClientRect();
+      joyCenterX = rect.left + rect.width / 2;
+      joyCenterY = rect.top + rect.height / 2;
+
+      updateJoystick(touch.clientX, touch.clientY);
+    },
+    { passive: false },
+  );
+
+  // 2. Touch Move
+  joystickZone.addEventListener(
+    'touchmove',
+    (e) => {
+      e.preventDefault();
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === touchId) {
+          updateJoystick(e.changedTouches[i].clientX, e.changedTouches[i].clientY);
+          break;
+        }
+      }
+    },
+    { passive: false },
+  );
+
+  // 3. Touch End
+  const endTouch = (e: TouchEvent) => {
+    e.preventDefault();
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      if (e.changedTouches[i].identifier === touchId) {
+        touchId = null;
+        resetJoystick();
+        break;
+      }
     }
+  };
+  joystickZone.addEventListener('touchend', endTouch);
+  joystickZone.addEventListener('touchcancel', endTouch);
+}
 
-    // FIX: Check if input exists
-    if (entity.input) {
+function updateJoystick(x: number, y: number) {
+  const dx = x - joyCenterX;
+  const dy = y - joyCenterY;
+
+  const distance = Math.min(Math.sqrt(dx * dx + dy * dy), MAX_RADIUS);
+  const angle = Math.atan2(dy, dx);
+
+  // Move Knob Visual
+  // We use calc(-50% + Xpx) so we maintain the center anchor
+  const knobX = Math.cos(angle) * distance;
+  const knobY = Math.sin(angle) * distance;
+  if (joystickKnob) {
+    joystickKnob.style.transform = `translate(calc(-50% + ${knobX}px), calc(-50% + ${knobY}px))`;
+  }
+
+  // Set Game Input (Normalized)
+  inputState.x = knobX / MAX_RADIUS;
+  inputState.y = knobY / MAX_RADIUS;
+}
+
+function resetJoystick() {
+  if (joystickKnob) {
+    joystickKnob.style.transform = `translate(-50%, -50%)`;
+  }
+  inputState.x = 0;
+  inputState.y = 0;
+}
+
+// --- MAIN SYSTEM LOOP ---
+export function InputSystem() {
+  for (const entity of world.with('input')) {
+    if (!entity.input) continue;
+
+    if (touchId !== null) {
+      entity.input.x = inputState.x;
+      entity.input.y = inputState.y;
+    } else {
+      let dx = keys.d - keys.a;
+      let dy = keys.s - keys.w;
+      if (dx !== 0 || dy !== 0) {
+        const len = Math.sqrt(dx * dx + dy * dy);
+        dx /= len;
+        dy /= len;
+      }
       entity.input.x = dx;
       entity.input.y = dy;
-      entity.input.isShooting = keys.shoot;
     }
+
+    entity.input.isShooting = keys.space;
   }
 }

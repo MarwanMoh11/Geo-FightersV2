@@ -18,7 +18,14 @@ export function initRenderer() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
-  document.body.appendChild(renderer.domElement);
+
+  // Append to #app container (not body) to prevent layout issues
+  const appContainer = document.getElementById('app');
+  if (appContainer) {
+    appContainer.appendChild(renderer.domElement);
+  } else {
+    document.body.appendChild(renderer.domElement);
+  }
 
   // 4. "Greybox" Lighting
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);

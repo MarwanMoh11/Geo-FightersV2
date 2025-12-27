@@ -1,6 +1,7 @@
-import { world, type Entity } from '../core/world';
+import { world } from '../core/world';
 import * as THREE from 'three';
 import { addTrauma } from './CameraSystem';
+import { playShoot } from '../core/audio'; // <--- NEW IMPORT
 
 export function WeaponSystem(dt: number, scene: THREE.Scene) {
   for (const entity of world.with('weapon', 'position', 'aimTarget')) {
@@ -10,6 +11,7 @@ export function WeaponSystem(dt: number, scene: THREE.Scene) {
       entity.weapon.cooldownTimer -= dt;
     }
 
+    // Auto-fire if target exists OR input (for PC debug)
     const wantsToFire = entity.input?.isShooting || entity.aimTarget.lengthSq() > 0;
 
     if (wantsToFire && entity.weapon.cooldownTimer <= 0) {
@@ -19,7 +21,7 @@ export function WeaponSystem(dt: number, scene: THREE.Scene) {
   }
 }
 
-function spawnProjectile(shooter: Entity, scene: THREE.Scene) {
+function spawnProjectile(shooter: any, scene: THREE.Scene) {
   if (!shooter.weapon || !shooter.aimTarget) return;
 
   const direction = new THREE.Vector3().subVectors(shooter.aimTarget, shooter.position).normalize();
@@ -38,10 +40,9 @@ function spawnProjectile(shooter: Entity, scene: THREE.Scene) {
   mesh.castShadow = true;
   scene.add(mesh);
 
-  // --- TUNING: SUBTLE KICKBACK ---
   if (shooter.isPlayer) {
-    // Was 0.1 (Too shaky). Now 0.02 (Just a hum).
     addTrauma(0.02);
+    playShoot(); // <--- PLAY SOUND
   }
 
   world.add({

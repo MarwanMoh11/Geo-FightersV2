@@ -1,7 +1,9 @@
-import { world, type Entity } from '../core/world';
+import { world } from '../core/world';
 import * as THREE from 'three';
 import { addTrauma } from './CameraSystem';
-import { spawnXP } from '../core/factories'; // <--- NEW IMPORT
+import { spawnXP } from '../core/factories';
+import { triggerGameOver } from './GameManager';
+import { playExplosion } from '../core/audio'; // <--- NEW IMPORT
 
 export function CollisionSystem(scene: THREE.Scene) {
   const enemies = world.with('isEnemy', 'position', 'health', 'velocity');
@@ -14,11 +16,11 @@ export function CollisionSystem(scene: THREE.Scene) {
 
       if (distance < 0.8) {
         if (enemy.health) {
-          // 1. DAMAGE
+          // DAMAGE
           const dmg = bullet.damage || 1;
           enemy.health.current -= dmg;
 
-          // 2. JUICE
+          // JUICE
           enemy.hitFlashTimer = 0.1;
           const pushDir = bullet.velocity.clone().normalize();
           pushDir.y = 0;
@@ -27,14 +29,13 @@ export function CollisionSystem(scene: THREE.Scene) {
 
           despawn(bullet, scene);
 
-          // 4. CHECK DEATH
+          // CHECK DEATH
           if (enemy.health.current <= 0) {
             addTrauma(0.15);
             spawnExplosion(enemy.position, scene);
+            playExplosion(); // <--- PLAY SOUND
 
-            // --- NEW: DROP LOOT ---
             spawnXP(scene, enemy.position.x, enemy.position.z, 10);
-
             despawn(enemy, scene);
           }
         }
@@ -44,19 +45,26 @@ export function CollisionSystem(scene: THREE.Scene) {
   }
 
   // B. Enemy vs Player
-  const player = world.with('isPlayer', 'position').first;
-  if (player) {
+  const player = world.with('isPlayer', 'position', 'health').first;
+  if (player && player.health) {
     for (const enemy of enemies) {
       const distance = player.position.distanceTo(enemy.position);
 
       if (distance < 1.0) {
-        addTrauma(0.4);
+        // DAMAGE PLAYER
+        player.health.current -= 5;
+
+        addTrauma(0.5);
         const push = new THREE.Vector3()
           .subVectors(enemy.position, player.position)
           .normalize()
           .multiplyScalar(5);
         enemy.velocity.add(push);
         enemy.stunTimer = 0.5;
+
+        if (player.health.current <= 0) {
+          triggerGameOver();
+        }
       }
     }
   }
@@ -89,7 +97,7 @@ function spawnExplosion(pos: THREE.Vector3, scene: THREE.Scene) {
   }
 }
 
-function despawn(entity: Entity, scene: THREE.Scene) {
+function despawn(entity: any, scene: THREE.Scene) {
   if (entity.transform) {
     scene.remove(entity.transform);
   }

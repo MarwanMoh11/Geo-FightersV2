@@ -2,7 +2,6 @@ import * as THREE from 'three';
 
 // 1. Define the Shape of an Entity
 export type Entity = {
-  // core
   id?: number;
 
   // flags
@@ -10,7 +9,7 @@ export type Entity = {
   isEnemy?: boolean;
   isProjectile?: boolean;
   isParticle?: boolean;
-  isXP?: boolean; // <--- NEW FLAG
+  isXP?: boolean;
 
   // data
   position: THREE.Vector3;
@@ -41,11 +40,17 @@ export type Entity = {
     bulletLifetime: number;
   };
 
+  // --- NEW STATS (Fixes the 9 Errors) ---
+  level?: number;
+  xp?: number;
+  xpMax?: number; // XP needed for next level
+  score?: number; // Total kills/data collected
+
   // misc
   lifeTimer?: number;
   maxLife?: number;
   damage?: number;
-  xpValue?: number; // <--- NEW PROPERTY
+  xpValue?: number;
 
   // juice
   hitFlashTimer?: number;
@@ -67,6 +72,7 @@ function createECS() {
         entities.splice(index, 1);
       }
     },
+    // Query Helper
     with: (...components: (keyof Entity)[]) => {
       return {
         get first() {

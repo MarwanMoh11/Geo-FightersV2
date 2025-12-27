@@ -1,13 +1,71 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>geofighters-2.0</title>
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>GeoFighters</title>
+</head>
+
+<body>
+  <div id="app"></div>
+
+  <div id="ui-layer">
+    <div class="hud-panel" id="health-panel">
+      <div class="label">INTEGRITY</div>
+      <div class="bar-container">
+        <div id="health-bar-fill"></div>
+      </div>
+      <div id="health-text">100 / 100</div>
+    </div>
+
+    <div class="hud-panel" id="level-panel">
+      <div class="label">LVL</div>
+      <div id="level-text">01</div>
+    </div>
+
+    <div class="hud-panel" id="score-panel">
+      <div class="label">DATA</div>
+      <div id="score-text">0</div>
+    </div>
+
+    <div id="xp-bar-container">
+      <div id="xp-bar-fill"></div>
+    </div>
+  </div>
+
+  <div id="upgrade-modal" class="hidden">
+    <div class="modal-content">
+      <h2>SYSTEM UPGRADE AVAILABLE</h2>
+      <div id="cards-container"></div>
+    </div>
+  </div>
+
+  <div id="game-over-modal" class="hidden">
+    <div class="modal-content">
+      <h2 style="color: #ff0055; text-shadow: 0 0 10px #ff0055;">SYSTEM FAILURE</h2>
+
+      <div class="stat-row">
+        <span class="stat-label">SYSTEM LEVEL</span>
+        <span id="final-level" class="stat-value">01</span>
+      </div>
+
+      <div class="stat-row">
+        <span class="stat-label">DATA COLLECTED</span>
+        <span id="final-score" class="stat-value">0</span>
+      </div>
+
+      <button id="restart-btn">INITIATE REBOOT</button>
+    </div>
+  </div>
+
+  <div id="mobile-controls">
+    <div id="joystick-zone">
+      <div id="joystick-knob"></div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+
 </html>
