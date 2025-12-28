@@ -309,7 +309,8 @@ html {
 
 #mobile-hud {
   position: absolute;
-  top: 10px;
+  top: 55px;
+  /* Below game timer */
   left: 50%;
   transform: translateX(-50%);
   display: flex;
