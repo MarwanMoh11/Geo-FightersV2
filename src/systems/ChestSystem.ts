@@ -16,6 +16,8 @@ import { triggerLevelUp } from './UpgradeSystem';
 import { playLevelUp } from '../core/audio';
 
 // --- CONSTANTS ---
+export const LEVEL_DURATION = 600; // 10 minutes for testing (boss at 8:00, escape at 10:00)
+export const BOSS_SPAWN_TIME = 480; // 8:00
 const CHEST_COLLECT_RADIUS = 1.5;
 const CHEST_MAGNET_RADIUS = 4.0;
 const CHEST_MAGNET_FORCE = 15.0;

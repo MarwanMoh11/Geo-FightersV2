@@ -29,6 +29,8 @@ export type Entity = {
   ownerId?: number;
   chestRarity?: 'common' | 'rare' | 'epic';
   enemyType?: string; // 'virus' | 'glitch' | 'firewall'
+  isBoss?: boolean;
+  spawnTimer?: number;
 
   // VS-style inventory
   weaponSlots?: WeaponSlot[];

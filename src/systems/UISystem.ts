@@ -2,6 +2,7 @@ import { world } from '../core/world';
 import type { WeaponSlot, PassiveSlot } from '../core/world';
 import { WEAPONS } from '../core/WeaponRegistry';
 import { PASSIVES } from '../core/PassiveRegistry';
+import { getGameTime, BOSS_SPAWN_TIME } from './ChestSystem';
 
 // --- DOM ELEMENTS ---
 const ui = {
@@ -10,6 +11,11 @@ const ui = {
   levelText: document.getElementById('level-text'),
   scoreText: document.getElementById('score-text'),
   xpBar: document.getElementById('xp-bar-fill'),
+  // Timer & Boss
+  gameTimer: document.getElementById('game-timer'),
+  bossHealthContainer: document.getElementById('boss-health-container'),
+  bossHealthFill: document.getElementById('boss-health-fill'),
+  bossName: document.querySelector('.boss-name') as HTMLElement | null,
   // Mobile HUD
   mobileHealth: document.getElementById('mobile-health'),
   mobileLevel: document.getElementById('mobile-level'),
@@ -112,7 +118,35 @@ export function UISystem() {
     ui.xpBar.style.width = `${Math.min(100, xpPercent)}%`;
   }
 
-  // 5. Update Inventory Display (only when changed)
+  // 5. Update Game Timer
+  const gameTime = getGameTime();
+  if (ui.gameTimer) {
+    const minutes = Math.floor(gameTime / 60);
+    const seconds = Math.floor(gameTime % 60);
+    ui.gameTimer.innerText = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+    // Warning pulse when boss is near (after 7:00)
+    if (gameTime >= BOSS_SPAWN_TIME - 60) {
+      ui.gameTimer.classList.add('warning');
+    } else {
+      ui.gameTimer.classList.remove('warning');
+    }
+  }
+
+  // 6. Update Boss Health Bar (if boss exists)
+  const boss = world.with('isBoss', 'health').first;
+  if (boss && boss.health) {
+    if (ui.bossHealthContainer) ui.bossHealthContainer.classList.remove('hidden');
+    if (ui.bossHealthFill) {
+      const bossPercent = (boss.health.current / boss.health.max) * 100;
+      ui.bossHealthFill.style.width = `${Math.max(0, bossPercent)}%`;
+    }
+    if (ui.bossName) ui.bossName.innerText = 'SYSTEM CORRUPTION';
+  } else {
+    if (ui.bossHealthContainer) ui.bossHealthContainer.classList.add('hidden');
+  }
+
+  // 7. Update Inventory Display (only when changed)
   updateInventoryDisplay(player.weaponSlots || [], player.passiveSlots || []);
 }
 

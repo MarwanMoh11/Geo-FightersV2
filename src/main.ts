@@ -24,6 +24,7 @@ import { ChestSystem } from './systems/ChestSystem';
 import { UISystem } from './systems/UISystem';
 import { isGamePaused } from './systems/UpgradeSystem';
 import { isGameOver } from './systems/GameManager';
+import { FinaleBossSystem } from './systems/FinaleBoss';
 import { updateFPS } from './systems/MainMenuSystem';
 
 // --- AUDIO UNLOCK & MUSIC START ---
@@ -101,6 +102,7 @@ function animate() {
   ParticleSystem(dt);
   LootSystem(dt, scene);
   ChestSystem(dt, scene);
+  FinaleBossSystem(dt, scene);
 
   // 4. UI & Camera
   RenderSystem(dt);

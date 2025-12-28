@@ -112,6 +112,93 @@ html {
   transition: width 0.2s;
 }
 
+/* --- GAME TIMER (Top Center) --- */
+#game-timer {
+  position: fixed;
+  top: 15px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 2.5rem;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 0 0 10px #00ffff, 0 0 20px #00ffff;
+  font-family: 'Courier New', monospace;
+  z-index: 1000;
+  letter-spacing: 4px;
+}
+
+#game-timer.warning {
+  color: #ff4444;
+  text-shadow: 0 0 10px #ff0000, 0 0 20px #ff0000;
+  animation: timer-pulse 0.5s infinite;
+}
+
+@keyframes timer-pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* --- BOSS HEALTH BAR --- */
+#boss-health-container {
+  position: fixed;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
+  max-width: 600px;
+  z-index: 1000;
+  text-align: center;
+}
+
+#boss-health-container.hidden {
+  display: none;
+}
+
+.boss-name {
+  font-size: 1.2rem;
+  color: #ff0044;
+  text-shadow: 0 0 10px #ff0044;
+  margin-bottom: 5px;
+  letter-spacing: 3px;
+  animation: boss-name-glow 1s infinite;
+}
+
+@keyframes boss-name-glow {
+
+  0%,
+  100% {
+    text-shadow: 0 0 10px #ff0044;
+  }
+
+  50% {
+    text-shadow: 0 0 20px #ff0044, 0 0 30px #ff0044;
+  }
+}
+
+.boss-bar-container {
+  width: 100%;
+  height: 20px;
+  background: rgba(0, 0, 0, 0.8);
+  border: 2px solid #ff0044;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+#boss-health-fill {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, #ff0044 0%, #ff4488 50%, #ff0044 100%);
+  box-shadow: 0 0 15px #ff0044;
+  transition: width 0.3s;
+}
+
 /* --- HUD LEFT CONTAINER --- */
 .hud-left {
   display: flex;
