@@ -77,6 +77,9 @@ const PASSIVE_ICONS: Record<string, string> = {
 // --- CACHE for preventing unnecessary DOM updates ---
 let lastWeaponHash = '';
 let lastPassiveHash = '';
+let lastTimerSecond = -1;
+let lastBossVisible = false;
+let lastBossPercent = -1;
 
 export function UISystem() {
   // 1. Find Player Data
@@ -118,9 +121,11 @@ export function UISystem() {
     ui.xpBar.style.width = `${Math.min(100, xpPercent)}%`;
   }
 
-  // 5. Update Game Timer
+  // 5. Update Game Timer (throttled - only update when seconds change)
   const gameTime = getGameTime();
-  if (ui.gameTimer) {
+  const currentSecond = Math.floor(gameTime);
+  if (currentSecond !== lastTimerSecond && ui.gameTimer) {
+    lastTimerSecond = currentSecond;
     const minutes = Math.floor(gameTime / 60);
     const seconds = Math.floor(gameTime % 60);
     ui.gameTimer.innerText = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
@@ -128,22 +133,31 @@ export function UISystem() {
     // Warning pulse when boss is near (after 7:00)
     if (gameTime >= BOSS_SPAWN_TIME - 60) {
       ui.gameTimer.classList.add('warning');
-    } else {
-      ui.gameTimer.classList.remove('warning');
     }
   }
 
-  // 6. Update Boss Health Bar (if boss exists)
+  // 6. Update Boss Health Bar (throttled - only when boss exists and changed)
   const boss = world.with('isBoss', 'health').first;
-  if (boss && boss.health) {
-    if (ui.bossHealthContainer) ui.bossHealthContainer.classList.remove('hidden');
-    if (ui.bossHealthFill) {
-      const bossPercent = (boss.health.current / boss.health.max) * 100;
+  const hasBoss = !!(boss && boss.health);
+
+  if (hasBoss !== lastBossVisible) {
+    lastBossVisible = hasBoss;
+    if (ui.bossHealthContainer) {
+      if (hasBoss) {
+        ui.bossHealthContainer.classList.remove('hidden');
+        if (ui.bossName) ui.bossName.innerText = 'SYSTEM CORRUPTION';
+      } else {
+        ui.bossHealthContainer.classList.add('hidden');
+      }
+    }
+  }
+
+  if (hasBoss && boss && boss.health && ui.bossHealthFill) {
+    const bossPercent = Math.floor((boss.health.current / boss.health.max) * 100);
+    if (bossPercent !== lastBossPercent) {
+      lastBossPercent = bossPercent;
       ui.bossHealthFill.style.width = `${Math.max(0, bossPercent)}%`;
     }
-    if (ui.bossName) ui.bossName.innerText = 'SYSTEM CORRUPTION';
-  } else {
-    if (ui.bossHealthContainer) ui.bossHealthContainer.classList.add('hidden');
   }
 
   // 7. Update Inventory Display (only when changed)
