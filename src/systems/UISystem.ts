@@ -6,6 +6,10 @@ const ui = {
   levelText: document.getElementById('level-text'),
   scoreText: document.getElementById('score-text'),
   xpBar: document.getElementById('xp-bar-fill'),
+  // Mobile HUD
+  mobileHealth: document.getElementById('mobile-health'),
+  mobileLevel: document.getElementById('mobile-level'),
+  mobileScore: document.getElementById('mobile-score'),
 };
 
 export function UISystem() {
@@ -26,8 +30,20 @@ export function UISystem() {
   if (ui.levelText && player.level) {
     ui.levelText.innerText = player.level.toString().padStart(2, '0');
   }
+  if (ui.mobileLevel && player.level) {
+    ui.mobileLevel.innerText = `LV ${player.level}`;
+  }
+
   if (ui.scoreText && player.score !== undefined) {
     ui.scoreText.innerText = player.score.toString();
+  }
+  if (ui.mobileScore && player.score !== undefined) {
+    ui.mobileScore.innerText = `⚡ ${player.score}`;
+  }
+
+  // Mobile Health
+  if (ui.mobileHealth && player.health) {
+    ui.mobileHealth.innerText = `❤️ ${Math.ceil(Math.max(0, player.health.current))}`;
   }
 
   // 4. Update XP Bar

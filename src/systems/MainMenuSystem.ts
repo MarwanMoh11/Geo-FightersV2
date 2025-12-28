@@ -18,6 +18,7 @@ const mainMenu = document.getElementById('main-menu');
 const settingsModal = document.getElementById('settings-modal');
 const pauseModal = document.getElementById('pause-modal');
 const fpsCounter = document.getElementById('fps-counter');
+const mobilePauseBtn = document.getElementById('mobile-pause-btn');
 
 // Main Menu Buttons
 const startBtn = document.getElementById('start-btn');
@@ -241,6 +242,19 @@ function setupPauseListeners(): void {
         mainMenuBtn.addEventListener('click', () => {
             // Reload page to reset game completely
             location.reload();
+        });
+    }
+
+    // Mobile Pause Button
+    if (mobilePauseBtn) {
+        mobilePauseBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent touch from propagating to game
+            const state = getGameState();
+            if (state === 'PLAYING') {
+                setGameState('PAUSED');
+            } else if (state === 'PAUSED') {
+                setGameState('PLAYING');
+            }
         });
     }
 }
