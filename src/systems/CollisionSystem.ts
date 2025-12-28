@@ -5,6 +5,7 @@ import { spawnXP } from '../core/factories';
 import { triggerGameOver } from './GameManager';
 import { playExplosion } from '../core/audio';
 import { reportDamageTaken, reportKill } from '../core/FlowStateManager';
+import { spawnChest } from './ChestSystem';
 
 export function CollisionSystem(scene: THREE.Scene) {
   const enemies = world.with('isEnemy', 'position', 'health', 'velocity');
@@ -119,8 +120,18 @@ function applyDamage(
   if (enemy.health.current <= 0) {
     reportKill(); // Report to FlowStateManager
     spawnExplosionFX(enemy.position, scene);
-    // Only play sound/shake if it wasn't a big explosion (reduce noise)
-    spawnXP(scene, enemy.position.x, enemy.position.z, 10);
+
+    // Spawn XP
+    spawnXP(scene, enemy.position.x, enemy.position.z, enemy.xpValue || 10);
+
+    // Elite enemies (FIREWALL) drop chests
+    if (enemy.baseColor === 0xff4400) { // FIREWALL color check
+      // Random rarity: 70% common, 25% rare, 5% epic
+      const roll = Math.random();
+      const rarity = roll < 0.70 ? 'common' : roll < 0.95 ? 'rare' : 'epic';
+      spawnChest(scene, enemy.position.x, enemy.position.z, rarity as 'common' | 'rare' | 'epic');
+    }
+
     despawn(enemy, scene);
   }
 }

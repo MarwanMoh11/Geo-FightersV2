@@ -2,6 +2,11 @@ import { world } from '../core/world';
 import * as THREE from 'three';
 import { addTrauma } from './CameraSystem';
 import { playShoot } from '../core/audio';
+import {
+  getDefaultStats,
+  getEffectiveDamage,
+  getEffectiveAmount,
+} from '../core/PlayerStats';
 
 // --- PERFORMANCE CACHE ---
 // 1. Shared Geometries (Created Once)
@@ -101,21 +106,21 @@ export function WeaponSystem(dt: number, scene: THREE.Scene) {
 }
 
 function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
-  const stats = weaponEntity.weapon;
-  const mods = owner.modifiers || { damageAdd: 0, speedMult: 1.0 };
+  const weaponStats = weaponEntity.weapon;
+  const playerStats = owner.stats || getDefaultStats();
 
   // Calculate Direction (Reuse Vectors)
   _shootDir.subVectors(owner.aimTarget, owner.position).normalize();
   if (_shootDir.lengthSq() === 0) _shootDir.set(0, 0, 1);
 
   // Feedback
-  const isHeavy = stats.bulletCount > 1 || stats.knockback > 15;
+  const isHeavy = weaponStats.bulletCount > 1 || weaponStats.knockback > 15;
   addTrauma(isHeavy ? 0.25 : 0.05);
   playShoot();
 
   // Muzzle Flash
   const flashMesh = new THREE.Mesh(muzzleGeo, muzzleMat.clone());
-  (flashMesh.material as THREE.MeshBasicMaterial).color.setHex(stats.bulletColor);
+  (flashMesh.material as THREE.MeshBasicMaterial).color.setHex(weaponStats.bulletColor);
 
   // Position: Owner + (Dir * 0.8)
   _posVec.copy(_shootDir).multiplyScalar(0.8).add(owner.position);
@@ -131,16 +136,21 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
     maxLife: 0.08,
   });
 
-  // Spawn Projectiles
-  const count = stats.bulletCount || 1;
-  const spread = stats.bulletSpread || 0;
-  const finalDamage = stats.damage + mods.damageAdd;
-  const finalSpeed = stats.bulletSpeed * mods.speedMult;
-  const style = stats.visualStyle || 'BOLT';
-  const pierce = stats.bulletPierce || 1;
+  // Spawn Projectiles - Apply global stats
+  const baseCount = weaponStats.bulletCount || 1;
+  const count = getEffectiveAmount(baseCount, playerStats);
+  const spread = weaponStats.bulletSpread || 0;
+
+  // Apply might multiplier to damage
+  const baseDamage = weaponStats.damage || 1;
+  const finalDamage = getEffectiveDamage(baseDamage, playerStats);
+
+  const finalSpeed = weaponStats.bulletSpeed * playerStats.projectileSpeed;
+  const style = weaponStats.visualStyle || 'BOLT';
+  const pierce = weaponStats.bulletPierce || 1;
 
   // Reuse Material
-  const material = getBulletMaterial(stats.bulletColor);
+  const material = getBulletMaterial(weaponStats.bulletColor);
 
   for (let i = 0; i < count; i++) {
     // Clone direction locally so we don't mess up the global _shootDir
@@ -156,13 +166,13 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
 
     if (style === 'ORB') {
       const group = new THREE.Group();
-      const w = stats.bulletWidth || 0.5;
+      const w = weaponStats.bulletWidth || 0.5;
 
       const core = new THREE.Mesh(orbGeo, material);
       core.scale.setScalar(w);
       group.add(core);
 
-      const shell = new THREE.Mesh(orbGeo, getWireframeMaterial(stats.bulletColor));
+      const shell = new THREE.Mesh(orbGeo, getWireframeMaterial(weaponStats.bulletColor));
       shell.scale.setScalar(w * 1.5);
       shell.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
       group.add(shell);
@@ -171,14 +181,14 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
       spin = 5.0;
     } else if (style === 'SHARD') {
       mesh = new THREE.Mesh(shardGeo, material);
-      const w = stats.bulletWidth || 0.3;
+      const w = weaponStats.bulletWidth || 0.3;
       mesh.scale.setScalar(w);
       mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
     } else {
       // BOLT
       mesh = new THREE.Mesh(boltGeo, material);
-      const w = stats.bulletWidth || 0.2;
-      const l = stats.bulletLength || 1.0;
+      const w = weaponStats.bulletWidth || 0.2;
+      const l = weaponStats.bulletLength || 1.0;
       mesh.scale.set(w, w, l);
       mesh.quaternion.setFromUnitVectors(_axisZ, dir);
     }
@@ -199,16 +209,17 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
       position: mesh.position,
       velocity: velocity,
       lifeTimer: 0,
-      maxLife: stats.bulletLifetime,
+      maxLife: weaponStats.bulletLifetime,
       transform: mesh,
       damage: finalDamage,
       projectile: {
         pierce: pierce,
-        explodeRadius: stats.bulletExplodeRadius || 0,
-        knockback: stats.knockback || 5,
+        explodeRadius: weaponStats.bulletExplodeRadius || 0,
+        knockback: weaponStats.knockback || 5,
         hitList: [],
         spinSpeed: spin,
       },
     });
   }
 }
+

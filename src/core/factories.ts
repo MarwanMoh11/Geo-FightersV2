@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { world } from './world';
 import { loadTexture } from './assets';
-import { STARTER_WEAPON } from './definitions';
+import { getDefaultStats } from './PlayerStats';
+import { WEAPONS, getWeaponStatsAtLevel } from './WeaponRegistry';
 
 // --- SHARED RESOURCES ---
 const shadowGeo = new THREE.CircleGeometry(0.4, 16);
@@ -79,7 +80,11 @@ export function spawnPlayer(scene: THREE.Scene) {
   shadow.position.y = 0.05;
   playerGroup.add(shadow);
 
-  // 1. CREATE PLAYER
+  // 1. CREATE PLAYER with VS-style inventory
+  const starterWeaponId = 'pulse_repeater';
+  const starterWeapon = WEAPONS[starterWeaponId];
+  const starterStats = getWeaponStatsAtLevel(starterWeaponId, 1)!;
+
   const player = world.add({
     isPlayer: true,
     position: new THREE.Vector3(0, 0, 0),
@@ -95,11 +100,16 @@ export function spawnPlayer(scene: THREE.Scene) {
     xp: 0,
     xpMax: 100,
     score: 0,
-    health: { current: 50, max: 50 },
+    health: { current: 100, max: 100 },
     modifiers: { damageAdd: 0, fireRateMult: 1.0, speedMult: 1.0 },
+
+    // VS-style inventory
+    weaponSlots: [{ weaponId: starterWeaponId, level: 1 }],
+    passiveSlots: [],
+    stats: getDefaultStats(),
   });
 
-  // 2. EQUIP STARTER WEAPON
+  // 2. EQUIP STARTER WEAPON from registry
   world.add({
     isWeapon: true,
     ownerId: player.id,
@@ -108,20 +118,21 @@ export function spawnPlayer(scene: THREE.Scene) {
 
     weapon: {
       cooldownTimer: 0,
-      fireRate: STARTER_WEAPON.fireRate,
-      damage: STARTER_WEAPON.damage,
-      bulletSpeed: STARTER_WEAPON.speed,
-      bulletColor: STARTER_WEAPON.color,
-      bulletLifetime: STARTER_WEAPON.range,
+      fireRate: starterStats.cooldown,
+      damage: starterStats.damage,
+      bulletSpeed: starterWeapon.baseSpeed,
+      bulletColor: starterWeapon.color,
+      bulletLifetime: starterWeapon.baseLifetime,
 
-      bulletWidth: STARTER_WEAPON.width,
-      bulletLength: STARTER_WEAPON.length,
-      visualStyle: STARTER_WEAPON.visualStyle,
+      bulletWidth: starterWeapon.bulletWidth,
+      bulletLength: starterWeapon.bulletLength,
+      visualStyle: starterWeapon.visualStyle,
 
-      bulletCount: STARTER_WEAPON.count,
-      bulletSpread: STARTER_WEAPON.spread,
-      knockback: STARTER_WEAPON.knockback,
-      bulletPierce: STARTER_WEAPON.pierce,
+      bulletCount: starterStats.projectiles,
+      bulletSpread: starterWeapon.baseSpread,
+      knockback: starterWeapon.baseKnockback,
+      bulletPierce: starterStats.pierce,
+      bulletExplodeRadius: starterWeapon.explodeRadius,
     },
   });
 }

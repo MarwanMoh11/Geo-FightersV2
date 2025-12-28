@@ -1,7 +1,19 @@
 import * as THREE from 'three';
+import type { PlayerStats } from './PlayerStats';
 
 let nextId = 0;
 export const generateId = () => ++nextId;
+
+// Inventory slot types
+export interface WeaponSlot {
+  weaponId: string;
+  level: number;
+}
+
+export interface PassiveSlot {
+  passiveId: string;
+  level: number;
+}
 
 export type Entity = {
   id?: number;
@@ -13,7 +25,14 @@ export type Entity = {
   isParticle?: boolean;
   isXP?: boolean;
   isWeapon?: boolean;
+  isChest?: boolean;
   ownerId?: number;
+  chestRarity?: 'common' | 'rare' | 'epic';
+
+  // VS-style inventory
+  weaponSlots?: WeaponSlot[];
+  passiveSlots?: PassiveSlot[];
+  stats?: PlayerStats;
 
   // data
   position: THREE.Vector3;

@@ -16,10 +16,11 @@ import { WeaponSystem } from './systems/WeaponSystem';
 import { LifecycleSystem } from './systems/LifecycleSystem';
 import { EnemySystem } from './systems/EnemySystem';
 import { CollisionSystem } from './systems/CollisionSystem';
-import { HordeSystem } from './systems/HordeSystem';
+import { TimelineSpawnerSystem } from './systems/TimelineSpawner';
 import { ParticleSystem } from './systems/ParticleSystem';
 import { CameraSystem } from './systems/CameraSystem';
 import { LootSystem } from './systems/LootSystem';
+import { ChestSystem } from './systems/ChestSystem';
 import { UISystem } from './systems/UISystem';
 import { isGamePaused } from './systems/UpgradeSystem';
 import { isGameOver } from './systems/GameManager';
@@ -70,7 +71,7 @@ function animate() {
   AimSystem();
   PlayerControlSystem();
   EnemySystem(dt);
-  HordeSystem(dt, scene);
+  TimelineSpawnerSystem(dt, scene);
 
   // 2. Combat
   WeaponSystem(dt, scene);
@@ -81,6 +82,7 @@ function animate() {
   LifecycleSystem(dt, scene);
   ParticleSystem(dt);
   LootSystem(dt, scene);
+  ChestSystem(dt, scene);
 
   // 4. UI & Camera
   RenderSystem(dt);

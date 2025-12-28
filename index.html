@@ -122,12 +122,26 @@
   <div id="fps-counter" class="hidden">FPS: 60</div>
 
   <div id="ui-layer">
-    <div class="hud-panel" id="health-panel">
-      <div class="label">INTEGRITY</div>
-      <div class="bar-container">
-        <div id="health-bar-fill"></div>
+    <div class="hud-left">
+      <div class="hud-panel" id="health-panel">
+        <div class="label">INTEGRITY</div>
+        <div class="bar-container">
+          <div id="health-bar-fill"></div>
+        </div>
+        <div id="health-text">100 / 100</div>
       </div>
-      <div id="health-text">100 / 100</div>
+
+      <!-- Inventory Display (Desktop) -->
+      <div id="inventory-panel">
+        <div class="inventory-section">
+          <div class="label">WEAPONS</div>
+          <div id="weapon-slots" class="inventory-slots"></div>
+        </div>
+        <div class="inventory-section">
+          <div class="label">PASSIVES</div>
+          <div id="passive-slots" class="inventory-slots"></div>
+        </div>
+      </div>
     </div>
 
     <div class="hud-panel" id="level-panel">
@@ -175,6 +189,12 @@
       <div class="mobile-stat" id="mobile-health">❤️ 100</div>
       <div class="mobile-stat" id="mobile-level">LV 1</div>
       <div class="mobile-stat" id="mobile-score">⚡ 0</div>
+    </div>
+
+    <!-- Mobile Inventory Display -->
+    <div id="mobile-inventory">
+      <div id="mobile-weapon-slots" class="mobile-inventory-row"></div>
+      <div id="mobile-passive-slots" class="mobile-inventory-row"></div>
     </div>
 
     <button id="mobile-pause-btn" aria-label="Pause Game">⏸</button>
