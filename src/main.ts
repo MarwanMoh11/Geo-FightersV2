@@ -101,13 +101,30 @@ function animate() {
   LifecycleSystem(dt, scene);
   ParticleSystem(dt);
   LootSystem(dt, scene);
+
+  // === PROFILED NEW SYSTEMS ===
+  const t0 = performance.now();
   ChestSystem(dt, scene);
+  const t1 = performance.now();
   FinaleBossSystem(dt, scene);
+  const t2 = performance.now();
 
   // 4. UI & Camera
   RenderSystem(dt);
   CameraSystem(dt, camera);
+  const t3 = performance.now();
   UISystem();
+  const t4 = performance.now();
+
+  // Log slow frames (> 2ms total for new systems)
+  const chestTime = t1 - t0;
+  const bossTime = t2 - t1;
+  const uiTime = t4 - t3;
+  const totalNew = chestTime + bossTime + uiTime;
+
+  if (totalNew > 2) {
+    console.warn(`[PERF] Slow frame: Chest=${chestTime.toFixed(2)}ms, Boss=${bossTime.toFixed(2)}ms, UI=${uiTime.toFixed(2)}ms`);
+  }
 
   renderer.render(scene, camera);
 }

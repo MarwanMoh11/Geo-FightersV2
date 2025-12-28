@@ -136,27 +136,29 @@ export function UISystem() {
     }
   }
 
-  // 6. Update Boss Health Bar (throttled - only when boss exists and changed)
-  const boss = world.with('isBoss', 'health').first;
-  const hasBoss = !!(boss && boss.health);
+  // 6. Update Boss Health Bar (throttled - only query after near spawn time)
+  if (gameTime >= BOSS_SPAWN_TIME - 10) {
+    const boss = world.with('isBoss', 'health').first;
+    const hasBoss = !!(boss && boss.health);
 
-  if (hasBoss !== lastBossVisible) {
-    lastBossVisible = hasBoss;
-    if (ui.bossHealthContainer) {
-      if (hasBoss) {
-        ui.bossHealthContainer.classList.remove('hidden');
-        if (ui.bossName) ui.bossName.innerText = 'SYSTEM CORRUPTION';
-      } else {
-        ui.bossHealthContainer.classList.add('hidden');
+    if (hasBoss !== lastBossVisible) {
+      lastBossVisible = hasBoss;
+      if (ui.bossHealthContainer) {
+        if (hasBoss) {
+          ui.bossHealthContainer.classList.remove('hidden');
+          if (ui.bossName) ui.bossName.innerText = 'SYSTEM CORRUPTION';
+        } else {
+          ui.bossHealthContainer.classList.add('hidden');
+        }
       }
     }
-  }
 
-  if (hasBoss && boss && boss.health && ui.bossHealthFill) {
-    const bossPercent = Math.floor((boss.health.current / boss.health.max) * 100);
-    if (bossPercent !== lastBossPercent) {
-      lastBossPercent = bossPercent;
-      ui.bossHealthFill.style.width = `${Math.max(0, bossPercent)}%`;
+    if (hasBoss && boss && boss.health && ui.bossHealthFill) {
+      const bossPercent = Math.floor((boss.health.current / boss.health.max) * 100);
+      if (bossPercent !== lastBossPercent) {
+        lastBossPercent = bossPercent;
+        ui.bossHealthFill.style.width = `${Math.max(0, bossPercent)}%`;
+      }
     }
   }
 

@@ -39,6 +39,12 @@ export function resetBoss() {
 // --- MAIN SYSTEM ---
 export function FinaleBossSystem(dt: number, scene: THREE.Scene) {
     const gameTime = getGameTime();
+
+    // EARLY RETURN: Skip entirely if boss hasn't spawned and we're not close to spawn time
+    if (!bossSpawned && gameTime < BOSS_SPAWN_TIME - 10) {
+        return; // Nothing to do yet
+    }
+
     const player = world.with('isPlayer', 'position').first;
     if (!player) return;
 
