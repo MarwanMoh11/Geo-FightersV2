@@ -47,8 +47,9 @@ export function RenderSystem(dt: number) {
             activeSprite.material.color.setHex(0xff0000);
             inactiveSprite.material.color.setHex(0xff0000);
           } else {
-            activeSprite.material.color.setHex(0xffffff);
-            inactiveSprite.material.color.setHex(0xffffff);
+            const baseColor = entity.baseColor ?? 0xffffff;
+            activeSprite.material.color.setHex(baseColor);
+            inactiveSprite.material.color.setHex(baseColor);
             entity.hitFlashTimer = 0;
           }
         }

@@ -16,7 +16,7 @@ import { WeaponSystem } from './systems/WeaponSystem';
 import { LifecycleSystem } from './systems/LifecycleSystem';
 import { EnemySystem } from './systems/EnemySystem';
 import { CollisionSystem } from './systems/CollisionSystem';
-import { SpawnerSystem } from './systems/SpawnerSystem';
+import { HordeSystem } from './systems/HordeSystem';
 import { ParticleSystem } from './systems/ParticleSystem';
 import { CameraSystem } from './systems/CameraSystem';
 import { LootSystem } from './systems/LootSystem';
@@ -70,7 +70,7 @@ function animate() {
   AimSystem();
   PlayerControlSystem();
   EnemySystem(dt);
-  SpawnerSystem(dt, scene);
+  HordeSystem(dt, scene);
 
   // 2. Combat
   WeaponSystem(dt, scene);

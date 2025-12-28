@@ -80,6 +80,7 @@ export type Entity = {
   xpValue?: number;
   hitFlashTimer?: number;
   stunTimer?: number;
+  baseColor?: number;
 };
 
 function createECS() {

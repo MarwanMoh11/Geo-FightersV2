@@ -21,9 +21,9 @@ export type EnemyType = (typeof EnemyType)[keyof typeof EnemyType];
 type EnemyStats = { hp: number; speed: number; size: number; color: number; xp: number };
 
 const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
-  [EnemyType.GLITCH]: { hp: 12, speed: 2.0, size: 2.0, color: 0xffffff, xp: 10 },
-  [EnemyType.VIRUS]: { hp: 5, speed: 4.5, size: 1.5, color: 0xffff00, xp: 5 },
-  [EnemyType.FIREWALL]: { hp: 40, speed: 1.0, size: 3.5, color: 0xff0055, xp: 30 },
+  [EnemyType.GLITCH]: { hp: 12, speed: 0.8, size: 2.0, color: 0xffffff, xp: 10 }, // Slow shambler
+  [EnemyType.VIRUS]: { hp: 5, speed: 1.2, size: 1.5, color: 0xffffff, xp: 5 }, // Slightly faster fodder
+  [EnemyType.FIREWALL]: { hp: 150, speed: 0.5, size: 3.5, color: 0xffffff, xp: 30 }, // Slow tank
 };
 
 export function spawnPlayer(scene: THREE.Scene) {
@@ -194,12 +194,15 @@ export function spawnEnemy(
 
   // 2. Create TWO materials and sprites - one for each facing direction
   // Optimization: Use cached textures instead of cloning per instance
+  // NOTE: Virus sprite is inverted in the file (Left=Right), so we swap the logic for it
+  const isInverted = type === EnemyType.VIRUS;
+
   const materialRight = new THREE.SpriteMaterial({
-    map: assets.textureFlipped, // Flipped (Right-facing if original is Left)
+    map: isInverted ? assets.texture : assets.textureFlipped,
     color: stats.color,
   });
   const materialLeft = new THREE.SpriteMaterial({
-    map: assets.texture, // Standard (Left-facing)
+    map: isInverted ? assets.textureFlipped : assets.texture,
     color: stats.color,
   });
 
@@ -216,13 +219,29 @@ export function spawnEnemy(
     assets.aspect = img.width / img.height;
   }
 
-  spriteRight.scale.set(stats.size * assets.aspect, stats.size, 1);
-  spriteRight.position.y = stats.size / 2;
+  const applyScale = (aspect: number) => {
+    spriteRight.scale.set(stats.size * aspect, stats.size, 1);
+    spriteLeft.scale.set(stats.size * aspect, stats.size, 1);
+  };
 
-  // Left sprite uses same positive scale (flipping is via texture)
-  spriteLeft.scale.set(stats.size * assets.aspect, stats.size, 1);
+  applyScale(assets.aspect);
+
+  spriteRight.position.y = stats.size / 2;
   spriteLeft.position.y = stats.size / 2;
   spriteLeft.visible = false; // Start facing right
+
+  // SAFETY: If aspect is still 1.0 (uncached), ensure we fix it when loaded
+  if (assets.aspect === 1.0) {
+    const fixInterval = setInterval(() => {
+      const checkImg = assets.texture.image as HTMLImageElement;
+      if (checkImg && checkImg.height > 0) {
+        const realAspect = checkImg.width / checkImg.height;
+        assets.aspect = realAspect; // Update cache
+        applyScale(realAspect); // Update instance
+        clearInterval(fixInterval);
+      }
+    }, 100);
+  }
 
   group.add(spriteRight);
   group.add(spriteLeft);
@@ -245,6 +264,7 @@ export function spawnEnemy(
     facingRight: true,
     aimTarget: new THREE.Vector3(),
     xpValue: stats.xp,
+    baseColor: stats.color,
   });
 }
 

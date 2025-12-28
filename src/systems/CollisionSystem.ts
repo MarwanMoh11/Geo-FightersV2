@@ -4,6 +4,7 @@ import { addTrauma } from './CameraSystem';
 import { spawnXP } from '../core/factories';
 import { triggerGameOver } from './GameManager';
 import { playExplosion } from '../core/audio';
+import { reportDamageTaken, reportKill } from '../core/FlowStateManager';
 
 export function CollisionSystem(scene: THREE.Scene) {
   const enemies = world.with('isEnemy', 'position', 'health', 'velocity');
@@ -82,6 +83,7 @@ export function CollisionSystem(scene: THREE.Scene) {
     for (const enemy of enemies) {
       if (player.position.distanceTo(enemy.position) < 1.0) {
         player.health.current -= 5;
+        reportDamageTaken(5); // Report to FlowStateManager
         addTrauma(0.5);
         const push = new THREE.Vector3()
           .subVectors(enemy.position, player.position)
@@ -115,6 +117,7 @@ function applyDamage(
 
   // Death
   if (enemy.health.current <= 0) {
+    reportKill(); // Report to FlowStateManager
     spawnExplosionFX(enemy.position, scene);
     // Only play sound/shake if it wasn't a big explosion (reduce noise)
     spawnXP(scene, enemy.position.x, enemy.position.z, 10);
