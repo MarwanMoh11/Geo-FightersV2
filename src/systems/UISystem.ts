@@ -11,6 +11,7 @@ const ui = {
   levelText: document.getElementById('level-text'),
   scoreText: document.getElementById('score-text'),
   xpBar: document.getElementById('xp-bar-fill'),
+  xpLevelText: document.getElementById('xp-level-text'),
   // Timer & Boss
   gameTimer: document.getElementById('game-timer'),
   bossHealthContainer: document.getElementById('boss-health-container'),
@@ -99,6 +100,9 @@ export function UISystem() {
   if (ui.levelText && player.level) {
     ui.levelText.innerText = player.level.toString().padStart(2, '0');
   }
+  if (ui.xpLevelText && player.level) {
+    ui.xpLevelText.innerText = player.level.toString().padStart(2, '0');
+  }
   if (ui.mobileLevel && player.level) {
     ui.mobileLevel.innerText = `LV ${player.level}`;
   }
@@ -124,6 +128,12 @@ export function UISystem() {
   // 5. Update Game Timer (throttled - only update when seconds change)
   const gameTime = getGameTime();
   const currentSecond = Math.floor(gameTime);
+
+  // Show timer when game starts (not visible in menu)
+  if (ui.gameTimer && gameTime > 0) {
+    ui.gameTimer.classList.add('visible');
+  }
+
   if (currentSecond !== lastTimerSecond && ui.gameTimer) {
     lastTimerSecond = currentSecond;
     const minutes = Math.floor(gameTime / 60);
