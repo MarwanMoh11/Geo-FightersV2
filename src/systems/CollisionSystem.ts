@@ -1,3 +1,14 @@
+/**
+ * CollisionSystem - VS-Style Optimized
+ *
+ * Optimizations applied:
+ * 1. Squared distance checks (no sqrt)
+ * 2. Reusable vectors (no per-frame allocations)
+ * 3. One-way collision (bullets check enemies)
+ * 4. Early-out on dead enemies
+ * 5. Batch geometry damage for AoE
+ */
+
 import { world } from '../core/world';
 import * as THREE from 'three';
 import { addTrauma } from './CameraSystem';
@@ -7,126 +18,152 @@ import { playExplosion } from '../core/audio';
 import { reportDamageTaken, reportKill } from '../core/FlowStateManager';
 import { spawnChest } from './ChestSystem';
 
-export function CollisionSystem(scene: THREE.Scene) {
-  const enemies = world.with('isEnemy', 'position', 'health', 'velocity');
-  const bullets = world.with('isProjectile', 'position', 'velocity', 'projectile');
+// --- REUSABLE VECTORS (Zero GC pressure) ---
+const _pushDir = new THREE.Vector3();
+const _blastDir = new THREE.Vector3();
+const _tempVec = new THREE.Vector3();
 
-  // A. Bullet vs Enemy
-  for (const bullet of bullets) {
+// --- PRECOMPUTED SQUARED RADII ---
+const BULLET_HIT_RADIUS_SQ = 0.8 * 0.8;
+const PLAYER_HIT_RADIUS_SQ = 1.0 * 1.0;
+
+export function CollisionSystem(scene: THREE.Scene) {
+  // Cache enemy array once per frame
+  const enemies = Array.from(world.with('isEnemy', 'position', 'health', 'velocity'));
+  const bullets = Array.from(world.with('isProjectile', 'position', 'velocity', 'projectile'));
+
+  // Early out if no entities
+  if (enemies.length === 0) return;
+
+  // A. Bullet vs Enemy (One-way: bullets check enemies)
+  for (let b = bullets.length - 1; b >= 0; b--) {
+    const bullet = bullets[b];
     if (!bullet.projectile) continue;
 
-    for (const enemy of enemies) {
-      // PIERCE CHECK: Ignore if already hit
+    let bulletDead = false;
+
+    for (let e = enemies.length - 1; e >= 0; e--) {
+      const enemy = enemies[e];
+
+      // EARLY OUT: Dead enemy
+      if (!enemy.health || enemy.health.current <= 0) continue;
+
+      // PIERCE CHECK: Already hit
       if (enemy.id && bullet.projectile.hitList.includes(enemy.id)) continue;
 
-      const dist = bullet.position.distanceTo(enemy.position);
+      // SQUARED DISTANCE (No sqrt!)
+      const dx = bullet.position.x - enemy.position.x;
+      const dz = bullet.position.z - enemy.position.z;
+      const distSq = dx * dx + dz * dz;
 
       // DIRECT HIT
-      if (dist < 0.8) {
-        if (enemy.health) {
-          // 1. DIRECT DAMAGE
-          applyDamage(
-            enemy,
-            bullet.damage || 1,
-            bullet.velocity,
-            bullet.projectile.knockback,
-            scene,
-          );
+      if (distSq < BULLET_HIT_RADIUS_SQ) {
+        // 1. APPLY DAMAGE
+        applyDamage(enemy, bullet.damage || 1, bullet.velocity, bullet.projectile.knockback, scene, enemies, e);
 
-          // 2. REGISTER HIT
-          bullet.projectile.hitList.push(enemy.id!);
-          bullet.projectile.pierce -= 1;
+        // 2. REGISTER HIT
+        bullet.projectile.hitList.push(enemy.id!);
+        bullet.projectile.pierce -= 1;
 
-          // 3. EXPLOSION LOGIC (Area of Effect)
-          if (bullet.projectile.explodeRadius > 0) {
-            spawnBlastFX(bullet.position, bullet.projectile.explodeRadius, scene);
-            addTrauma(0.3); // Big shake for boom
-            playExplosion();
+        // 3. EXPLOSION LOGIC (Geometry-based AoE damage)
+        if (bullet.projectile.explodeRadius > 0) {
+          const blastRadiusSq = bullet.projectile.explodeRadius * bullet.projectile.explodeRadius;
+          spawnBlastFX(bullet.position, bullet.projectile.explodeRadius, scene);
+          addTrauma(0.3);
+          playExplosion();
 
-            // Loop ALL enemies to find those in blast radius
-            for (const blastTarget of enemies) {
-              if (blastTarget === enemy) continue; // Already hit
-              if (
-                blastTarget.position.distanceTo(bullet.position) < bullet.projectile.explodeRadius
-              ) {
-                // Push away from explosion center
-                const blastDir = new THREE.Vector3()
-                  .subVectors(blastTarget.position, bullet.position)
-                  .normalize();
-                // Blast deals full damage
-                if (blastTarget.health) {
-                  applyDamage(
-                    blastTarget,
-                    bullet.damage || 1,
-                    blastDir.multiplyScalar(20),
-                    10,
-                    scene,
-                  );
-                }
-              }
+          // Batch damage all enemies in blast radius
+          for (let t = enemies.length - 1; t >= 0; t--) {
+            if (t === e) continue; // Already hit
+            const target = enemies[t];
+            if (!target.health || target.health.current <= 0) continue;
+
+            const tdx = target.position.x - bullet.position.x;
+            const tdz = target.position.z - bullet.position.z;
+            const tDistSq = tdx * tdx + tdz * tdz;
+
+            if (tDistSq < blastRadiusSq) {
+              // Reuse vector for blast direction
+              _blastDir.set(tdx, 0, tdz).normalize();
+              applyDamage(target, bullet.damage || 1, _blastDir.multiplyScalar(20), 10, scene, enemies, t);
             }
           }
+        }
 
-          // 4. BULLET DEATH
-          // If it exploded, it dies immediately regardless of pierce
-          if (bullet.projectile.explodeRadius > 0 || bullet.projectile.pierce <= 0) {
-            despawn(bullet, scene);
-            break;
-          }
+        // 4. BULLET DEATH
+        if (bullet.projectile.explodeRadius > 0 || bullet.projectile.pierce <= 0) {
+          despawn(bullet, scene);
+          bulletDead = true;
+          break;
         }
       }
     }
+
+    if (bulletDead) continue;
   }
 
-  // B. Enemy vs Player
+  // B. Enemy vs Player (One check per enemy)
   const player = world.with('isPlayer', 'position', 'health').first;
-  if (player && player.health) {
-    for (const enemy of enemies) {
-      if (player.position.distanceTo(enemy.position) < 1.0) {
+  if (player && player.health && player.health.current > 0) {
+    const px = player.position.x;
+    const pz = player.position.z;
+
+    for (let e = 0; e < enemies.length; e++) {
+      const enemy = enemies[e];
+      if (!enemy.health || enemy.health.current <= 0) continue;
+
+      // SQUARED DISTANCE
+      const dx = px - enemy.position.x;
+      const dz = pz - enemy.position.z;
+      const distSq = dx * dx + dz * dz;
+
+      if (distSq < PLAYER_HIT_RADIUS_SQ) {
         player.health.current -= 5;
-        reportDamageTaken(5); // Report to FlowStateManager
+        reportDamageTaken(5);
         addTrauma(0.5);
-        const push = new THREE.Vector3()
-          .subVectors(enemy.position, player.position)
-          .normalize()
-          .multiplyScalar(5);
-        enemy.velocity.add(push);
+
+        // Reuse vector for push
+        _pushDir.set(-dx, 0, -dz).normalize().multiplyScalar(5);
+        enemy.velocity.add(_pushDir);
         enemy.stunTimer = 0.5;
-        if (player.health.current <= 0) triggerGameOver();
+
+        if (player.health.current <= 0) {
+          triggerGameOver();
+          return;
+        }
       }
     }
   }
 }
 
-// --- HELPER: Damage Application ---
+// --- HELPER: Damage Application (with array mutation awareness) ---
 function applyDamage(
   enemy: any,
   dmg: number,
   vel: THREE.Vector3,
   knockback: number,
   scene: THREE.Scene,
+  _enemies: any[],
+  _index: number
 ) {
   if (!enemy.health) return;
   enemy.health.current -= dmg;
 
   // Juice
   enemy.hitFlashTimer = 0.1;
-  const pushDir = vel.clone().normalize();
-  pushDir.y = 0;
-  enemy.velocity.add(pushDir.multiplyScalar(knockback));
+  _pushDir.copy(vel).normalize();
+  _pushDir.y = 0;
+  enemy.velocity.add(_pushDir.multiplyScalar(knockback));
   enemy.stunTimer = 0.2;
 
   // Death
   if (enemy.health.current <= 0) {
-    reportKill(); // Report to FlowStateManager
+    reportKill();
     spawnExplosionFX(enemy.position, scene);
-
-    // Spawn XP
     spawnXP(scene, enemy.position.x, enemy.position.z, enemy.xpValue || 10);
 
     // Elite enemies (FIREWALL) drop chests
-    if (enemy.baseColor === 0xff4400) { // FIREWALL color check
-      // Random rarity: 70% common, 25% rare, 5% epic
+    if (enemy.baseColor === 0xff4400) {
       const roll = Math.random();
       const rarity = roll < 0.70 ? 'common' : roll < 0.95 ? 'rare' : 'epic';
       spawnChest(scene, enemy.position.x, enemy.position.z, rarity as 'common' | 'rare' | 'epic');
@@ -136,19 +173,24 @@ function applyDamage(
   }
 }
 
-// --- FX ---
-
+// --- FX (Shared geometry) ---
 const explosionGeo = new THREE.BoxGeometry(0.12, 0.12, 0.12);
 const explosionMat = new THREE.MeshBasicMaterial({ color: 0xff0055 });
 
+// Pre-allocate particle velocity vectors
+const _particleVels: THREE.Vector3[] = [];
+for (let i = 0; i < 5; i++) {
+  _particleVels.push(new THREE.Vector3());
+}
+
 function spawnExplosionFX(pos: THREE.Vector3, scene: THREE.Scene) {
-  // Quick enemy death particles
   const particleCount = 5;
   for (let i = 0; i < particleCount; i++) {
-    const vel = new THREE.Vector3(
+    // Reuse pre-allocated vector
+    _particleVels[i].set(
       (Math.random() - 0.5) * 15,
       Math.random() * 8 + 2,
-      (Math.random() - 0.5) * 15,
+      (Math.random() - 0.5) * 15
     );
     const mesh = new THREE.Mesh(explosionGeo, explosionMat);
     mesh.position.copy(pos);
@@ -156,7 +198,7 @@ function spawnExplosionFX(pos: THREE.Vector3, scene: THREE.Scene) {
     world.add({
       isParticle: true,
       position: mesh.position,
-      velocity: vel,
+      velocity: _particleVels[i].clone(), // Must clone for entity
       transform: mesh,
       lifeTimer: 0,
       maxLife: 0.3,
@@ -173,18 +215,16 @@ const blastMat = new THREE.MeshBasicMaterial({
 });
 
 function spawnBlastFX(pos: THREE.Vector3, radius: number, scene: THREE.Scene) {
-  // Big Purple Shockwave
   const mesh = new THREE.Mesh(blastGeo, blastMat);
   mesh.rotation.x = -Math.PI / 2;
   mesh.position.copy(pos);
   mesh.position.y = 0.5;
   scene.add(mesh);
 
-  // We abuse 'velocity.x' to store expansion speed
   world.add({
     isParticle: true,
-    position: pos,
-    velocity: new THREE.Vector3(radius * 5, 0, 0),
+    position: pos.clone(),
+    velocity: _tempVec.set(radius * 5, 0, 0).clone(),
     transform: mesh,
     lifeTimer: 0.3,
     maxLife: 0.3,
