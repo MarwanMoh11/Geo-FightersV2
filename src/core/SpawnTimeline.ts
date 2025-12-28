@@ -32,9 +32,17 @@ export interface StageTimeline {
 
 // --- SPAWN COST (budget consumption per enemy) ---
 export const ENEMY_SPAWN_COST: Record<EnemyType, number> = {
-    [EnemyType.VIRUS]: 1,     // Fodder - cheapest
-    [EnemyType.GLITCH]: 2,    // Standard - moderate cost
-    [EnemyType.FIREWALL]: 5,  // Tank - expensive
+    // Standard enemies
+    [EnemyType.VIRUS]: 1,       // Fodder - cheapest
+    [EnemyType.GLITCH]: 2,      // Standard - moderate cost
+    [EnemyType.FIREWALL]: 5,    // Tank - expensive
+    // Elite enemies (high cost, but priority spawn)
+    [EnemyType.ENFORCER]: 8,    // Shield bearer
+    [EnemyType.COLOSSUS]: 15,   // Massive crawler
+    [EnemyType.WARDEN]: 6,      // Fast phase-shifter
+    // Mini-bosses (very high cost)
+    [EnemyType.HYDRA]: 25,      // Multi-node boss
+    [EnemyType.OVERSEER]: 50,   // Major boss
 };
 
 // --- STAGE 1 TIMELINE ---
@@ -195,6 +203,99 @@ export const STAGE_1_TIMELINE: StageTimeline = {
             weight: 15,
             countMin: 1,
             countMax: 2,
+            formation: 'encircle',
+        },
+
+        // === ELITE SPAWNS (Chest Bearers) ===
+        // ENFORCER: Shield bearer - tests AoE builds
+        {
+            startTime: 180,   // 3:00
+            endTime: 182,
+            enemyType: EnemyType.ENFORCER,
+            weight: 100,
+            countMin: 1,
+            countMax: 1,
+            formation: 'pincer',
+        },
+        {
+            startTime: 300,   // 5:00
+            endTime: 302,
+            enemyType: EnemyType.ENFORCER,
+            weight: 100,
+            countMin: 1,
+            countMax: 1,
+            formation: 'pincer',
+        },
+
+        // WARDEN: Speed check - tests positioning
+        {
+            startTime: 240,   // 4:00
+            endTime: 242,
+            enemyType: EnemyType.WARDEN,
+            weight: 100,
+            countMin: 1,
+            countMax: 1,
+            formation: 'swarm',
+        },
+        {
+            startTime: 420,   // 7:00
+            endTime: 422,
+            enemyType: EnemyType.WARDEN,
+            weight: 100,
+            countMin: 1,
+            countMax: 1,
+            formation: 'swarm',
+        },
+
+        // COLOSSUS: Coverage test - spawns trash
+        {
+            startTime: 360,   // 6:00
+            endTime: 362,
+            enemyType: EnemyType.COLOSSUS,
+            weight: 100,
+            countMin: 1,
+            countMax: 1,
+            formation: 'line',
+        },
+        {
+            startTime: 600,   // 10:00
+            endTime: 602,
+            enemyType: EnemyType.COLOSSUS,
+            weight: 100,
+            countMin: 1,
+            countMax: 1,
+            formation: 'line',
+        },
+
+        // === MINI-BOSS SPAWNS (Multiple Chests) ===
+        // HYDRA: 10:00 and 18:00 - drops 3 chests
+        {
+            startTime: 600,   // 10:00
+            endTime: 602,
+            enemyType: EnemyType.HYDRA,
+            weight: 100,
+            countMin: 1,
+            countMax: 1,
+            formation: 'encircle',
+        },
+        {
+            startTime: 1080,  // 18:00
+            endTime: 1082,
+            enemyType: EnemyType.HYDRA,
+            weight: 100,
+            countMin: 1,
+            countMax: 1,
+            formation: 'encircle',
+        },
+
+        // OVERSEER: 20:00 - drops 5 chests (major checkpoint)
+        {
+            startTime: 1200,  // 20:00
+            endTime: 1202,
+            enemyType: EnemyType.OVERSEER,
+            weight: 100,
+            countMin: 1,
+            countMax: 1,
             formation: 'encircle',
         },
     ],

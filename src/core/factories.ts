@@ -12,9 +12,17 @@ const xpMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
 
 // --- ENEMY DEFINITIONS (Restored) ---
 export const EnemyType = {
+  // Standard enemies
   GLITCH: 'glitch',
   VIRUS: 'virus',
   FIREWALL: 'firewall',
+  // Elite enemies (drop chests)
+  ENFORCER: 'enforcer',   // Firewall Enforcer - blocks projectiles
+  COLOSSUS: 'colossus',   // Packet Flood Colossus - spawns trash
+  WARDEN: 'warden',       // Latency Warden - phase shifts
+  // Mini-bosses (drop multiple chests)
+  HYDRA: 'hydra',         // Proxy Hydra - multi-node
+  OVERSEER: 'overseer',   // Black ICE Overseer - major boss
 } as const;
 
 export type EnemyType = (typeof EnemyType)[keyof typeof EnemyType];
@@ -22,9 +30,17 @@ export type EnemyType = (typeof EnemyType)[keyof typeof EnemyType];
 type EnemyStats = { hp: number; speed: number; size: number; color: number; xp: number };
 
 const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
-  [EnemyType.GLITCH]: { hp: 12, speed: 0.8, size: 2.0, color: 0xffffff, xp: 10 }, // Slow shambler
-  [EnemyType.VIRUS]: { hp: 5, speed: 1.2, size: 1.5, color: 0xffffff, xp: 5 }, // Slightly faster fodder
-  [EnemyType.FIREWALL]: { hp: 150, speed: 0.5, size: 3.5, color: 0xffffff, xp: 30 }, // Slow tank
+  // Standard enemies
+  [EnemyType.GLITCH]: { hp: 12, speed: 0.8, size: 2.0, color: 0xffffff, xp: 10 },
+  [EnemyType.VIRUS]: { hp: 5, speed: 1.2, size: 1.5, color: 0xffffff, xp: 5 },
+  [EnemyType.FIREWALL]: { hp: 150, speed: 0.5, size: 3.5, color: 0xffffff, xp: 30 },
+  // Elite enemies
+  [EnemyType.ENFORCER]: { hp: 200, speed: 0.6, size: 3.0, color: 0xffffff, xp: 40 },
+  [EnemyType.COLOSSUS]: { hp: 500, speed: 0.3, size: 5.0, color: 0xffffff, xp: 80 },
+  [EnemyType.WARDEN]: { hp: 120, speed: 1.5, size: 2.5, color: 0xffffff, xp: 35 },
+  // Mini-bosses
+  [EnemyType.HYDRA]: { hp: 800, speed: 0.4, size: 6.0, color: 0xffffff, xp: 150 },
+  [EnemyType.OVERSEER]: { hp: 2000, speed: 0.25, size: 8.0, color: 0xffffff, xp: 300 },
 };
 
 export function spawnPlayer(scene: THREE.Scene) {

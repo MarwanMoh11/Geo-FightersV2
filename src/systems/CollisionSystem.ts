@@ -162,12 +162,39 @@ function applyDamage(
     spawnExplosionFX(enemy.position, scene);
     spawnXP(scene, enemy.position.x, enemy.position.z, enemy.xpValue || 10);
 
-    // Elite enemies (FIREWALL) drop chests
-    if (enemy.enemyType === 'firewall') {
+    // === CHEST DROPS BY ENEMY TYPE ===
+    const type = enemy.enemyType;
+    const px = enemy.position.x;
+    const pz = enemy.position.z;
+
+    // Standard elite (1 chest)
+    if (type === 'firewall' || type === 'enforcer' || type === 'warden') {
       const roll = Math.random();
       const rarity = roll < 0.70 ? 'common' : roll < 0.95 ? 'rare' : 'epic';
-      spawnChest(scene, enemy.position.x, enemy.position.z, rarity as 'common' | 'rare' | 'epic');
-      console.log('[Chest] Spawned', rarity, 'chest from FIREWALL');
+      spawnChest(scene, px, pz, rarity as 'common' | 'rare' | 'epic');
+      console.log(`[Chest] ${type} dropped ${rarity} chest`);
+    }
+    // Mid-tier elite (1 rare chest)
+    else if (type === 'colossus') {
+      spawnChest(scene, px, pz, 'rare');
+      console.log(`[Chest] ${type} dropped rare chest`);
+    }
+    // Mini-boss HYDRA (3 chests)
+    else if (type === 'hydra') {
+      for (let i = 0; i < 3; i++) {
+        const offset = (i - 1) * 1.5;
+        spawnChest(scene, px + offset, pz, 'rare');
+      }
+      console.log(`[Chest] HYDRA dropped 3 rare chests!`);
+    }
+    // Major boss OVERSEER (5 chests)
+    else if (type === 'overseer') {
+      for (let i = 0; i < 5; i++) {
+        const angle = (i / 5) * Math.PI * 2;
+        const dist = 2;
+        spawnChest(scene, px + Math.cos(angle) * dist, pz + Math.sin(angle) * dist, 'epic');
+      }
+      console.log(`[Chest] OVERSEER dropped 5 epic chests!`);
     }
 
     despawn(enemy, scene);
