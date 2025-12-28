@@ -28,6 +28,7 @@ export type Entity = {
   isChest?: boolean;
   ownerId?: number;
   chestRarity?: 'common' | 'rare' | 'epic';
+  enemyType?: string; // 'virus' | 'glitch' | 'firewall'
 
   // VS-style inventory
   weaponSlots?: WeaponSlot[];

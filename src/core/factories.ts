@@ -265,6 +265,7 @@ export function spawnEnemy(
 
   world.add({
     isEnemy: true,
+    enemyType: type,
     position: group.position,
     velocity: new THREE.Vector3(0, 0, 0),
     health: { current: stats.hp, max: stats.hp },

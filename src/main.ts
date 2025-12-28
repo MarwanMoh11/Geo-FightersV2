@@ -46,6 +46,24 @@ const { scene, camera, renderer } = initRenderer();
 // --- INITIAL SETUP ---
 spawnPlayer(scene);
 
+// --- DEBUG: Press 'C' to spawn a chest for testing ---
+import { spawnChest } from './systems/ChestSystem';
+import { world } from './core/world';
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'c' || e.key === 'C') {
+    const player = world.with('isPlayer', 'position').first;
+    if (player) {
+      const x = player.position.x + (Math.random() - 0.5) * 4;
+      const z = player.position.z + (Math.random() - 0.5) * 4;
+      const rarities: ('common' | 'rare' | 'epic')[] = ['common', 'rare', 'epic'];
+      const rarity = rarities[Math.floor(Math.random() * 3)];
+      spawnChest(scene, x, z, rarity);
+      console.log('[DEBUG] Spawned', rarity, 'chest at', x.toFixed(1), z.toFixed(1));
+    }
+  }
+});
+
 // --- GAME LOOP ---
 const clock = new THREE.Clock();
 

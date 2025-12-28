@@ -163,10 +163,11 @@ function applyDamage(
     spawnXP(scene, enemy.position.x, enemy.position.z, enemy.xpValue || 10);
 
     // Elite enemies (FIREWALL) drop chests
-    if (enemy.baseColor === 0xff4400) {
+    if (enemy.enemyType === 'firewall') {
       const roll = Math.random();
       const rarity = roll < 0.70 ? 'common' : roll < 0.95 ? 'rare' : 'epic';
       spawnChest(scene, enemy.position.x, enemy.position.z, rarity as 'common' | 'rare' | 'epic');
+      console.log('[Chest] Spawned', rarity, 'chest from FIREWALL');
     }
 
     despawn(enemy, scene);
