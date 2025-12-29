@@ -291,6 +291,7 @@ body.inverted-controls #minimap-container {
 }
 
 @keyframes timer-pulse {
+
   0%,
   100% {
     opacity: 1;
@@ -327,6 +328,7 @@ body.inverted-controls #minimap-container {
 }
 
 @keyframes boss-name-glow {
+
   0%,
   100% {
     text-shadow: 0 0 10px #ff0044;
@@ -360,13 +362,11 @@ body.inverted-controls #minimap-container {
   left: 0;
   right: 0;
   bottom: 0;
-  background: repeating-linear-gradient(
-    -45deg,
-    transparent,
-    transparent 10px,
-    rgba(255, 0, 68, 0.05) 10px,
-    rgba(255, 0, 68, 0.05) 20px
-  );
+  background: repeating-linear-gradient(-45deg,
+      transparent,
+      transparent 10px,
+      rgba(255, 0, 68, 0.05) 10px,
+      rgba(255, 0, 68, 0.05) 20px);
   pointer-events: none;
 }
 
@@ -679,7 +679,8 @@ body.inverted-controls #minimap-container {
   left: 0;
   width: 100%;
   height: 60%;
-  z-index: 40;
+  z-index: 150;
+  /* Ensure visual is above other UI (like top bar gradients) */
   touch-action: none;
   pointer-events: auto;
   border: none;
@@ -746,12 +747,10 @@ body.inverted-controls #minimap-container {
 #joystick-knob {
   width: 50px;
   height: 50px;
-  background: radial-gradient(
-    circle at 30% 30%,
-    rgba(80, 255, 255, 0.9) 0%,
-    rgba(45, 226, 230, 0.8) 50%,
-    rgba(0, 180, 200, 0.9) 100%
-  );
+  background: radial-gradient(circle at 30% 30%,
+      rgba(80, 255, 255, 0.9) 0%,
+      rgba(45, 226, 230, 0.8) 50%,
+      rgba(0, 180, 200, 0.9) 100%);
   border-radius: 50%;
   box-shadow:
     0 0 20px rgba(45, 226, 230, 0.8),
@@ -839,7 +838,8 @@ body.inverted-controls #minimap-container {
   text-shadow: 0 0 5px rgba(45, 226, 230, 0.5);
 }
 
-@media (max-width: 800px), (pointer: coarse) {
+@media (max-width: 800px),
+(pointer: coarse) {
   #mobile-controls {
     display: block;
   }
@@ -1012,12 +1012,10 @@ body.inverted-controls #minimap-container {
   width: 100%;
   height: 100%;
   background:
-    linear-gradient(
-      135deg,
+    linear-gradient(135deg,
       rgba(10, 10, 10, 0.85) 0%,
       rgba(26, 26, 46, 0.75) 50%,
-      rgba(10, 10, 10, 0.85) 100%
-    ),
+      rgba(10, 10, 10, 0.85) 100%),
     url('/textures/ui/menu/menu_background.png');
   background-size: cover, cover;
   background-position: center, center;
@@ -1035,13 +1033,11 @@ body.inverted-controls #minimap-container {
   left: 0;
   width: 100%;
   height: 100%;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    rgba(0, 0, 0, 0.3) 2px,
-    rgba(0, 0, 0, 0.3) 4px
-  );
+  background: repeating-linear-gradient(0deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 0, 0, 0.3) 2px,
+      rgba(0, 0, 0, 0.3) 4px);
   pointer-events: none;
   animation: scanlines 10s linear infinite;
 }
@@ -1071,15 +1067,14 @@ body.inverted-controls #minimap-container {
 }
 
 @keyframes logoPulse {
+
   0%,
   100% {
-    filter: drop-shadow(0 0 30px rgba(45, 226, 230, 0.6))
-      drop-shadow(0 0 60px rgba(255, 0, 85, 0.4));
+    filter: drop-shadow(0 0 30px rgba(45, 226, 230, 0.6)) drop-shadow(0 0 60px rgba(255, 0, 85, 0.4));
   }
 
   50% {
-    filter: drop-shadow(0 0 40px rgba(45, 226, 230, 0.8))
-      drop-shadow(0 0 80px rgba(255, 0, 85, 0.6));
+    filter: drop-shadow(0 0 40px rgba(45, 226, 230, 0.8)) drop-shadow(0 0 80px rgba(255, 0, 85, 0.6));
   }
 }
 
@@ -1105,6 +1100,7 @@ body.inverted-controls #minimap-container {
 }
 
 @keyframes titlePulse {
+
   0%,
   100% {
     filter: brightness(1);
@@ -1371,11 +1367,11 @@ input[type='range']::-moz-range-thumb {
   border-radius: 50%;
 }
 
-.toggle-switch input:checked + .toggle-slider {
+.toggle-switch input:checked+.toggle-slider {
   background-color: rgba(45, 226, 230, 0.3);
 }
 
-.toggle-switch input:checked + .toggle-slider::before {
+.toggle-switch input:checked+.toggle-slider::before {
   transform: translateX(24px);
   background-color: #2de2e6;
   box-shadow: 0 0 10px #2de2e6;
