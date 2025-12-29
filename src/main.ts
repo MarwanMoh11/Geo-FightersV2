@@ -28,6 +28,8 @@ import { FinaleBossSystem } from './systems/FinaleBoss';
 import { PassiveEffectsSystem } from './systems/PassiveEffectsSystem';
 import { OrbitalSystem } from './systems/OrbitalSystem';
 import { updateFPS } from './systems/MainMenuSystem';
+import { initLevel } from './systems/LevelSystem';
+import { initMinimap, MinimapSystem } from './systems/MinimapSystem';
 
 // --- AUDIO UNLOCK & MUSIC START ---
 const unlockAudio = () => {
@@ -45,6 +47,10 @@ const unlockAudio = () => {
 document.body.addEventListener('click', unlockAudio, { once: true });
 document.body.addEventListener('touchstart', unlockAudio, { once: true });
 const { scene, camera, renderer } = initRenderer();
+
+// --- LEVEL SETUP ---
+initLevel(scene); // Spawn ground, obstacles, neon lighting
+initMinimap();    // Initialize minimap canvas
 
 // --- INITIAL SETUP ---
 spawnPlayer(scene);
@@ -118,6 +124,7 @@ function animate() {
   CameraSystem(dt, camera);
   const t3 = performance.now();
   UISystem();
+  MinimapSystem();  // Update minimap
   const t4 = performance.now();
 
   // Log slow frames (> 2ms total for new systems)

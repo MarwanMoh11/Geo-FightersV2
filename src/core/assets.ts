@@ -4,7 +4,20 @@ const textureLoader = new THREE.TextureLoader();
 const textures = new Map<string, THREE.Texture>();
 
 // List of all textures to preload
-const TEXTURE_PATHS = ['/sprites/player/player_robot.png', '/sprites/enemies/enemy_glitch.png'];
+const TEXTURE_PATHS = [
+  // Player & Enemies
+  '/sprites/player/player_robot.png',
+  '/sprites/enemies/enemy_glitch.png',
+  // Environment - Level 1
+  '/textures/environments/ground_asphalt.png',
+  '/textures/environments/wall_texture.png',
+  '/textures/environments/prop_taxi.png',
+  '/textures/environments/prop_vending.png',
+  '/textures/environments/prop_scrap.png',
+  '/textures/environments/prop_container.png',
+  '/textures/environments/prop_mech.png',
+  '/textures/environments/prop_bench.png',
+];
 
 // Preload all textures and return a promise
 export function preloadTextures(): Promise<void> {

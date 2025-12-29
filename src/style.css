@@ -133,6 +133,52 @@ html {
   color: #2de2e6;
 }
 
+/* --- MINIMAP --- */
+#minimap-container {
+  position: fixed;
+  bottom: 30px;
+  right: 15px;
+  width: 160px;
+  height: 175px;
+  background: rgba(10, 10, 20, 0.85);
+  border: 2px solid #2de2e6;
+  border-radius: 8px;
+  padding: 5px;
+  z-index: 100;
+  box-shadow: 0 0 15px rgba(45, 226, 230, 0.4), inset 0 0 10px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+#minimap-canvas {
+  width: 150px;
+  height: 150px;
+  border-radius: 4px;
+  background: #0a0a15;
+}
+
+#minimap-label {
+  text-align: center;
+  color: #2de2e6;
+  font-size: 10px;
+  letter-spacing: 2px;
+  margin-top: 3px;
+  text-shadow: 0 0 5px #2de2e6;
+}
+
+/* Hide minimap on small mobile screens */
+@media (max-width: 600px) {
+  #minimap-container {
+    width: 100px;
+    height: 115px;
+    bottom: 80px;
+  }
+
+  #minimap-canvas {
+    width: 90px;
+    height: 90px;
+  }
+}
+
 /* --- GAME TIMER (Top Center) --- */
 #game-timer {
   position: fixed;

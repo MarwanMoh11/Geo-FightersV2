@@ -27,19 +27,17 @@ export function initRenderer() {
     document.body.appendChild(renderer.domElement);
   }
 
-  // 4. "Greybox" Lighting
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+  // 4. Improved Lighting for visibility
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);  // Boosted from 0.4
   scene.add(ambientLight);
 
-  const dirLight = new THREE.DirectionalLight(0xffffff, 1);
-  dirLight.position.set(10, 20, 10);
+  const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);  // Boosted from 1.0
+  dirLight.position.set(10, 30, 10);
   dirLight.castShadow = true;
   scene.add(dirLight);
 
-  // 5. The Reference Grid (The Floor)
-  // Instead of a texture, we use a grid to visualize movement speed accurately.
-  const gridHelper = new THREE.GridHelper(100, 100, 0x444444, 0x333333);
-  scene.add(gridHelper);
+  // 5. The Floor is now created by LevelSystem
+  // (Replaced GridHelper with textured ground plane in LevelSystem.ts)
 
   // 6. Responsive Window
   window.addEventListener('resize', () => {
