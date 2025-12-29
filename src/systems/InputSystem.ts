@@ -98,7 +98,9 @@ if (joystickZone && joystickKnob && joystickVisuals) {
       const localX = touch.clientX - rect.left;
       const localY = touch.clientY - rect.top;
 
-      joystickVisuals.style.transform = `translate(${localX}px, ${localY}px)`;
+      joystickVisuals.style.left = `${localX}px`;
+      joystickVisuals.style.top = `${localY}px`;
+      // joystickVisuals.style.transform = `translate(${localX}px, ${localY}px)`; // Avoid transform conflict with animation
       joystickVisuals.classList.add('active');
 
       updateJoystick(touch.clientX, touch.clientY);
