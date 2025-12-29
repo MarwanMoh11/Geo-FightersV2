@@ -3,12 +3,11 @@ import { world } from './world';
 import { loadTexture } from './assets';
 import { getDefaultStats } from './PlayerStats';
 import { WEAPONS, getWeaponStatsAtLevel } from './WeaponRegistry';
+import { getTierForValue, bankXP, MAX_ACTIVE_XP } from './XPManager';
 
 // --- SHARED RESOURCES ---
 const shadowGeo = new THREE.CircleGeometry(0.4, 16);
 const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4 });
-const xpGeometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
-const xpMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
 
 // --- ENEMY DEFINITIONS (Restored) ---
 export const EnemyType = {
@@ -298,12 +297,32 @@ export function spawnEnemy(
 }
 
 export function spawnXP(scene: THREE.Scene, x: number, z: number, value: number) {
-  const mesh = new THREE.Mesh(xpGeometry, xpMaterial);
+  // Check XP cap - bank instead of spawning if at limit
+  const activeXPCount = Array.from(world.with('isXP')).length;
+  if (activeXPCount >= MAX_ACTIVE_XP) {
+    bankXP(value);
+    return;
+  }
+
+  // Get tier based on value
+  const tier = getTierForValue(value);
+
+  // Create tiered geometry and material
+  const geometry = new THREE.BoxGeometry(tier.size, tier.size, tier.size);
+  const material = new THREE.MeshBasicMaterial({ color: tier.color });
+  const mesh = new THREE.Mesh(geometry, material);
   mesh.position.set(x, 0.5, z);
   scene.add(mesh);
+
+  // Small random eject velocity
   const angle = Math.random() * Math.PI * 2;
-  const force = 2;
-  const velocity = new THREE.Vector3(Math.cos(angle) * force, 5.0, Math.sin(angle) * force);
+  const force = 1.5;
+  const velocity = new THREE.Vector3(
+    Math.cos(angle) * force,
+    3.0,
+    Math.sin(angle) * force
+  );
+
   world.add({
     isXP: true,
     position: mesh.position,

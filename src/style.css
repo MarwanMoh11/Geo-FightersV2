@@ -26,6 +26,70 @@ html {
   height: 100%;
 }
 
+/* --- LOADING SCREEN --- */
+#loading-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #0a0a12 0%, #1a1a2e 50%, #0a0a12 100%);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10000;
+  transition: opacity 0.5s ease-out;
+}
+
+#loading-screen.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.loading-content {
+  text-align: center;
+}
+
+.loading-title {
+  font-size: 4rem;
+  font-weight: bold;
+  color: #2de2e6;
+  text-shadow: 0 0 20px #2de2e6, 0 0 40px #2de2e6, 0 0 60px #00ffff;
+  letter-spacing: 8px;
+  margin-bottom: 10px;
+}
+
+.loading-subtitle {
+  font-size: 1rem;
+  color: #666;
+  letter-spacing: 4px;
+  margin-bottom: 40px;
+}
+
+.loading-bar-container {
+  width: 300px;
+  height: 8px;
+  background: rgba(45, 226, 230, 0.1);
+  border: 1px solid rgba(45, 226, 230, 0.3);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 0 auto 20px;
+}
+
+#loading-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #2de2e6, #00ff88, #2de2e6);
+  box-shadow: 0 0 10px #2de2e6;
+  transition: width 0.3s ease-out;
+}
+
+#loading-text {
+  font-size: 0.9rem;
+  color: #888;
+  letter-spacing: 2px;
+}
+
 /* --- HUD --- */
 #ui-layer {
   position: absolute;

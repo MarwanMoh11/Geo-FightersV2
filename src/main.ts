@@ -46,98 +46,135 @@ const unlockAudio = () => {
 // Listen for first interaction
 document.body.addEventListener('click', unlockAudio, { once: true });
 document.body.addEventListener('touchstart', unlockAudio, { once: true });
-const { scene, camera, renderer } = initRenderer();
 
-// --- LEVEL SETUP ---
-initLevel(scene); // Spawn ground, obstacles, neon lighting
-initMinimap();    // Initialize minimap canvas
+// --- LOADING SCREEN MANAGEMENT ---
+const loadingScreen = document.getElementById('loading-screen');
+const loadingBar = document.getElementById('loading-bar-fill');
+const loadingText = document.getElementById('loading-text');
 
-// --- INITIAL SETUP ---
-spawnPlayer(scene);
+import { preloadTextures } from './core/assets';
 
-// --- DEBUG: Press 'C' to spawn a chest for testing ---
+function updateLoadingProgress(loaded: number, total: number) {
+  const percent = (loaded / total) * 100;
+  if (loadingBar) loadingBar.style.width = `${percent}%`;
+  if (loadingText) loadingText.textContent = `Loading assets... ${loaded}/${total}`;
+}
+
+function hideLoadingScreen() {
+  if (loadingScreen) {
+    loadingScreen.classList.add('hidden');
+    // Remove from DOM after fade out
+    setTimeout(() => {
+      loadingScreen.remove();
+    }, 500);
+  }
+}
+
+// --- PRELOAD ALL ASSETS THEN START GAME ---
+preloadTextures(updateLoadingProgress).then(() => {
+  if (loadingText) loadingText.textContent = 'Initializing...';
+
+  const { scene, camera, renderer } = initRenderer();
+
+  // --- LEVEL SETUP ---
+  initLevel(scene); // Spawn ground, obstacles, neon lighting
+  initMinimap();    // Initialize minimap canvas
+
+  // --- INITIAL SETUP ---
+  spawnPlayer(scene);
+
+  hideLoadingScreen();
+
+  // --- DEBUG: Press 'C' to spawn a chest for testing ---
+  startGameLoop(scene, camera, renderer);
+});
+
+// --- GAME LOOP (separated for clarity) ---
 import { spawnChest } from './systems/ChestSystem';
 import { world } from './core/world';
 
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'c' || e.key === 'C') {
-    const player = world.with('isPlayer', 'position').first;
-    if (player) {
-      const x = player.position.x + (Math.random() - 0.5) * 4;
-      const z = player.position.z + (Math.random() - 0.5) * 4;
-      const rarities: ('common' | 'rare' | 'epic')[] = ['common', 'rare', 'epic'];
-      const rarity = rarities[Math.floor(Math.random() * 3)];
-      spawnChest(scene, x, z, rarity);
-      console.log('[DEBUG] Spawned', rarity, 'chest at', x.toFixed(1), z.toFixed(1));
+function startGameLoop(scene: THREE.Scene, camera: THREE.Camera, renderer: THREE.WebGLRenderer) {
+  // DEBUG: Press 'C' to spawn a chest for testing
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'c' || e.key === 'C') {
+      const player = world.with('isPlayer', 'position').first;
+      if (player) {
+        const x = player.position.x + (Math.random() - 0.5) * 4;
+        const z = player.position.z + (Math.random() - 0.5) * 4;
+        const rarities: ('common' | 'rare' | 'epic')[] = ['common', 'rare', 'epic'];
+        const rarity = rarities[Math.floor(Math.random() * 3)];
+        spawnChest(scene, x, z, rarity);
+        console.log('[DEBUG] Spawned', rarity, 'chest at', x.toFixed(1), z.toFixed(1));
+      }
     }
-  }
-});
+  });
 
-// --- GAME LOOP ---
-const clock = new THREE.Clock();
+  // --- GAME LOOP ---
+  const clock = new THREE.Clock();
 
-function animate() {
-  requestAnimationFrame(animate);
+  function animate() {
+    requestAnimationFrame(animate);
 
-  const dt = clock.getDelta();
+    const dt = clock.getDelta();
 
-  // Update FPS counter
-  updateFPS(performance.now());
+    // Update FPS counter
+    updateFPS(performance.now());
 
-  // Check if game should run (not in menu, not paused by upgrade modal, not game over)
-  const shouldRunGame = isPlaying() && !isGamePaused && !isGameOver;
+    // Check if game should run (not in menu, not paused by upgrade modal, not game over)
+    const shouldRunGame = isPlaying() && !isGamePaused && !isGameOver;
 
-  if (!shouldRunGame) {
-    // Still render the scene even when paused
+    if (!shouldRunGame) {
+      // Still render the scene even when paused
+      renderer.render(scene, camera);
+      return;
+    }
+
+    // 1. Logic
+    InputSystem();
+    AimSystem();
+    PlayerControlSystem();
+    EnemySystem(dt, scene);
+    TimelineSpawnerSystem(dt, scene);
+
+    // 2. Combat
+    WeaponSystem(dt, scene);
+    CollisionSystem(scene);
+
+    // 3. Physics/Visuals
+    PhysicsSystem(dt);
+    LifecycleSystem(dt, scene);
+    ParticleSystem(dt);
+    LootSystem(dt, scene);
+    PassiveEffectsSystem(dt); // Apply health regen, etc.
+    OrbitalSystem(dt); // Update orbital weapon projectiles
+
+    // === PROFILED NEW SYSTEMS ===
+    const t0 = performance.now();
+    ChestSystem(dt, scene);
+    const t1 = performance.now();
+    FinaleBossSystem(dt, scene);
+    const t2 = performance.now();
+
+    // 4. UI & Camera
+    RenderSystem(dt);
+    CameraSystem(dt, camera);
+    const t3 = performance.now();
+    UISystem();
+    MinimapSystem();  // Update minimap
+    const t4 = performance.now();
+
+    // Log slow frames (> 2ms total for new systems)
+    const chestTime = t1 - t0;
+    const bossTime = t2 - t1;
+    const uiTime = t4 - t3;
+    const totalNew = chestTime + bossTime + uiTime;
+
+    if (totalNew > 2) {
+      console.warn(`[PERF] Slow frame: Chest=${chestTime.toFixed(2)}ms, Boss=${bossTime.toFixed(2)}ms, UI=${uiTime.toFixed(2)}ms`);
+    }
+
     renderer.render(scene, camera);
-    return;
   }
 
-  // 1. Logic
-  InputSystem();
-  AimSystem();
-  PlayerControlSystem();
-  EnemySystem(dt);
-  TimelineSpawnerSystem(dt, scene);
-
-  // 2. Combat
-  WeaponSystem(dt, scene);
-  CollisionSystem(scene);
-
-  // 3. Physics/Visuals
-  PhysicsSystem(dt);
-  LifecycleSystem(dt, scene);
-  ParticleSystem(dt);
-  LootSystem(dt, scene);
-  PassiveEffectsSystem(dt); // Apply health regen, etc.
-  OrbitalSystem(dt); // Update orbital weapon projectiles
-
-  // === PROFILED NEW SYSTEMS ===
-  const t0 = performance.now();
-  ChestSystem(dt, scene);
-  const t1 = performance.now();
-  FinaleBossSystem(dt, scene);
-  const t2 = performance.now();
-
-  // 4. UI & Camera
-  RenderSystem(dt);
-  CameraSystem(dt, camera);
-  const t3 = performance.now();
-  UISystem();
-  MinimapSystem();  // Update minimap
-  const t4 = performance.now();
-
-  // Log slow frames (> 2ms total for new systems)
-  const chestTime = t1 - t0;
-  const bossTime = t2 - t1;
-  const uiTime = t4 - t3;
-  const totalNew = chestTime + bossTime + uiTime;
-
-  if (totalNew > 2) {
-    console.warn(`[PERF] Slow frame: Chest=${chestTime.toFixed(2)}ms, Boss=${bossTime.toFixed(2)}ms, UI=${uiTime.toFixed(2)}ms`);
-  }
-
-  renderer.render(scene, camera);
+  animate();
 }
-
-animate();

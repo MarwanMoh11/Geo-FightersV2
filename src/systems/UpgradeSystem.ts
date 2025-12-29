@@ -22,7 +22,7 @@ const MAX_PASSIVE_SLOTS = 6;
 const UPGRADE_CHOICES = 3;
 
 // --- UPGRADE TYPES ---
-type UpgradeType = 'weapon_new' | 'weapon_level' | 'passive_new' | 'passive_level';
+type UpgradeType = 'weapon_new' | 'weapon_level' | 'passive_new' | 'passive_level' | 'health';
 
 interface UpgradeOption {
   type: UpgradeType;
@@ -75,6 +75,9 @@ function renderCards() {
       typeLabel = `LEVEL ${option.currentLevel} → ${option.nextLevel}`;
     } else if (option.type === 'passive_level') {
       typeLabel = `LEVEL ${option.currentLevel} → ${option.nextLevel}`;
+    } else if (option.type === 'health') {
+      borderColor = '#ff5577';
+      typeLabel = 'HEAL';
     }
 
     card.style.borderColor = borderColor;
@@ -112,6 +115,8 @@ function getUpgradeIconHtml(option: UpgradeOption): string {
       targeting_os: '🎯', quantum_regulator: '⚛️', debug_suite: '🐛',
     };
     return `<div class="card-icon-emoji">${passiveEmojis[option.id] || '🔸'}</div>`;
+  } else if (option.type === 'health') {
+    return `<div class="card-icon-emoji">❤️</div>`;
   }
 
   // Return image for weapons, with fallback
@@ -189,6 +194,15 @@ function generateUpgradePool(player: any): UpgradeOption[] {
     }
   }
 
+  // 5. Health boost (always available as fallback)
+  pool.push({
+    type: 'health',
+    id: 'health_boost',
+    name: 'HEALTH BOOST',
+    description: '+20 Max Health & Full Heal',
+    weight: 15,  // Low priority - appears less often unless pool is small
+  });
+
   return pool;
 }
 
@@ -233,6 +247,9 @@ function selectUpgrade(option: UpgradeOption) {
       break;
     case 'passive_level':
       levelUpPassive(player, option.id);
+      break;
+    case 'health':
+      applyHealthUpgrade(player);
       break;
   }
 
@@ -318,6 +335,15 @@ function addNewPassive(player: any, passiveId: string) {
   player.passiveSlots = slots;
 
   console.log(`[Upgrade] Added passive: ${def.name}`);
+}
+
+// --- HEALTH UPGRADE ---
+function applyHealthUpgrade(player: any) {
+  if (player.health) {
+    player.health.max += 20;
+    player.health.current = player.health.max;  // Full heal
+  }
+  console.log('[Upgrade] Health boost applied (+20 max, full heal)');
 }
 
 function levelUpPassive(player: any, passiveId: string) {

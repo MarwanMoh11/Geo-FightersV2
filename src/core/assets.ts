@@ -20,9 +20,12 @@ const TEXTURE_PATHS = [
 ];
 
 // Preload all textures and return a promise
-export function preloadTextures(): Promise<void> {
+export function preloadTextures(onProgress?: (loaded: number, total: number) => void): Promise<void> {
+  let loadedCount = 0;
+  const total = TEXTURE_PATHS.length;
+
   const loadPromises = TEXTURE_PATHS.map((path) => {
-    return new Promise<void>((resolve, reject) => {
+    return new Promise<void>((resolve) => {
       textureLoader.load(
         path,
         (texture) => {
@@ -31,13 +34,16 @@ export function preloadTextures(): Promise<void> {
           texture.minFilter = THREE.NearestFilter;
           texture.colorSpace = THREE.SRGBColorSpace;
           textures.set(path, texture);
-          console.log(`Loaded texture: ${path}`);
+          loadedCount++;
+          if (onProgress) onProgress(loadedCount, total);
           resolve();
         },
         undefined,
         (error) => {
-          console.error(`Failed to load texture: ${path}`, error);
-          reject(error);
+          console.warn(`Failed to load texture: ${path}`, error);
+          loadedCount++;
+          if (onProgress) onProgress(loadedCount, total);
+          resolve(); // Don't reject - continue with missing textures
         },
       );
     });

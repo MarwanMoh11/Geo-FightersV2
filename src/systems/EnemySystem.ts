@@ -7,10 +7,12 @@
  * 3. Squared distance for separation
  * 4. Limited separation checks (only nearby enemies)
  * 5. Early-out on stunned enemies
+ * 6. Screen-bound despawning (enemies far from player are removed)
  * 
  * Signal Hijacker: Confused enemies attack other enemies
  */
 
+import * as THREE from 'three';
 import { world } from '../core/world';
 
 // --- PRECOMPUTED CONSTANTS ---
@@ -20,10 +22,14 @@ const STEER_STRENGTH = 8.0;
 const STUN_FRICTION = 0.9;
 const CONFUSED_ATTACK_RANGE_SQ = 2.0 * 2.0; // Range for confused enemy attacks
 
+// --- DESPAWN RADIUS (Screen-bound entity recycling) ---
+// ViewRadius ~20, SpawnRadius ~26, DespawnRadius = 36 (1.8x view)
+const DESPAWN_RADIUS_SQ = 36 * 36;
+
 // --- MAX SEPARATION CHECKS PER ENEMY (Performance cap) ---
 const MAX_SEPARATION_CHECKS = 10;
 
-export function EnemySystem(dt: number) {
+export function EnemySystem(dt: number, scene: THREE.Scene) {
   const player = world.with('isPlayer', 'position').first;
   if (!player) return;
 
@@ -143,6 +149,21 @@ export function EnemySystem(dt: number) {
     if (enemy.transform) {
       enemy.transform.position.x = enemy.position.x;
       enemy.transform.position.z = enemy.position.z;
+    }
+
+    // 6. DESPAWN (Screen-bound entity recycling)
+    // Remove enemies too far from player to maintain performance
+    const distX = enemy.position.x - px;
+    const distZ = enemy.position.z - pz;
+    const distSq = distX * distX + distZ * distZ;
+
+    if (distSq > DESPAWN_RADIUS_SQ) {
+      // Remove from scene
+      if (enemy.transform) {
+        scene.remove(enemy.transform);
+      }
+      // Remove from ECS world
+      world.remove(enemy);
     }
   }
 }
