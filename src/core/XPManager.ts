@@ -1,6 +1,7 @@
 // --- XP MANAGER ---
 // Global XP banking system for screen-bound XP lifecycle
 // When XP shards despawn or cap is reached, XP is banked here
+// When buffer exceeds threshold, spawns a large shard near player
 
 // --- CONSTANTS ---
 export const XP_TIERS = {
@@ -12,12 +13,12 @@ export const XP_TIERS = {
 
 export const MAX_ACTIVE_XP = 200;
 export const XP_DESPAWN_RADIUS_SQ = 40 * 40;
-export const XP_MERGE_RADIUS_SQ = 3 * 3;
-export const XP_MERGE_CHECK_INTERVAL = 10; // frames
+
+// Bank delivery - spawn large shard when buffer exceeds this
+export const XP_BANK_DELIVERY_THRESHOLD = 500;
 
 // --- STATE ---
 let globalXPBuffer = 0;
-let frameCounter = 0;
 
 // --- BANKING API ---
 export function bankXP(value: number): void {
@@ -30,12 +31,23 @@ export function withdrawXP(amount: number): number {
     return withdrawn;
 }
 
+export function withdrawAllXP(): number {
+    const amount = globalXPBuffer;
+    globalXPBuffer = 0;
+    return amount;
+}
+
 export function getBufferedXP(): number {
     return globalXPBuffer;
 }
 
 export function resetXPBuffer(): void {
     globalXPBuffer = 0;
+}
+
+// Check if bank should deliver XP (threshold reached)
+export function shouldDeliverBankedXP(): boolean {
+    return globalXPBuffer >= XP_BANK_DELIVERY_THRESHOLD;
 }
 
 // --- TIER HELPERS ---
@@ -46,15 +58,3 @@ export function getTierForValue(value: number): typeof XP_TIERS.TIER_1 {
     return XP_TIERS.TIER_1;
 }
 
-// --- FRAME COUNTER (for merge staggering) ---
-export function incrementFrameCounter(): void {
-    frameCounter++;
-}
-
-export function getFrameCounter(): number {
-    return frameCounter;
-}
-
-export function shouldCheckMerge(shardId: number): boolean {
-    return (frameCounter + shardId) % XP_MERGE_CHECK_INTERVAL === 0;
-}

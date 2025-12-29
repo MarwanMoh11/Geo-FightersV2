@@ -194,12 +194,12 @@ function generateUpgradePool(player: any): UpgradeOption[] {
     }
   }
 
-  // 5. Health boost (always available as fallback)
+  // 5. Health heal (always available as fallback)
   pool.push({
     type: 'health',
     id: 'health_boost',
-    name: 'HEALTH BOOST',
-    description: '+20 Max Health & Full Heal',
+    name: 'HEALTH RECHARGE',
+    description: 'Restore 20 HP',
     weight: 15,  // Low priority - appears less often unless pool is small
   });
 
@@ -337,13 +337,13 @@ function addNewPassive(player: any, passiveId: string) {
   console.log(`[Upgrade] Added passive: ${def.name}`);
 }
 
-// --- HEALTH UPGRADE ---
+// --- HEALTH RECHARGE ---
 function applyHealthUpgrade(player: any) {
   if (player.health) {
-    player.health.max += 20;
-    player.health.current = player.health.max;  // Full heal
+    // Heal 20 HP (capped at max)
+    player.health.current = Math.min(player.health.current + 20, player.health.max);
   }
-  console.log('[Upgrade] Health boost applied (+20 max, full heal)');
+  console.log('[Upgrade] Health recharge applied (+20 HP)');
 }
 
 function levelUpPassive(player: any, passiveId: string) {

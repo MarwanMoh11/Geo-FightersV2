@@ -4,22 +4,16 @@
  * Features:
  * 1. Magnet attraction toward player
  * 2. Screen-bound despawning with XP banking
- * 3. Shard merging for reduced entity count
- * 4. Tiered visuals (color/size based on value)
+ * 3. Tiered visuals (color/size based on value)
+ * 4. Bank delivery when threshold reached (500+ XP)
  */
 
 import { world } from '../core/world';
 import * as THREE from 'three';
 import { triggerLevelUp } from './UpgradeSystem';
 import { playCollect, playLevelUp } from '../core/audio';
-import {
-  bankXP,
-  getTierForValue,
-  XP_DESPAWN_RADIUS_SQ,
-  XP_MERGE_RADIUS_SQ,
-  incrementFrameCounter,
-  shouldCheckMerge,
-} from '../core/XPManager';
+import { bankXP, XP_DESPAWN_RADIUS_SQ, shouldDeliverBankedXP, withdrawAllXP } from '../core/XPManager';
+import { spawnXP } from '../core/factories';
 
 // --- PRECOMPUTED CONSTANTS ---
 const MAGNET_RADIUS_SQ = 5.0 * 5.0;
@@ -36,20 +30,21 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
   const px = player.position.x;
   const pz = player.position.z;
 
-  // Increment frame counter for staggered merge checks
-  incrementFrameCounter();
+  // BANK DELIVERY - Spawn large shard when buffer exceeds threshold (500+ XP)
+  if (shouldDeliverBankedXP()) {
+    const bankedAmount = withdrawAllXP();
+    // Spawn near player with slight offset
+    const offsetX = (Math.random() - 0.5) * 4;
+    const offsetZ = (Math.random() - 0.5) * 4;
+    spawnXP(scene, px + offsetX, pz + offsetZ, bankedAmount);
+    console.log(`[XP BANK] Delivered ${bankedAmount} XP`);
+  }
 
   // Apply magnet stat multiplier (default 1.0)
   const magnetMult = player.stats?.magnet || 1.0;
   const effectiveMagnetRadiusSq = MAGNET_RADIUS_SQ * magnetMult * magnetMult;
 
-  // Collect all XP shards for merge checking
-  const xpShards = Array.from(world.with('isXP', 'position', 'velocity', 'xpValue', 'transform'));
-
-  for (let i = 0; i < xpShards.length; i++) {
-    const xp = xpShards[i];
-    if (!xp.xpValue) continue; // Skip if already merged/removed
-
+  for (const xp of world.with('isXP', 'position', 'velocity', 'xpValue')) {
     // SQUARED DISTANCE (No sqrt)
     const dx = px - xp.position.x;
     const dz = pz - xp.position.z;
@@ -57,7 +52,7 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
 
     // A. DESPAWN CHECK - Bank XP and remove shards too far from player
     if (distSq > XP_DESPAWN_RADIUS_SQ) {
-      bankXP(xp.xpValue);
+      bankXP(xp.xpValue || 0);
       despawn(xp, scene);
       continue;
     }
@@ -81,36 +76,7 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
       continue;
     }
 
-    // C. MERGE CHECK (Staggered by shard ID to spread CPU cost)
-    if (xp.id !== undefined && shouldCheckMerge(xp.id)) {
-      for (let j = i + 1; j < xpShards.length; j++) {
-        const other = xpShards[j];
-        if (!other.xpValue) continue;
-
-        const mdx = xp.position.x - other.position.x;
-        const mdz = xp.position.z - other.position.z;
-        const mergeDistSq = mdx * mdx + mdz * mdz;
-
-        if (mergeDistSq < XP_MERGE_RADIUS_SQ) {
-          // Higher value shard absorbs lower
-          if (xp.xpValue >= other.xpValue) {
-            xp.xpValue += other.xpValue;
-            other.xpValue = 0; // Mark as absorbed
-            updateTierVisual(xp);
-            despawn(other, scene);
-          } else {
-            other.xpValue += xp.xpValue;
-            xp.xpValue = 0;
-            updateTierVisual(other);
-            despawn(xp, scene);
-            break; // This shard is gone, stop checking
-          }
-        }
-      }
-      if (!xp.xpValue) continue; // Was absorbed
-    }
-
-    // D. MAGNETISM (Only within radius - distance band optimization)
+    // C. MAGNETISM (Only within radius - distance band optimization)
     if (distSq < effectiveMagnetRadiusSq) {
       const invDist = 1.0 / Math.sqrt(distSq);
       const nx = dx * invDist;
@@ -125,7 +91,7 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
       xp.velocity.z *= FRICTION;
     }
 
-    // E. GRAVITY (Simple bounce)
+    // D. GRAVITY (Simple bounce)
     if (xp.position.y > GROUND_Y) {
       xp.velocity.y -= GRAVITY * dt;
     } else {
@@ -136,12 +102,12 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
       }
     }
 
-    // F. MOVE
+    // E. MOVE
     xp.position.x += xp.velocity.x * dt;
     xp.position.y += xp.velocity.y * dt;
     xp.position.z += xp.velocity.z * dt;
 
-    // G. SYNC VISUALS
+    // F. SYNC VISUALS
     if (xp.transform) {
       xp.transform.position.x = xp.position.x;
       xp.transform.position.y = xp.position.y;
@@ -150,22 +116,6 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
       xp.transform.rotation.x += 2 * dt;
     }
   }
-}
-
-// Update shard visual to match current tier
-function updateTierVisual(xp: any): void {
-  if (!xp.transform || !xp.xpValue) return;
-
-  const tier = getTierForValue(xp.xpValue);
-  const mesh = xp.transform as THREE.Mesh;
-
-  // Update color
-  if (mesh.material && (mesh.material as THREE.MeshBasicMaterial).color) {
-    (mesh.material as THREE.MeshBasicMaterial).color.setHex(tier.color);
-  }
-
-  // Update scale
-  mesh.scale.setScalar(tier.size / 0.25); // Scale relative to base size
 }
 
 function despawn(entity: any, scene: THREE.Scene) {
