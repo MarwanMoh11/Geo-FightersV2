@@ -80,7 +80,11 @@ function renderCards() {
     card.style.borderColor = borderColor;
     card.style.boxShadow = `0 0 15px ${borderColor}40`;
 
+    // Get icon for this upgrade
+    const iconHtml = getUpgradeIconHtml(option);
+
     card.innerHTML = `
+      ${iconHtml}
       <div class="card-title" style="color:${borderColor}">${option.name}</div>
       <div class="card-desc">${option.description}</div>
       <div class="card-rarity">${typeLabel}</div>
@@ -89,6 +93,29 @@ function renderCards() {
     card.onclick = () => selectUpgrade(option);
     container.appendChild(card);
   });
+}
+
+// Helper to get icon HTML for upgrade cards
+function getUpgradeIconHtml(option: UpgradeOption): string {
+  let iconPath = '';
+
+  if (option.type === 'weapon_new' || option.type === 'weapon_level') {
+    // Use image path for weapons
+    iconPath = `/textures/ui/weapons/${option.id}.png`;
+  } else if (option.type === 'passive_new' || option.type === 'passive_level') {
+    // Passives still use emoji fallback until we generate them
+    const passiveEmojis: Record<string, string> = {
+      power_cell: '⚡', accelerator_chip: '🚀', capacitor: '🔋',
+      cooling_system: '❄️', clock_skipper: '⏱️', magnet_loader: '🧲',
+      shield_matrix: '🛡️', regen_module: '💚', speed_boosters: '👟',
+      ai_core: '🤖', optics_suite: '👁️', signal_booster: '📶',
+      targeting_os: '🎯', quantum_regulator: '⚛️', debug_suite: '🐛',
+    };
+    return `<div class="card-icon-emoji">${passiveEmojis[option.id] || '🔸'}</div>`;
+  }
+
+  // Return image for weapons, with fallback
+  return `<img class="card-icon" src="${iconPath}" alt="${option.name}" onerror="this.style.display='none'"/>`;
 }
 
 // --- POOL GENERATION ---
@@ -239,6 +266,7 @@ function addNewWeapon(player: any, weaponId: string) {
       bulletSpeed: def.baseSpeed,
       bulletColor: def.color,
       bulletLifetime: def.baseLifetime,
+      category: def.category, // For orbital weapon detection
       bulletWidth: def.bulletWidth,
       bulletLength: def.bulletLength,
       visualStyle: def.visualStyle,

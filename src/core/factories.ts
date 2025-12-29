@@ -139,6 +139,7 @@ export function spawnPlayer(scene: THREE.Scene) {
       bulletSpeed: starterWeapon.baseSpeed,
       bulletColor: starterWeapon.color,
       bulletLifetime: starterWeapon.baseLifetime,
+      category: starterWeapon.category, // For orbital weapon detection
 
       bulletWidth: starterWeapon.bulletWidth,
       bulletLength: starterWeapon.bulletLength,

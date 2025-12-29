@@ -7,6 +7,7 @@ import {
   getEffectiveDamage,
   getEffectiveAmount,
 } from '../core/PlayerStats';
+import { spawnOrbitalProjectile } from './OrbitalSystem';
 
 // --- PERFORMANCE CACHE ---
 // 1. Shared Geometries (Created Once)
@@ -75,7 +76,9 @@ export function WeaponSystem(dt: number, scene: THREE.Scene) {
 
       if (entity.weapon.cooldownTimer > 0) entity.weapon.cooldownTimer -= dt;
 
-      const wantsToFire =
+      // Orbital and Global weapons auto-fire, other weapons require aim
+      const isAutoFire = entity.weapon.category === 'orbit' || entity.weapon.category === 'global';
+      const wantsToFire = isAutoFire ||
         player.input?.isShooting || (player.aimTarget && player.aimTarget.lengthSq() > 0);
 
       if (wantsToFire && entity.weapon.cooldownTimer <= 0) {
@@ -109,8 +112,36 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
   const weaponStats = weaponEntity.weapon;
   const playerStats = owner.stats || getDefaultStats();
 
-  // Calculate Direction (Reuse Vectors)
-  _shootDir.subVectors(owner.aimTarget, owner.position).normalize();
+  // Calculate Direction based on weapon category
+  if (weaponStats.category === 'global') {
+    // Global weapons target the nearest enemy
+    const enemies = Array.from(world.with('isEnemy', 'position', 'health'));
+    let nearestEnemy = null;
+    let nearestDistSq = Infinity;
+
+    for (const enemy of enemies) {
+      if (!enemy.health || enemy.health.current <= 0) continue;
+      const dx = enemy.position.x - owner.position.x;
+      const dz = enemy.position.z - owner.position.z;
+      const distSq = dx * dx + dz * dz;
+      if (distSq < nearestDistSq) {
+        nearestDistSq = distSq;
+        nearestEnemy = enemy;
+      }
+    }
+
+    if (nearestEnemy) {
+      _shootDir.subVectors(nearestEnemy.position, owner.position).normalize();
+    } else {
+      // No enemies, fire in random direction
+      const angle = Math.random() * Math.PI * 2;
+      _shootDir.set(Math.cos(angle), 0, Math.sin(angle));
+    }
+  } else {
+    // Normal weapons fire toward aim target
+    _shootDir.subVectors(owner.aimTarget, owner.position).normalize();
+  }
+
   if (_shootDir.lengthSq() === 0) _shootDir.set(0, 0, 1);
 
   // Feedback
@@ -149,6 +180,22 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
   const style = weaponStats.visualStyle || 'BOLT';
   const pierce = weaponStats.bulletPierce || 1;
 
+  // ORBITAL WEAPONS: Spawn orbiting projectiles instead of regular projectiles
+  if (weaponStats.category === 'orbit') {
+    spawnOrbitalProjectile(
+      scene,
+      owner,
+      count,
+      finalDamage,
+      weaponStats.bulletColor,
+      style,
+      weaponStats.bulletWidth || 0.3,
+      weaponStats.bulletLength || 1.0,
+      finalSpeed * 0.3 // Use speed as orbit speed (scaled down)
+    );
+    return; // Don't spawn regular projectiles
+  }
+
   // Reuse Material
   const material = getBulletMaterial(weaponStats.bulletColor);
 
@@ -156,7 +203,8 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
     // Clone direction locally so we don't mess up the global _shootDir
     const dir = _shootDir.clone();
 
-    if (count > 1 || spread > 0) {
+    // Apply spread only for non-global weapons (global weapons aim directly at enemies)
+    if (weaponStats.category !== 'global' && (count > 1 || spread > 0)) {
       const angleDeg = (Math.random() - 0.5) * spread;
       dir.applyAxisAngle(_axisY, THREE.MathUtils.degToRad(angleDeg));
     }
@@ -218,6 +266,8 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
         knockback: weaponStats.knockback || 5,
         hitList: [],
         spinSpeed: spin,
+        // Signal Hijacker: 0 damage + AoE = confusion weapon (3 second duration)
+        confusionDuration: (finalDamage === 0 && weaponStats.bulletExplodeRadius > 0) ? 3.0 : 0,
       },
     });
   }

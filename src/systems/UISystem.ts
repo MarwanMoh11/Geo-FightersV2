@@ -29,32 +29,32 @@ const ui = {
   mobilePassiveSlots: document.getElementById('mobile-passive-slots'),
 };
 
-// --- WEAPON ICONS (emoji shortcuts based on weapon type) ---
+// --- WEAPON ICONS (image paths for generated icons, emojis for pending) ---
 const WEAPON_ICONS: Record<string, string> = {
   // Base weapons
-  pulse_repeater: '🔫',
-  monowire_lash: '⚔️',
-  smart_rail_needles: '📍',
-  emp_pulse_node: '⚡',
-  cryo_foam_disperser: '❄️',
-  drone_halo: '🛸',
-  photon_blades: '💫',
-  signal_hijacker: '📡',
-  orbital_kill_ping: '🎯',
-  overclock_engine: '🔥',
-  memory_leak: '💾',
+  pulse_repeater: '/textures/ui/weapons/pulse_repeater.png',
+  monowire_lash: '/textures/ui/weapons/monowire_lash.png',
+  smart_rail_needles: '/textures/ui/weapons/smart_rail_needles.png',
+  emp_pulse_node: '/textures/ui/weapons/emp_pulse_node.png',
+  cryo_foam_disperser: '/textures/ui/weapons/cryo_foam_disperser.png',
+  drone_halo: '/textures/ui/weapons/drone_halo.png',
+  photon_blades: '/textures/ui/weapons/photon_blades.png',
+  signal_hijacker: '/textures/ui/weapons/signal_hijacker.png',
+  orbital_kill_ping: '🎯', // pending generation
+  overclock_engine: '🔥', // pending generation
+  memory_leak: '💾', // pending generation
   // Evolved weapons
-  omega_pulse: '🌟',
-  nanofiber_guillotine: '⚔️',
-  magnetic_railstorm: '🌀',
-  blackout_field: '⚫',
-  thermal_collapse: '💠',
-  swarm_intelligence: '🐝',
-  photon_curtain: '✨',
-  neural_cascade: '🧠',
-  saturation_strike: '☄️',
-  runaway_singularity: '💥',
-  heap_overflow: '🔮',
+  omega_pulse: '/textures/ui/weapons/omega_pulse.png',
+  nanofiber_guillotine: '/textures/ui/weapons/nanofiber_guillotine.png',
+  magnetic_railstorm: '/textures/ui/weapons/magnetic_railstorm.png',
+  blackout_field: '/textures/ui/weapons/blackout_field.png',
+  thermal_collapse: '/textures/ui/weapons/thermal_collapse.png',
+  swarm_intelligence: '/textures/ui/weapons/swarm_intelligence.png',
+  photon_curtain: '/textures/ui/weapons/photon_curtain.png',
+  neural_cascade: '/textures/ui/weapons/neural_cascade.png',
+  saturation_strike: '☄️', // pending generation
+  runaway_singularity: '💥', // pending generation
+  heap_overflow: '🔮', // pending generation
 };
 
 const PASSIVE_ICONS: Record<string, string> = {
@@ -199,11 +199,15 @@ function renderWeaponSlots(weapons: WeaponSlot[]) {
   if (ui.weaponSlots) {
     ui.weaponSlots.innerHTML = weapons.map(w => {
       const def = WEAPONS[w.weaponId];
-      const icon = WEAPON_ICONS[w.weaponId] || '🔹';
+      const iconPath = WEAPON_ICONS[w.weaponId] || '';
       const name = def?.name || w.weaponId;
+      const isImage = iconPath.endsWith('.png');
+      const iconHtml = isImage
+        ? `<img class="slot-icon-img" src="${iconPath}" alt="${name}"/>`
+        : `<span class="slot-icon">${iconPath || '🔹'}</span>`;
       return `
         <div class="inv-slot weapon" title="${name}">
-          <span class="slot-icon">${icon}</span>
+          ${iconHtml}
           <span class="level-badge">${w.level}</span>
         </div>
       `;
@@ -213,10 +217,15 @@ function renderWeaponSlots(weapons: WeaponSlot[]) {
   // Mobile
   if (ui.mobileWeaponSlots) {
     ui.mobileWeaponSlots.innerHTML = weapons.map(w => {
-      const icon = WEAPON_ICONS[w.weaponId] || '🔹';
+      const iconPath = WEAPON_ICONS[w.weaponId] || '';
+      const name = WEAPONS[w.weaponId]?.name || w.weaponId;
+      const isImage = iconPath.endsWith('.png');
+      const iconHtml = isImage
+        ? `<img class="slot-icon-img" src="${iconPath}" alt="${name}"/>`
+        : iconPath || '🔹';
       return `
         <div class="mobile-inv-slot weapon">
-          ${icon}
+          ${iconHtml}
           <span class="level-badge">${w.level}</span>
         </div>
       `;

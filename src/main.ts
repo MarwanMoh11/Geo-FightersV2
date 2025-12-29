@@ -25,6 +25,8 @@ import { UISystem } from './systems/UISystem';
 import { isGamePaused } from './systems/UpgradeSystem';
 import { isGameOver } from './systems/GameManager';
 import { FinaleBossSystem } from './systems/FinaleBoss';
+import { PassiveEffectsSystem } from './systems/PassiveEffectsSystem';
+import { OrbitalSystem } from './systems/OrbitalSystem';
 import { updateFPS } from './systems/MainMenuSystem';
 
 // --- AUDIO UNLOCK & MUSIC START ---
@@ -101,6 +103,8 @@ function animate() {
   LifecycleSystem(dt, scene);
   ParticleSystem(dt);
   LootSystem(dt, scene);
+  PassiveEffectsSystem(dt); // Apply health regen, etc.
+  OrbitalSystem(dt); // Update orbital weapon projectiles
 
   // === PROFILED NEW SYSTEMS ===
   const t0 = performance.now();

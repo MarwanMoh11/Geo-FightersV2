@@ -72,7 +72,10 @@ export function CollisionSystem(scene: THREE.Scene) {
           addTrauma(0.3);
           playExplosion();
 
-          // Batch damage all enemies in blast radius
+          // Check if this is a confusion weapon (Signal Hijacker)
+          const confusionDuration = bullet.projectile.confusionDuration || 0;
+
+          // Batch damage/confuse all enemies in blast radius
           for (let t = enemies.length - 1; t >= 0; t--) {
             if (t === e) continue; // Already hit
             const target = enemies[t];
@@ -83,9 +86,16 @@ export function CollisionSystem(scene: THREE.Scene) {
             const tDistSq = tdx * tdx + tdz * tdz;
 
             if (tDistSq < blastRadiusSq) {
-              // Reuse vector for blast direction
-              _blastDir.set(tdx, 0, tdz).normalize();
-              applyDamage(target, bullet.damage || 1, _blastDir.multiplyScalar(20), 10, scene, enemies, t);
+              if (confusionDuration > 0) {
+                // Apply confusion (Signal Hijacker effect)
+                target.confusedTimer = confusionDuration;
+                target.hitFlashTimer = 0.2;
+                console.log(`[Signal Hijacker] Confused enemy for ${confusionDuration}s`);
+              } else {
+                // Normal AoE damage
+                _blastDir.set(tdx, 0, tdz).normalize();
+                applyDamage(target, bullet.damage || 1, _blastDir.multiplyScalar(20), 10, scene, enemies, t);
+              }
             }
           }
         }
@@ -118,8 +128,13 @@ export function CollisionSystem(scene: THREE.Scene) {
       const distSq = dx * dx + dz * dz;
 
       if (distSq < PLAYER_HIT_RADIUS_SQ) {
-        player.health.current -= 5;
-        reportDamageTaken(5);
+        // Apply armor reduction from passive stats
+        const baseDamage = 5;
+        const armor = player.stats?.armor || 0;
+        const actualDamage = Math.max(1, baseDamage - armor); // Minimum 1 damage
+
+        player.health.current -= actualDamage;
+        reportDamageTaken(actualDamage);
         addTrauma(0.5);
 
         // Reuse vector for push

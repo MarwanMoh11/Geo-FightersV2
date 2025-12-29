@@ -66,8 +66,8 @@ export const WEAPONS: Record<string, WeaponDef> = {
         levelBonuses: { damage: 1, cooldown: 0.015 },
         projectileMilestones: [4, 7],
         maxLevel: 8,
-        visualStyle: 'BOLT', color: 0x00ffff,
-        bulletWidth: 0.15, bulletLength: 0.8,
+        visualStyle: 'BOLT', color: 0x00ffff, // Cyan pulse
+        bulletWidth: 0.2, bulletLength: 1.0,
         evolvesInto: 'omega_pulse', evolutionRequires: 'power_cell',
     },
 
@@ -85,8 +85,8 @@ export const WEAPONS: Record<string, WeaponDef> = {
         levelBonuses: { damage: 1.5, pierce: 1, cooldown: 0.02 },
         projectileMilestones: [5],
         maxLevel: 8,
-        visualStyle: 'BOLT', color: 0xff00ff,
-        bulletWidth: 0.08, bulletLength: 2.0,
+        visualStyle: 'BOLT', color: 0xff00ff, // Magenta wire
+        bulletWidth: 0.05, bulletLength: 2.5, // Thinner, longer for wire look
         evolvesInto: 'nanofiber_guillotine', evolutionRequires: 'power_cell',
     },
 
@@ -101,8 +101,8 @@ export const WEAPONS: Record<string, WeaponDef> = {
         levelBonuses: { damage: 0.8, cooldown: 0.015 },
         projectileMilestones: [3, 6],
         maxLevel: 8,
-        visualStyle: 'SHARD', color: 0x00ff88,
-        bulletWidth: 0.1, bulletLength: 0.6,
+        visualStyle: 'SHARD', color: 0x00ff88, // Neon green needles
+        bulletWidth: 0.08, bulletLength: 0.4, // Smaller, faster needles
         evolvesInto: 'magnetic_railstorm', evolutionRequires: 'accelerator_chip',
     },
 
@@ -119,8 +119,8 @@ export const WEAPONS: Record<string, WeaponDef> = {
         baseArea: 2.5, baseKnockback: 2, baseSpread: 360, explodeRadius: 2.5,
         levelBonuses: { damage: 0.5, area: 0.12, cooldown: 0.02 },
         maxLevel: 8,
-        visualStyle: 'ORB', color: 0x4444ff,
-        bulletWidth: 0.8, bulletLength: 0.8,
+        visualStyle: 'ORB', color: 0x6666ff, // Electric blue pulse
+        bulletWidth: 1.2, bulletLength: 1.2, // Larger for AOE feel
         evolvesInto: 'blackout_field', evolutionRequires: 'capacitor',
     },
 
@@ -135,8 +135,8 @@ export const WEAPONS: Record<string, WeaponDef> = {
         levelBonuses: { damage: 0.4, area: 0.1, cooldown: 0.02 },
         projectileMilestones: [4, 7],
         maxLevel: 8,
-        visualStyle: 'ORB', color: 0x88ddff,
-        bulletWidth: 0.6, bulletLength: 0.6,
+        visualStyle: 'ORB', color: 0x66ccff, // Ice blue cryo
+        bulletWidth: 0.8, bulletLength: 0.8,
         evolvesInto: 'thermal_collapse', evolutionRequires: 'cooling_system',
     },
 
@@ -154,8 +154,8 @@ export const WEAPONS: Record<string, WeaponDef> = {
         levelBonuses: { damage: 1.2, area: 0.08 },
         projectileMilestones: [3, 5, 7],
         maxLevel: 8,
-        visualStyle: 'ORB', color: 0xffff00,
-        bulletWidth: 0.4, bulletLength: 0.4,
+        visualStyle: 'ORB', color: 0xffcc00, // Golden drone cores
+        bulletWidth: 0.5, bulletLength: 0.5,
         evolvesInto: 'swarm_intelligence', evolutionRequires: 'ai_core',
     },
 
@@ -170,8 +170,8 @@ export const WEAPONS: Record<string, WeaponDef> = {
         levelBonuses: { damage: 1.5, area: 0.1, cooldown: 0.015 },
         projectileMilestones: [4, 6],
         maxLevel: 8,
-        visualStyle: 'BOLT', color: 0xffffff,
-        bulletWidth: 0.15, bulletLength: 1.5,
+        visualStyle: 'BOLT', color: 0xffffff, // Pure white light blades
+        bulletWidth: 0.1, bulletLength: 2.0, // Longer blades for arc effect
         evolvesInto: 'photon_curtain', evolutionRequires: 'optics_suite',
     },
 
@@ -181,15 +181,15 @@ export const WEAPONS: Record<string, WeaponDef> = {
     signal_hijacker: {
         id: 'signal_hijacker',
         name: 'SIGNAL HIJACKER',
-        description: 'Overrides enemy minds briefly.',
-        category: 'global',
-        baseDamage: 1, baseCooldown: 3.0, baseProjectiles: 1,
-        baseSpeed: 60, baseLifetime: 0.5, basePierce: 3,
-        baseArea: 2.0, baseKnockback: 0, baseSpread: 360, explodeRadius: 0,
-        levelBonuses: { pierce: 1, cooldown: 0.03, area: 0.1 },
+        description: 'Jam signal that makes enemies attack each other.',
+        category: 'aoe', // Changed to AoE pulse
+        baseDamage: 0, baseCooldown: 4.0, baseProjectiles: 1,
+        baseSpeed: 0, baseLifetime: 0.5, basePierce: 999,
+        baseArea: 6.0, baseKnockback: 0, baseSpread: 0, explodeRadius: 6.0,
+        levelBonuses: { area: 0.15, cooldown: 0.04 },
         maxLevel: 8,
-        visualStyle: 'ORB', color: 0xff8800,
-        bulletWidth: 0.3, bulletLength: 0.3,
+        visualStyle: 'ORB', color: 0xff8800, // Orange signal waves
+        bulletWidth: 1.0, bulletLength: 1.0,
         evolvesInto: 'neural_cascade', evolutionRequires: 'signal_booster',
     },
 
@@ -204,8 +204,8 @@ export const WEAPONS: Record<string, WeaponDef> = {
         levelBonuses: { damage: 4, area: 0.1, cooldown: 0.02 },
         projectileMilestones: [5, 8],
         maxLevel: 8,
-        visualStyle: 'BOLT', color: 0xff0000,
-        bulletWidth: 0.3, bulletLength: 3.0,
+        visualStyle: 'BOLT', color: 0xff2222, // Red targeting laser
+        bulletWidth: 0.4, bulletLength: 4.0, // Tall strike from above
         evolvesInto: 'saturation_strike', evolutionRequires: 'targeting_os',
     },
 
@@ -222,8 +222,8 @@ export const WEAPONS: Record<string, WeaponDef> = {
         baseArea: 1.0, baseKnockback: 5, baseSpread: 45, explodeRadius: 1.5,
         levelBonuses: { damage: 2, area: 0.08, cooldown: 0.02 },
         maxLevel: 8,
-        visualStyle: 'SHARD', color: 0xff4400,
-        bulletWidth: 0.25, bulletLength: 0.4,
+        visualStyle: 'SHARD', color: 0xff5500, // Orange fire shards
+        bulletWidth: 0.3, bulletLength: 0.5,
         evolvesInto: 'runaway_singularity', evolutionRequires: 'quantum_regulator',
     },
 
@@ -238,8 +238,8 @@ export const WEAPONS: Record<string, WeaponDef> = {
         levelBonuses: { damage: 1, pierce: 1, area: 0.1 },
         projectileMilestones: [4, 7],
         maxLevel: 8,
-        visualStyle: 'ORB', color: 0x8800ff,
-        bulletWidth: 0.35, bulletLength: 0.35,
+        visualStyle: 'ORB', color: 0xaa44ff, // Purple data orbs
+        bulletWidth: 0.45, bulletLength: 0.45,
         evolvesInto: 'heap_overflow', evolutionRequires: 'debug_suite',
     },
 

@@ -26,11 +26,21 @@ export type Entity = {
   isXP?: boolean;
   isWeapon?: boolean;
   isChest?: boolean;
+  isOrbital?: boolean;
   ownerId?: number;
   chestRarity?: 'common' | 'rare' | 'epic';
   enemyType?: string; // 'virus' | 'glitch' | 'firewall'
   isBoss?: boolean;
   spawnTimer?: number;
+  confusedTimer?: number; // Signal Hijacker: enemy attacks other enemies when > 0
+
+  // Orbital weapon data
+  orbitalData?: {
+    ownerId: number;
+    angle: number;
+    orbitSpeed: number;
+    orbitRadius: number;
+  };
 
   // VS-style inventory
   weaponSlots?: WeaponSlot[];
@@ -61,6 +71,7 @@ export type Entity = {
     bulletSpeed: number;
     bulletColor: number;
     bulletLifetime: number;
+    category?: string; // 'directional' | 'aoe' | 'orbit' | 'global'
 
     // VISUALS
     bulletWidth?: number;
@@ -86,6 +97,8 @@ export type Entity = {
     explodeRadius: number;
     // New: visual rotation speed for ORBS
     spinSpeed?: number;
+    // Signal Hijacker: applies confusion instead of damage
+    confusionDuration?: number;
   };
 
   // stats
