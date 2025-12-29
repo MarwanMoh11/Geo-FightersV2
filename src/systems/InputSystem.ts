@@ -63,7 +63,35 @@ if (joystickZone && joystickKnob && joystickVisuals) {
   // Hide initially
   joystickVisuals.classList.remove('active');
 
-  // 1. Touch Start
+  const handleTouchMove = (e: TouchEvent) => {
+    // e.preventDefault(); // Don't prevent default on window globally unless necessary?
+    // Actually, we want to prevent scrolling while dragging joystick
+    e.preventDefault();
+
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      if (e.changedTouches[i].identifier === touchId) {
+        updateJoystick(e.changedTouches[i].clientX, e.changedTouches[i].clientY);
+        break;
+      }
+    }
+  };
+
+  const handleTouchEnd = (e: TouchEvent) => {
+    // e.preventDefault();
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      if (e.changedTouches[i].identifier === touchId) {
+        touchId = null;
+        resetJoystick();
+        // Remove global listeners
+        window.removeEventListener('touchmove', handleTouchMove);
+        window.removeEventListener('touchend', handleTouchEnd);
+        window.removeEventListener('touchcancel', handleTouchEnd);
+        break;
+      }
+    }
+  };
+
+  // 1. Touch Start (still on zone)
   joystickZone.addEventListener(
     'touchstart',
     (e) => {
@@ -79,19 +107,7 @@ if (joystickZone && joystickKnob && joystickVisuals) {
       joyCenterX = touch.clientX - rect.left;
       joyCenterY = touch.clientY - rect.top;
 
-      // Position Visuals at local touch point
-      joystickVisuals.style.transform = `translate(${joyCenterX}px, ${joyCenterY}px)`;
-      joystickVisuals.classList.add('active');
-
-      // Update logic uses global clientX/Y against global touch, so we need consistent logic
-      // Actually, updateJoystick compares (x - joyCenterX).
-      // If x is global (touch.clientX) and joyCenterX is local, that's WRONG.
-      // We must store joyCenterX as GLOBAL for the delta calculation,
-      // BUT use LOCAL for the visual transform.
-
-      // Let's split them:
-      // joyCenterX/Y = Global center for input delta
-      // localX/Y = Local center for CSS transform
+      // Store GLOBAL center for delta calculation
       joyCenterX = touch.clientX;
       joyCenterY = touch.clientY;
 
@@ -100,42 +116,19 @@ if (joystickZone && joystickKnob && joystickVisuals) {
 
       joystickVisuals.style.left = `${localX}px`;
       joystickVisuals.style.top = `${localY}px`;
-      // joystickVisuals.style.transform = `translate(${localX}px, ${localY}px)`; // Avoid transform conflict with animation
       joystickVisuals.classList.add('active');
 
       updateJoystick(touch.clientX, touch.clientY);
+
+      // Attach global listeners for dragging outside zone
+      window.addEventListener('touchmove', handleTouchMove, { passive: false });
+      window.addEventListener('touchend', handleTouchEnd);
+      window.addEventListener('touchcancel', handleTouchEnd);
     },
     { passive: false },
   );
 
-  // 2. Touch Move
-  joystickZone.addEventListener(
-    'touchmove',
-    (e) => {
-      e.preventDefault();
-      for (let i = 0; i < e.changedTouches.length; i++) {
-        if (e.changedTouches[i].identifier === touchId) {
-          updateJoystick(e.changedTouches[i].clientX, e.changedTouches[i].clientY);
-          break;
-        }
-      }
-    },
-    { passive: false },
-  );
-
-  // 3. Touch End
-  const endTouch = (e: TouchEvent) => {
-    e.preventDefault();
-    for (let i = 0; i < e.changedTouches.length; i++) {
-      if (e.changedTouches[i].identifier === touchId) {
-        touchId = null;
-        resetJoystick();
-        break;
-      }
-    }
-  };
-  joystickZone.addEventListener('touchend', endTouch);
-  joystickZone.addEventListener('touchcancel', endTouch);
+  // Removed old direct zone listeners for move/end
 }
 
 function updateJoystick(x: number, y: number) {
