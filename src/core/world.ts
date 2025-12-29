@@ -64,6 +64,7 @@ export type Entity = {
   aimTarget?: THREE.Vector3;
 
   // WEAPON
+  weaponId?: string; // Track which weapon definition this entity belongs to
   weapon?: {
     cooldownTimer: number;
     fireRate: number;

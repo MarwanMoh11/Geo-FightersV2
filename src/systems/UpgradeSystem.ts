@@ -288,6 +288,7 @@ function addNewWeapon(player: any, weaponId: string) {
   const stats = getWeaponStatsAtLevel(weaponId, 1)!;
   world.add({
     isWeapon: true,
+    weaponId: weaponId,
     ownerId: player.id,
     position: new THREE.Vector3(),
     velocity: new THREE.Vector3(),
@@ -326,12 +327,29 @@ function levelUpWeapon(player: any, weaponId: string) {
 
   for (const entity of world.with('isWeapon', 'ownerId', 'weapon')) {
     if (entity.ownerId === player.id && entity.weapon) {
-      // Find matching weapon by checking properties
-      if (entity.weapon.bulletColor === def.color) {
+      // Find matching weapon by ID (reliable) or fallback to color (legacy)
+      if (
+        entity.weaponId === weaponId ||
+        (!entity.weaponId && entity.weapon.bulletColor === def.color)
+      ) {
         entity.weapon.fireRate = stats.cooldown;
         entity.weapon.damage = stats.damage;
         entity.weapon.bulletCount = stats.projectiles;
         entity.weapon.bulletPierce = stats.pierce;
+
+        // ORBITAL REFRESH FIX:
+        // If this is an orbital weapon (Drone Halo, Photon Blades), we MUST clear existing orbitals.
+        // WeaponSystem will automatically spawn new ones with updated stats in the next frame.
+        if (def.category === 'orbit') {
+          // Mark existing orbitals for death
+          for (const orbital of world.with('isOrbital', 'orbitalData')) {
+            if (orbital.orbitalData?.ownerId === player.id) {
+              // Setting lifeTimer to -1 forces removal by LifecycleSystem
+              orbital.lifeTimer = -1;
+            }
+          }
+          console.log(`[Upgrade] Refreshed orbitals for ${def.name}`);
+        }
         break;
       }
     }

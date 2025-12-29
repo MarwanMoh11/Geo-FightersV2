@@ -51,6 +51,7 @@ window.addEventListener('keyup', (e) => {
 
 // --- TOUCH SETUP (Virtual Joystick) ---
 const joystickZone = document.getElementById('joystick-zone');
+const joystickVisuals = document.getElementById('joystick-visuals');
 const joystickKnob = document.getElementById('joystick-knob');
 
 let touchId: number | null = null;
@@ -58,22 +59,29 @@ let joyCenterX = 0;
 let joyCenterY = 0;
 const MAX_RADIUS = 40;
 
-if (joystickZone && joystickKnob) {
-  // FIX: Force visual reset immediately to align CSS and JS
-  resetJoystick();
+if (joystickZone && joystickKnob && joystickVisuals) {
+  // Hide initially
+  joystickVisuals.classList.remove('active');
 
   // 1. Touch Start
   joystickZone.addEventListener(
     'touchstart',
     (e) => {
       e.preventDefault();
+      // Only handle first touch if not already active
+      if (touchId !== null) return;
+
       const touch = e.changedTouches[0];
       touchId = touch.identifier;
 
-      const rect = joystickZone.getBoundingClientRect();
-      joyCenterX = rect.left + rect.width / 2;
-      joyCenterY = rect.top + rect.height / 2;
+      joyCenterX = touch.clientX;
+      joyCenterY = touch.clientY;
 
+      // Position Visuals at touch point
+      joystickVisuals.style.transform = `translate(${joyCenterX}px, ${joyCenterY}px)`;
+      joystickVisuals.classList.add('active');
+
+      // Reset knob processing immediately (at center)
       updateJoystick(touch.clientX, touch.clientY);
     },
     { passive: false },
@@ -116,12 +124,12 @@ function updateJoystick(x: number, y: number) {
   const distance = Math.min(Math.sqrt(dx * dx + dy * dy), MAX_RADIUS);
   const angle = Math.atan2(dy, dx);
 
-  // Move Knob Visual
-  // We use calc(-50% + Xpx) so we maintain the center anchor
+  // Move Knob Visual (relative to center 0,0)
   const knobX = Math.cos(angle) * distance;
   const knobY = Math.sin(angle) * distance;
+
   if (joystickKnob) {
-    joystickKnob.style.transform = `translate(calc(-50% + ${knobX}px), calc(-50% + ${knobY}px))`;
+    joystickKnob.style.transform = `translate(${knobX}px, ${knobY}px)`;
   }
 
   // Set Game Input (Normalized)
@@ -130,8 +138,11 @@ function updateJoystick(x: number, y: number) {
 }
 
 function resetJoystick() {
+  if (joystickVisuals) {
+    joystickVisuals.classList.remove('active');
+  }
   if (joystickKnob) {
-    joystickKnob.style.transform = `translate(-50%, -50%)`;
+    joystickKnob.style.transform = `translate(0px, 0px)`;
   }
   inputState.x = 0;
   inputState.y = 0;
