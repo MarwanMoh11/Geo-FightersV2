@@ -27,8 +27,9 @@ const ui = {
   // Inventory (Desktop)
   weaponSlots: document.getElementById('weapon-slots'),
   passiveSlots: document.getElementById('passive-slots'),
-  // Inventory (Mobile - Combined)
-  mobileAllSlots: document.getElementById('mobile-all-slots'),
+  // Inventory (Mobile - Separate Rows)
+  mobileWeaponRow: document.getElementById('mobile-weapon-row'),
+  mobilePassiveRow: document.getElementById('mobile-passive-row'),
 };
 
 // --- WEAPON ICONS (image paths for generated icons, emojis for pending) ---
@@ -260,39 +261,49 @@ function renderDesktopPassives(passives: PassiveSlot[]) {
 }
 
 function renderMobileInventory(weapons: WeaponSlot[], passives: PassiveSlot[]) {
-  if (!ui.mobileAllSlots) return;
+  // Render Weapons (Fixed 6 slots)
+  if (ui.mobileWeaponRow) {
+    let weaponHtml = '';
+    for (let i = 0; i < 6; i++) {
+      const w = weapons[i];
+      if (w) {
+        const iconPath = WEAPON_ICONS[w.weaponId] || '';
+        const name = WEAPONS[w.weaponId]?.name || w.weaponId;
+        const isImage = iconPath.endsWith('.png');
+        const iconHtml = isImage
+          ? `<img class="slot-icon-img" src="${iconPath}" alt="${name}"/>`
+          : `<span class="slot-icon">${iconPath || '🔹'}</span>`;
+        weaponHtml += `
+          <div class="mobile-hex-slot weapon" title="${name}">
+            ${iconHtml}
+            <span class="level-badge">LV${w.level}</span>
+          </div>`;
+      } else {
+        // Empty slot
+        weaponHtml += `<div class="mobile-hex-slot weapon empty"></div>`;
+      }
+    }
+    ui.mobileWeaponRow.innerHTML = weaponHtml;
+  }
 
-  // Render weapons as hexagonal slots
-  const weaponHtml = weapons
-    .map((w) => {
-      const iconPath = WEAPON_ICONS[w.weaponId] || '';
-      const name = WEAPONS[w.weaponId]?.name || w.weaponId;
-      const isImage = iconPath.endsWith('.png');
-      const iconHtml = isImage
-        ? `<img class="slot-icon-img" src="${iconPath}" alt="${name}"/>`
-        : `<span class="slot-icon">${iconPath || '🔹'}</span>`;
-      return `
-      <div class="mobile-hex-slot weapon" title="${name}">
-        ${iconHtml}
-        <span class="level-badge">LV${w.level}</span>
-      </div>
-    `;
-    })
-    .join('');
-
-  // Render passives as hexagonal slots
-  const passiveHtml = passives
-    .map((p) => {
-      const icon = PASSIVE_ICONS[p.passiveId] || '🔸';
-      const name = PASSIVES[p.passiveId]?.name || p.passiveId;
-      return `
-      <div class="mobile-hex-slot passive" title="${name}">
-        <span class="slot-icon">${icon}</span>
-        <span class="level-badge">LV${p.level}</span>
-      </div>
-    `;
-    })
-    .join('');
-
-  ui.mobileAllSlots.innerHTML = weaponHtml + passiveHtml;
+  // Render Passives (Fixed 6 slots)
+  if (ui.mobilePassiveRow) {
+    let passiveHtml = '';
+    for (let i = 0; i < 6; i++) {
+      const p = passives[i];
+      if (p) {
+        const icon = PASSIVE_ICONS[p.passiveId] || '🔸';
+        const name = PASSIVES[p.passiveId]?.name || p.passiveId;
+        passiveHtml += `
+          <div class="mobile-hex-slot passive" title="${name}">
+            <span class="slot-icon">${icon}</span>
+            <span class="level-badge">LV${p.level}</span>
+          </div>`;
+      } else {
+        // Empty slot
+        passiveHtml += `<div class="mobile-hex-slot passive empty"></div>`;
+      }
+    }
+    ui.mobilePassiveRow.innerHTML = passiveHtml;
+  }
 }
