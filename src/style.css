@@ -40,13 +40,16 @@ html {
 }
 
 .hud-panel {
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.7);
   padding: 1vh 2vw;
-  border: 1px solid #444;
+  border: 2px solid transparent;
+  border-image: linear-gradient(135deg, #2de2e6 0%, #00ff88 50%, #2de2e6 100%) 1;
   backdrop-filter: blur(4px);
   color: white;
   text-transform: uppercase;
   height: fit-content;
+  position: relative;
+  box-shadow: 0 0 15px rgba(45, 226, 230, 0.3), inset 0 0 20px rgba(0, 0, 0, 0.5);
 }
 
 .label {
@@ -208,19 +211,39 @@ html {
 
 .boss-bar-container {
   width: 100%;
-  height: 20px;
-  background: rgba(0, 0, 0, 0.8);
-  border: 2px solid #ff0044;
-  border-radius: 3px;
+  height: 28px;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.9) 0%, rgba(20, 0, 10, 0.95) 100%);
+  border: 3px solid transparent;
+  border-image: linear-gradient(90deg, #ff0044, #ff4488, #ff0044) 1;
+  border-radius: 0;
   overflow: hidden;
+  position: relative;
+  box-shadow: 0 0 20px rgba(255, 0, 68, 0.4), inset 0 0 10px rgba(0, 0, 0, 0.8);
+}
+
+.boss-bar-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(-45deg,
+      transparent,
+      transparent 10px,
+      rgba(255, 0, 68, 0.05) 10px,
+      rgba(255, 0, 68, 0.05) 20px);
+  pointer-events: none;
 }
 
 #boss-health-fill {
   width: 100%;
   height: 100%;
-  background: linear-gradient(90deg, #ff0044 0%, #ff4488 50%, #ff0044 100%);
-  box-shadow: 0 0 15px #ff0044;
+  background: linear-gradient(180deg, #ff4488 0%, #ff0044 50%, #cc0033 100%);
+  box-shadow: 0 0 20px #ff0044, inset 0 2px 5px rgba(255, 255, 255, 0.2);
   transition: width 0.3s;
+  position: relative;
 }
 
 /* --- HUD LEFT CONTAINER --- */
@@ -631,7 +654,11 @@ html {
   left: 0;
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #0a0a0a 100%);
+  background:
+    linear-gradient(135deg, rgba(10, 10, 10, 0.85) 0%, rgba(26, 26, 46, 0.75) 50%, rgba(10, 10, 10, 0.85) 100%),
+    url('/textures/ui/menu/menu_background.png');
+  background-size: cover, cover;
+  background-position: center, center;
   z-index: 200;
   display: flex;
   justify-content: center;
@@ -670,6 +697,27 @@ html {
   z-index: 1;
 }
 
+/* Logo image display */
+.menu-logo {
+  width: clamp(280px, 60vw, 600px);
+  height: auto;
+  margin-bottom: 10px;
+  filter: drop-shadow(0 0 30px rgba(45, 226, 230, 0.6)) drop-shadow(0 0 60px rgba(255, 0, 85, 0.4));
+  animation: logoPulse 2s ease-in-out infinite;
+}
+
+@keyframes logoPulse {
+
+  0%,
+  100% {
+    filter: drop-shadow(0 0 30px rgba(45, 226, 230, 0.6)) drop-shadow(0 0 60px rgba(255, 0, 85, 0.4));
+  }
+
+  50% {
+    filter: drop-shadow(0 0 40px rgba(45, 226, 230, 0.8)) drop-shadow(0 0 80px rgba(255, 0, 85, 0.6));
+  }
+}
+
 .game-title {
   font-size: clamp(48px, 12vw, 96px);
   font-weight: 900;
@@ -704,10 +752,11 @@ html {
 }
 
 .menu-tagline {
-  color: #888;
+  color: #aaa;
   font-size: 14px;
   letter-spacing: 4px;
   margin: 0 0 40px 0;
+  text-shadow: 0 0 10px rgba(45, 226, 230, 0.3);
 }
 
 .menu-buttons {
@@ -718,9 +767,9 @@ html {
 }
 
 .menu-btn {
-  background: transparent;
+  background: linear-gradient(180deg, rgba(30, 30, 40, 0.9) 0%, rgba(15, 15, 25, 0.95) 100%);
   border: 2px solid #444;
-  color: #888;
+  color: #aaa;
   padding: 15px 50px;
   font-family: 'Courier New', Courier, monospace;
   font-weight: bold;
@@ -730,30 +779,50 @@ html {
   text-transform: uppercase;
   letter-spacing: 2px;
   min-width: 220px;
+  position: relative;
+  overflow: hidden;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+
+.menu-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(45, 226, 230, 0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.menu-btn:hover::before {
+  left: 100%;
 }
 
 .menu-btn:hover {
   border-color: #2de2e6;
   color: #2de2e6;
-  box-shadow: 0 0 20px rgba(45, 226, 230, 0.3);
+  box-shadow: 0 0 25px rgba(45, 226, 230, 0.4), inset 0 0 20px rgba(45, 226, 230, 0.1);
   transform: scale(1.02);
 }
 
 .menu-btn.primary {
   border-color: #ff0055;
   color: #ff0055;
+  background: linear-gradient(180deg, rgba(60, 20, 30, 0.9) 0%, rgba(30, 10, 20, 0.95) 100%);
 }
 
 .menu-btn.primary:hover {
-  background: #ff0055;
+  background: linear-gradient(180deg, #ff0055 0%, #cc0044 100%);
   color: white;
-  box-shadow: 0 0 30px rgba(255, 0, 85, 0.5);
+  box-shadow: 0 0 35px rgba(255, 0, 85, 0.6), inset 0 0 20px rgba(255, 0, 85, 0.2);
 }
 
 .menu-btn.small {
   padding: 10px 25px;
   font-size: 12px;
   min-width: 140px;
+  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
 }
 
 .version-info {
