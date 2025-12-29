@@ -217,22 +217,57 @@
   </div>
 
   <div id="mobile-controls">
-    <div id="mobile-hud">
-      <div class="mobile-stat" id="mobile-health">❤️ 100</div>
-      <div class="mobile-stat" id="mobile-level">LV 1</div>
-      <div class="mobile-stat" id="mobile-score">⚡ 0</div>
+    <!-- Mobile Top Bar: Health + Timer/Score + Pause -->
+    <div id="mobile-top-bar">
+      <div id="mobile-health-container">
+        <span class="heart-icon">♥</span>
+        <span id="mobile-hp-label">HP</span>
+        <div class="mobile-health-bar">
+          <div id="mobile-health-fill"></div>
+        </div>
+        <span id="mobile-hp-text">100/100</span>
+      </div>
+      <div id="mobile-timer-area">
+        <div id="mobile-timer-display">00:00</div>
+        <div id="mobile-score-display">SCORE: 0</div>
+      </div>
+      <button id="mobile-pause-btn" aria-label="Pause Game">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <rect x="6" y="4" width="4" height="16" rx="1" />
+          <rect x="14" y="4" width="4" height="16" rx="1" />
+        </svg>
+      </button>
     </div>
 
-    <!-- Mobile Inventory Display -->
-    <div id="mobile-inventory">
-      <div id="mobile-weapon-slots" class="mobile-inventory-row"></div>
-      <div id="mobile-passive-slots" class="mobile-inventory-row"></div>
+    <!-- Mobile Inventory: Hexagonal Slots Row -->
+    <div id="mobile-inventory-bar">
+      <div id="mobile-all-slots" class="mobile-hex-row"></div>
     </div>
 
-    <button id="mobile-pause-btn" aria-label="Pause Game">⏸</button>
-
+    <!-- Joystick: Concentric Rings -->
     <div id="joystick-zone">
+      <div class="joystick-outer-ring"></div>
+      <div class="joystick-middle-ring"></div>
       <div id="joystick-knob"></div>
+    </div>
+
+    <!-- Mobile XP Bar -->
+    <div id="mobile-xp-container">
+      <span id="mobile-xp-label">XP</span>
+      <div class="mobile-xp-bar">
+        <div id="mobile-xp-segments">
+          <div class="xp-segment"></div>
+          <div class="xp-segment"></div>
+          <div class="xp-segment"></div>
+          <div class="xp-segment"></div>
+          <div class="xp-segment"></div>
+          <div class="xp-segment"></div>
+          <div class="xp-segment"></div>
+          <div class="xp-segment"></div>
+        </div>
+        <div id="mobile-xp-fill"></div>
+      </div>
+      <span id="mobile-level-label">LEVEL <span id="mobile-level-num">1</span></span>
     </div>
   </div>
 

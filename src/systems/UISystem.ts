@@ -17,16 +17,18 @@ const ui = {
   bossHealthContainer: document.getElementById('boss-health-container'),
   bossHealthFill: document.getElementById('boss-health-fill'),
   bossName: document.querySelector('.boss-name') as HTMLElement | null,
-  // Mobile HUD
-  mobileHealth: document.getElementById('mobile-health'),
-  mobileLevel: document.getElementById('mobile-level'),
-  mobileScore: document.getElementById('mobile-score'),
+  // Mobile HUD - New elements
+  mobileHealthFill: document.getElementById('mobile-health-fill'),
+  mobileHpText: document.getElementById('mobile-hp-text'),
+  mobileTimerDisplay: document.getElementById('mobile-timer-display'),
+  mobileScoreDisplay: document.getElementById('mobile-score-display'),
+  mobileXpFill: document.getElementById('mobile-xp-fill'),
+  mobileLevelNum: document.getElementById('mobile-level-num'),
   // Inventory (Desktop)
   weaponSlots: document.getElementById('weapon-slots'),
   passiveSlots: document.getElementById('passive-slots'),
-  // Inventory (Mobile)
-  mobileWeaponSlots: document.getElementById('mobile-weapon-slots'),
-  mobilePassiveSlots: document.getElementById('mobile-passive-slots'),
+  // Inventory (Mobile - Combined)
+  mobileAllSlots: document.getElementById('mobile-all-slots'),
 };
 
 // --- WEAPON ICONS (image paths for generated icons, emojis for pending) ---
@@ -103,26 +105,32 @@ export function UISystem() {
   if (ui.xpLevelText && player.level) {
     ui.xpLevelText.innerText = player.level.toString().padStart(2, '0');
   }
-  if (ui.mobileLevel && player.level) {
-    ui.mobileLevel.innerText = `LV ${player.level}`;
+  // Mobile Level
+  if (ui.mobileLevelNum && player.level) {
+    ui.mobileLevelNum.innerText = player.level.toString();
   }
 
   if (ui.scoreText && player.score !== undefined) {
     ui.scoreText.innerText = player.score.toString();
   }
-  if (ui.mobileScore && player.score !== undefined) {
-    ui.mobileScore.innerText = `⚡ ${player.score}`;
+  // Mobile Score
+  if (ui.mobileScoreDisplay && player.score !== undefined) {
+    ui.mobileScoreDisplay.innerText = `SCORE: ${player.score}`;
   }
 
-  // Mobile Health
-  if (ui.mobileHealth && player.health) {
-    ui.mobileHealth.innerText = `❤️ ${Math.ceil(Math.max(0, player.health.current))}`;
+  // Mobile Health Bar & Text
+  if (ui.mobileHealthFill && player.health) {
+    ui.mobileHealthFill.style.width = `${Math.max(0, hpPercent)}%`;
+  }
+  if (ui.mobileHpText && player.health) {
+    ui.mobileHpText.innerText = `${Math.ceil(Math.max(0, player.health.current))}/${player.health.max}`;
   }
 
-  // 4. Update XP Bar
-  if (ui.xpBar && player.xp !== undefined && player.xpMax) {
+  // 4. Update XP Bar (Desktop & Mobile)
+  if (player.xp !== undefined && player.xpMax) {
     const xpPercent = (player.xp / player.xpMax) * 100;
-    ui.xpBar.style.width = `${Math.min(100, xpPercent)}%`;
+    if (ui.xpBar) ui.xpBar.style.width = `${Math.min(100, xpPercent)}%`;
+    if (ui.mobileXpFill) ui.mobileXpFill.style.width = `${Math.min(100, xpPercent)}%`;
   }
 
   // 5. Update Game Timer (throttled - only update when seconds change)
@@ -134,15 +142,22 @@ export function UISystem() {
     ui.gameTimer.classList.add('visible');
   }
 
-  if (currentSecond !== lastTimerSecond && ui.gameTimer) {
+  if (currentSecond !== lastTimerSecond) {
     lastTimerSecond = currentSecond;
     const minutes = Math.floor(gameTime / 60);
     const seconds = Math.floor(gameTime % 60);
-    ui.gameTimer.innerText = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    const timerText = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 
-    // Warning pulse when boss is near (after 7:00)
-    if (gameTime >= BOSS_SPAWN_TIME - 60) {
-      ui.gameTimer.classList.add('warning');
+    if (ui.gameTimer) {
+      ui.gameTimer.innerText = timerText;
+      // Warning pulse when boss is near (after 7:00)
+      if (gameTime >= BOSS_SPAWN_TIME - 60) {
+        ui.gameTimer.classList.add('warning');
+      }
+    }
+    // Mobile Timer
+    if (ui.mobileTimerDisplay) {
+      ui.mobileTimerDisplay.innerText = timerText;
     }
   }
 
@@ -181,84 +196,86 @@ function updateInventoryDisplay(weapons: WeaponSlot[], passives: PassiveSlot[]) 
   const weaponHash = weapons.map(w => `${w.weaponId}:${w.level}`).join(',');
   const passiveHash = passives.map(p => `${p.passiveId}:${p.level}`).join(',');
 
-  // Update weapons if changed
-  if (weaponHash !== lastWeaponHash) {
-    lastWeaponHash = weaponHash;
-    renderWeaponSlots(weapons);
-  }
-
-  // Update passives if changed
-  if (passiveHash !== lastPassiveHash) {
-    lastPassiveHash = passiveHash;
-    renderPassiveSlots(passives);
-  }
-}
-
-function renderWeaponSlots(weapons: WeaponSlot[]) {
-  // Desktop
-  if (ui.weaponSlots) {
-    ui.weaponSlots.innerHTML = weapons.map(w => {
-      const def = WEAPONS[w.weaponId];
-      const iconPath = WEAPON_ICONS[w.weaponId] || '';
-      const name = def?.name || w.weaponId;
-      const isImage = iconPath.endsWith('.png');
-      const iconHtml = isImage
-        ? `<img class="slot-icon-img" src="${iconPath}" alt="${name}"/>`
-        : `<span class="slot-icon">${iconPath || '🔹'}</span>`;
-      return `
-        <div class="inv-slot weapon" title="${name}">
-          ${iconHtml}
-          <span class="level-badge">${w.level}</span>
-        </div>
-      `;
-    }).join('');
-  }
-
-  // Mobile
-  if (ui.mobileWeaponSlots) {
-    ui.mobileWeaponSlots.innerHTML = weapons.map(w => {
-      const iconPath = WEAPON_ICONS[w.weaponId] || '';
-      const name = WEAPONS[w.weaponId]?.name || w.weaponId;
-      const isImage = iconPath.endsWith('.png');
-      const iconHtml = isImage
-        ? `<img class="slot-icon-img" src="${iconPath}" alt="${name}"/>`
-        : iconPath || '🔹';
-      return `
-        <div class="mobile-inv-slot weapon">
-          ${iconHtml}
-          <span class="level-badge">${w.level}</span>
-        </div>
-      `;
-    }).join('');
+  // Only update if changed
+  if (weaponHash !== lastWeaponHash || passiveHash !== lastPassiveHash) {
+    // Update desktop
+    if (weaponHash !== lastWeaponHash) {
+      lastWeaponHash = weaponHash;
+      renderDesktopWeapons(weapons);
+    }
+    if (passiveHash !== lastPassiveHash) {
+      lastPassiveHash = passiveHash;
+      renderDesktopPassives(passives);
+    }
+    // Update mobile (combined)
+    renderMobileInventory(weapons, passives);
   }
 }
 
-function renderPassiveSlots(passives: PassiveSlot[]) {
-  // Desktop
-  if (ui.passiveSlots) {
-    ui.passiveSlots.innerHTML = passives.map(p => {
-      const def = PASSIVES[p.passiveId];
-      const icon = PASSIVE_ICONS[p.passiveId] || '🔸';
-      const name = def?.name || p.passiveId;
-      return `
-        <div class="inv-slot passive" title="${name}">
-          <span class="slot-icon">${icon}</span>
-          <span class="level-badge">${p.level}</span>
-        </div>
-      `;
-    }).join('');
-  }
+function renderDesktopWeapons(weapons: WeaponSlot[]) {
+  if (!ui.weaponSlots) return;
+  ui.weaponSlots.innerHTML = weapons.map(w => {
+    const def = WEAPONS[w.weaponId];
+    const iconPath = WEAPON_ICONS[w.weaponId] || '';
+    const name = def?.name || w.weaponId;
+    const isImage = iconPath.endsWith('.png');
+    const iconHtml = isImage
+      ? `<img class="slot-icon-img" src="${iconPath}" alt="${name}"/>`
+      : `<span class="slot-icon">${iconPath || '🔹'}</span>`;
+    return `
+      <div class="inv-slot weapon" title="${name}">
+        ${iconHtml}
+        <span class="level-badge">${w.level}</span>
+      </div>
+    `;
+  }).join('');
+}
 
-  // Mobile
-  if (ui.mobilePassiveSlots) {
-    ui.mobilePassiveSlots.innerHTML = passives.map(p => {
-      const icon = PASSIVE_ICONS[p.passiveId] || '🔸';
-      return `
-        <div class="mobile-inv-slot passive">
-          ${icon}
-          <span class="level-badge">${p.level}</span>
-        </div>
-      `;
-    }).join('');
-  }
+function renderDesktopPassives(passives: PassiveSlot[]) {
+  if (!ui.passiveSlots) return;
+  ui.passiveSlots.innerHTML = passives.map(p => {
+    const def = PASSIVES[p.passiveId];
+    const icon = PASSIVE_ICONS[p.passiveId] || '🔸';
+    const name = def?.name || p.passiveId;
+    return `
+      <div class="inv-slot passive" title="${name}">
+        <span class="slot-icon">${icon}</span>
+        <span class="level-badge">${p.level}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderMobileInventory(weapons: WeaponSlot[], passives: PassiveSlot[]) {
+  if (!ui.mobileAllSlots) return;
+
+  // Render weapons as hexagonal slots
+  const weaponHtml = weapons.map(w => {
+    const iconPath = WEAPON_ICONS[w.weaponId] || '';
+    const name = WEAPONS[w.weaponId]?.name || w.weaponId;
+    const isImage = iconPath.endsWith('.png');
+    const iconHtml = isImage
+      ? `<img class="slot-icon-img" src="${iconPath}" alt="${name}"/>`
+      : `<span class="slot-icon">${iconPath || '🔹'}</span>`;
+    return `
+      <div class="mobile-hex-slot weapon" title="${name}">
+        ${iconHtml}
+        <span class="level-badge">LV${w.level}</span>
+      </div>
+    `;
+  }).join('');
+
+  // Render passives as hexagonal slots
+  const passiveHtml = passives.map(p => {
+    const icon = PASSIVE_ICONS[p.passiveId] || '🔸';
+    const name = PASSIVES[p.passiveId]?.name || p.passiveId;
+    return `
+      <div class="mobile-hex-slot passive" title="${name}">
+        <span class="slot-icon">${icon}</span>
+        <span class="level-badge">LV${p.level}</span>
+      </div>
+    `;
+  }).join('');
+
+  ui.mobileAllSlots.innerHTML = weaponHtml + passiveHtml;
 }

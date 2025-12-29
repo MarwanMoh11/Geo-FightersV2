@@ -452,69 +452,308 @@ html {
   z-index: 50;
 }
 
-#mobile-hud {
+/* === MOBILE TOP BAR === */
+#mobile-top-bar {
   position: absolute;
-  top: 55px;
-  /* Below game timer */
-  left: 50%;
-  transform: translateX(-50%);
+  top: 8px;
+  left: 8px;
+  right: 8px;
   display: flex;
-  gap: 15px;
-  background: rgba(0, 0, 0, 0.6);
-  padding: 8px 15px;
-  border-radius: 20px;
-  border: 1px solid #444;
-  backdrop-filter: blur(4px);
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
   pointer-events: none;
-  width: max-content;
 }
 
-.mobile-stat {
-  color: white;
-  font-family: 'Courier New', Courier, monospace;
-  font-weight: bold;
-  font-size: 14px;
+/* Health Container */
+#mobile-health-container {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.7) 0%, rgba(0, 0, 0, 0.5) 100%);
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 255, 255, 0.3);
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.2);
 }
 
-#mobile-health {
-  color: #ff0055;
+.heart-icon {
+  color: #ff4466;
+  font-size: 16px;
+  filter: drop-shadow(0 0 4px #ff4466);
 }
 
-#mobile-level {
+#mobile-hp-label {
   color: #2de2e6;
+  font-size: 10px;
+  font-weight: bold;
+  letter-spacing: 1px;
 }
 
-#mobile-score {
-  color: #00ff00;
-}
-
-#mobile-pause-btn {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 50px;
-  height: 50px;
-  background: rgba(0, 0, 0, 0.6);
+.mobile-health-bar {
+  width: 80px;
+  height: 10px;
+  background: linear-gradient(180deg, #1a1a2a 0%, #0a0a15 100%);
   border: 1px solid #2de2e6;
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+}
+
+#mobile-health-fill {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, #00ff88 0%, #2de2e6 50%, #00ff88 100%);
+  box-shadow: 0 0 8px #00ff88;
+  transition: width 0.2s ease;
+}
+
+#mobile-hp-text {
+  color: #fff;
+  font-size: 10px;
+  font-weight: bold;
+  text-shadow: 0 0 4px rgba(0, 255, 255, 0.5);
+  min-width: 50px;
+}
+
+/* Timer Area */
+#mobile-timer-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+#mobile-timer-display {
+  color: #fff;
+  font-size: 1.5rem;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+  text-shadow: 0 0 10px #00ffff, 0 0 20px #00ffff;
+  letter-spacing: 2px;
+}
+
+#mobile-score-display {
+  color: #aaa;
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
+}
+
+/* Pause Button */
+#mobile-pause-btn {
+  width: 44px;
+  height: 44px;
+  background: linear-gradient(180deg, rgba(0, 40, 50, 0.9) 0%, rgba(0, 20, 30, 0.95) 100%);
+  border: 2px solid #2de2e6;
   border-radius: 50%;
   color: #2de2e6;
-  font-size: 24px;
   display: flex;
   justify-content: center;
   align-items: center;
   cursor: pointer;
   pointer-events: auto;
-  backdrop-filter: blur(4px);
-  z-index: 100;
+  box-shadow: 0 0 15px rgba(45, 226, 230, 0.4), inset 0 0 10px rgba(0, 0, 0, 0.5);
   padding: 0;
+  transition: all 0.2s ease;
+}
+
+#mobile-pause-btn svg {
+  width: 20px;
+  height: 20px;
 }
 
 #mobile-pause-btn:active {
   background: rgba(45, 226, 230, 0.3);
   transform: scale(0.95);
+  box-shadow: 0 0 25px rgba(45, 226, 230, 0.6);
+}
+
+/* === MOBILE INVENTORY BAR === */
+#mobile-inventory-bar {
+  position: absolute;
+  top: 60px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  justify-content: flex-start;
+  pointer-events: none;
+}
+
+.mobile-hex-row {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.mobile-hex-slot {
+  width: 38px;
+  height: 42px;
+  background: linear-gradient(180deg, rgba(20, 30, 40, 0.9) 0%, rgba(10, 15, 25, 0.95) 100%);
+  border: 2px solid #445566;
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.mobile-hex-slot.weapon {
+  border-color: #00ffff;
+  box-shadow: 0 0 8px rgba(0, 255, 255, 0.3);
+}
+
+.mobile-hex-slot.passive {
+  border-color: #00ff88;
+  box-shadow: 0 0 8px rgba(0, 255, 136, 0.3);
+}
+
+.mobile-hex-slot .slot-icon-img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.5));
+}
+
+.mobile-hex-slot .slot-icon {
+  font-size: 18px;
+}
+
+.mobile-hex-slot .level-badge {
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, #ff0055 0%, #ff4488 100%);
+  color: white;
+  font-size: 8px;
+  font-weight: bold;
+  padding: 1px 4px;
+  border-radius: 3px;
+  line-height: 1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* === JOYSTICK === */
+#joystick-zone {
+  width: 130px;
+  height: 130px;
+  position: absolute;
+  bottom: 60px;
+  left: 20px;
+  touch-action: none;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  pointer-events: auto;
+}
+
+.joystick-outer-ring {
+  position: absolute;
+  width: 130px;
+  height: 130px;
+  border: 2px solid rgba(45, 226, 230, 0.3);
+  border-radius: 50%;
+  box-shadow: 0 0 20px rgba(45, 226, 230, 0.15), inset 0 0 30px rgba(0, 0, 0, 0.4);
+  background: radial-gradient(circle, rgba(0, 20, 30, 0.3) 0%, rgba(0, 10, 20, 0.6) 100%);
+}
+
+.joystick-middle-ring {
+  position: absolute;
+  width: 90px;
+  height: 90px;
+  border: 2px solid rgba(45, 226, 230, 0.5);
+  border-radius: 50%;
+  box-shadow: 0 0 15px rgba(45, 226, 230, 0.2);
+}
+
+#joystick-knob {
+  width: 50px;
+  height: 50px;
+  background: radial-gradient(circle at 30% 30%, rgba(80, 255, 255, 0.9) 0%, rgba(45, 226, 230, 0.8) 50%, rgba(0, 180, 200, 0.9) 100%);
+  border-radius: 50%;
+  box-shadow: 0 0 20px rgba(45, 226, 230, 0.8), 0 4px 8px rgba(0, 0, 0, 0.4), inset 0 2px 4px rgba(255, 255, 255, 0.3);
+  position: absolute;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+/* === MOBILE XP BAR === */
+#mobile-xp-container {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 28px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.9) 0%, rgba(10, 10, 20, 0.95) 100%);
+  border-top: 1px solid rgba(45, 226, 230, 0.5);
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  gap: 8px;
+}
+
+#mobile-xp-label {
+  color: #444;
+  font-size: 12px;
+  font-weight: bold;
+  background: rgba(30, 30, 40, 0.8);
+  padding: 3px 8px;
+  border-radius: 3px;
+  border: 1px solid #333;
+}
+
+.mobile-xp-bar {
+  flex: 1;
+  height: 14px;
+  background: rgba(20, 20, 30, 0.8);
+  border: 1px solid rgba(45, 226, 230, 0.3);
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+}
+
+#mobile-xp-segments {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  z-index: 1;
+}
+
+.xp-segment {
+  flex: 1;
+  background: rgba(45, 226, 230, 0.15);
+  border-radius: 1px;
+}
+
+#mobile-xp-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #2de2e6 0%, #00ff88 100%);
+  box-shadow: 0 0 10px rgba(45, 226, 230, 0.6);
+  transition: width 0.3s ease;
+  z-index: 0;
+}
+
+#mobile-level-label {
+  color: #888;
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+
+#mobile-level-num {
+  color: #2de2e6;
+  font-weight: bold;
+  font-size: 12px;
+  text-shadow: 0 0 5px rgba(45, 226, 230, 0.5);
 }
 
 @media (max-width: 800px),
@@ -530,90 +769,16 @@ html {
   #inventory-panel {
     display: none !important;
   }
-}
 
-/* --- MOBILE INVENTORY --- */
-#mobile-inventory {
-  position: absolute;
-  top: 50px;
-  left: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  pointer-events: none;
-}
+  /* Hide desktop timer on mobile (use mobile timer instead) */
+  #game-timer {
+    display: none !important;
+  }
 
-.mobile-inventory-row {
-  display: flex;
-  gap: 3px;
-}
-
-.mobile-inv-slot {
-  width: 28px;
-  height: 28px;
-  background: rgba(0, 0, 0, 0.6);
-  border: 2px solid #444;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  font-size: 12px;
-}
-
-.mobile-inv-slot.weapon {
-  border-color: #00ffff;
-}
-
-.mobile-inv-slot.passive {
-  border-color: #00ff88;
-}
-
-.mobile-inv-slot .level-badge {
-  position: absolute;
-  bottom: -3px;
-  right: -3px;
-  background: #ff0055;
-  color: white;
-  font-size: 7px;
-  font-weight: bold;
-  padding: 0px 2px;
-  border-radius: 2px;
-  line-height: 1.2;
-}
-
-.mobile-inv-slot .slot-icon-img {
-  width: 22px;
-  height: 22px;
-  object-fit: contain;
-  border-radius: 2px;
-}
-
-#joystick-zone {
-  width: 120px;
-  height: 120px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  position: absolute;
-  bottom: 40px;
-  left: 50%;
-  transform: translateX(-50%);
-  touch-action: none;
-  margin: 0;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  pointer-events: auto;
-}
-
-#joystick-knob {
-  width: 50px;
-  height: 50px;
-  background: rgba(45, 226, 230, 0.8);
-  border-radius: 50%;
-  box-shadow: 0 0 15px #2de2e6;
-  position: absolute;
+  /* Hide desktop XP bar on mobile */
+  #xp-bar-container {
+    display: none !important;
+  }
 }
 
 /* --- MODALS --- */
