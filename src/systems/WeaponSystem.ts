@@ -2,11 +2,7 @@ import { world } from '../core/world';
 import * as THREE from 'three';
 import { addTrauma } from './CameraSystem';
 import { playShoot } from '../core/audio';
-import {
-  getDefaultStats,
-  getEffectiveDamage,
-  getEffectiveAmount,
-} from '../core/PlayerStats';
+import { getDefaultStats, getEffectiveDamage, getEffectiveAmount } from '../core/PlayerStats';
 import { spawnOrbitalProjectile } from './OrbitalSystem';
 
 // --- PERFORMANCE CACHE ---
@@ -78,8 +74,10 @@ export function WeaponSystem(dt: number, scene: THREE.Scene) {
 
       // Orbital and Global weapons auto-fire, other weapons require aim
       const isAutoFire = entity.weapon.category === 'orbit' || entity.weapon.category === 'global';
-      const wantsToFire = isAutoFire ||
-        player.input?.isShooting || (player.aimTarget && player.aimTarget.lengthSq() > 0);
+      const wantsToFire =
+        isAutoFire ||
+        player.input?.isShooting ||
+        (player.aimTarget && player.aimTarget.lengthSq() > 0);
 
       if (wantsToFire && entity.weapon.cooldownTimer <= 0) {
         fireWeapon(entity, player, scene);
@@ -191,7 +189,7 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
       style,
       weaponStats.bulletWidth || 0.3,
       weaponStats.bulletLength || 1.0,
-      finalSpeed * 0.3 // Use speed as orbit speed (scaled down)
+      finalSpeed * 0.3, // Use speed as orbit speed (scaled down)
     );
     return; // Don't spawn regular projectiles
   }
@@ -267,9 +265,8 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
         hitList: [],
         spinSpeed: spin,
         // Signal Hijacker: 0 damage + AoE = confusion weapon (3 second duration)
-        confusionDuration: (finalDamage === 0 && weaponStats.bulletExplodeRadius > 0) ? 3.0 : 0,
+        confusionDuration: finalDamage === 0 && weaponStats.bulletExplodeRadius > 0 ? 3.0 : 0,
       },
     });
   }
 }
-

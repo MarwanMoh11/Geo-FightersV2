@@ -16,14 +16,15 @@ export const EnemyType = {
   VIRUS: 'virus',
   FIREWALL: 'firewall',
   // Elite enemies (drop chests)
-  ENFORCER: 'enforcer',   // Firewall Enforcer - blocks projectiles
-  COLOSSUS: 'colossus',   // Packet Flood Colossus - spawns trash
-  WARDEN: 'warden',       // Latency Warden - phase shifts
+  ENFORCER: 'enforcer', // Firewall Enforcer - blocks projectiles
+  COLOSSUS: 'colossus', // Packet Flood Colossus - spawns trash
+  WARDEN: 'warden', // Latency Warden - phase shifts
   // Mini-bosses (drop multiple chests)
-  HYDRA: 'hydra',         // Proxy Hydra - multi-node
-  OVERSEER: 'overseer',   // Black ICE Overseer - major boss
+  HYDRA: 'hydra', // Proxy Hydra - multi-node
+  OVERSEER: 'overseer', // Black ICE Overseer - major boss
 } as const;
 
+// eslint-disable-next-line no-redeclare
 export type EnemyType = (typeof EnemyType)[keyof typeof EnemyType];
 
 type EnemyStats = { hp: number; speed: number; size: number; color: number; xp: number };
@@ -155,7 +156,7 @@ export function spawnPlayer(scene: THREE.Scene) {
 
 // --- CACHE & TYPES ---
 interface CachedEnemyAsset {
-  texture: THREE.Texture;        // Standard left-facing texture
+  texture: THREE.Texture; // Standard left-facing texture
   textureFlipped: THREE.Texture; // Flipped right-facing texture
   materialTemplate: THREE.SpriteMaterial;
   aspect: number;
@@ -317,11 +318,7 @@ export function spawnXP(scene: THREE.Scene, x: number, z: number, value: number)
   // Small random eject velocity
   const angle = Math.random() * Math.PI * 2;
   const force = 1.5;
-  const velocity = new THREE.Vector3(
-    Math.cos(angle) * force,
-    3.0,
-    Math.sin(angle) * force
-  );
+  const velocity = new THREE.Vector3(Math.cos(angle) * force, 3.0, Math.sin(angle) * force);
 
   world.add({
     isXP: true,

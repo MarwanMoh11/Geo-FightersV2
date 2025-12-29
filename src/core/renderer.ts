@@ -28,10 +28,10 @@ export function initRenderer() {
   }
 
   // 4. Improved Lighting for visibility
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);  // Boosted from 0.4
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.7); // Boosted from 0.4
   scene.add(ambientLight);
 
-  const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);  // Boosted from 1.0
+  const dirLight = new THREE.DirectionalLight(0xffffff, 1.5); // Boosted from 1.0
   dirLight.position.set(10, 30, 10);
   dirLight.castShadow = true;
   scene.add(dirLight);

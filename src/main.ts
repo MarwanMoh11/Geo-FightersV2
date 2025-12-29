@@ -78,7 +78,7 @@ preloadTextures(updateLoadingProgress).then(() => {
 
   // --- LEVEL SETUP ---
   initLevel(scene); // Spawn ground, obstacles, neon lighting
-  initMinimap();    // Initialize minimap canvas
+  initMinimap(); // Initialize minimap canvas
 
   // --- INITIAL SETUP ---
   spawnPlayer(scene);
@@ -160,7 +160,7 @@ function startGameLoop(scene: THREE.Scene, camera: THREE.Camera, renderer: THREE
     CameraSystem(dt, camera);
     const t3 = performance.now();
     UISystem();
-    MinimapSystem();  // Update minimap
+    MinimapSystem(); // Update minimap
     const t4 = performance.now();
 
     // Log slow frames (> 2ms total for new systems)
@@ -170,7 +170,9 @@ function startGameLoop(scene: THREE.Scene, camera: THREE.Camera, renderer: THREE
     const totalNew = chestTime + bossTime + uiTime;
 
     if (totalNew > 2) {
-      console.warn(`[PERF] Slow frame: Chest=${chestTime.toFixed(2)}ms, Boss=${bossTime.toFixed(2)}ms, UI=${uiTime.toFixed(2)}ms`);
+      console.warn(
+        `[PERF] Slow frame: Chest=${chestTime.toFixed(2)}ms, Boss=${bossTime.toFixed(2)}ms, UI=${uiTime.toFixed(2)}ms`,
+      );
     }
 
     renderer.render(scene, camera);

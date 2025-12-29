@@ -13,7 +13,12 @@ import * as THREE from 'three';
 import { world } from '../core/world';
 import type { WeaponSlot, PassiveSlot } from '../core/world';
 import { WEAPONS, getWeaponStatsAtLevel, canLevelUp, getBaseWeapons } from '../core/WeaponRegistry';
-import { PASSIVES, getPassiveBonusesAtLevel, canLevelUpPassive, getAllPassives } from '../core/PassiveRegistry';
+import {
+  PASSIVES,
+  getPassiveBonusesAtLevel,
+  canLevelUpPassive,
+  getAllPassives,
+} from '../core/PassiveRegistry';
 import type { PlayerStats } from '../core/PlayerStats';
 
 // --- CONSTANTS ---
@@ -108,11 +113,21 @@ function getUpgradeIconHtml(option: UpgradeOption): string {
   } else if (option.type === 'passive_new' || option.type === 'passive_level') {
     // Passives still use emoji fallback until we generate them
     const passiveEmojis: Record<string, string> = {
-      power_cell: '⚡', accelerator_chip: '🚀', capacitor: '🔋',
-      cooling_system: '❄️', clock_skipper: '⏱️', magnet_loader: '🧲',
-      shield_matrix: '🛡️', regen_module: '💚', speed_boosters: '👟',
-      ai_core: '🤖', optics_suite: '👁️', signal_booster: '📶',
-      targeting_os: '🎯', quantum_regulator: '⚛️', debug_suite: '🐛',
+      power_cell: '⚡',
+      accelerator_chip: '🚀',
+      capacitor: '🔋',
+      cooling_system: '❄️',
+      clock_skipper: '⏱️',
+      magnet_loader: '🧲',
+      shield_matrix: '🛡️',
+      regen_module: '💚',
+      speed_boosters: '👟',
+      ai_core: '🤖',
+      optics_suite: '👁️',
+      signal_booster: '📶',
+      targeting_os: '🎯',
+      quantum_regulator: '⚛️',
+      debug_suite: '🐛',
     };
     return `<div class="card-icon-emoji">${passiveEmojis[option.id] || '🔸'}</div>`;
   } else if (option.type === 'health') {
@@ -129,8 +144,8 @@ function generateUpgradePool(player: any): UpgradeOption[] {
   const weaponSlots: WeaponSlot[] = player.weaponSlots || [];
   const passiveSlots: PassiveSlot[] = player.passiveSlots || [];
 
-  const ownedWeaponIds = new Set(weaponSlots.map(s => s.weaponId));
-  const ownedPassiveIds = new Set(passiveSlots.map(s => s.passiveId));
+  const ownedWeaponIds = new Set(weaponSlots.map((s) => s.weaponId));
+  const ownedPassiveIds = new Set(passiveSlots.map((s) => s.passiveId));
 
   // 1. Weapon level-ups (owned weapons not at max)
   for (const slot of weaponSlots) {
@@ -200,7 +215,7 @@ function generateUpgradePool(player: any): UpgradeOption[] {
     id: 'health_boost',
     name: 'HEALTH RECHARGE',
     description: 'Restore 20 HP',
-    weight: 15,  // Low priority - appears less often unless pool is small
+    weight: 15, // Low priority - appears less often unless pool is small
   });
 
   return pool;
@@ -300,7 +315,7 @@ function addNewWeapon(player: any, weaponId: string) {
 
 function levelUpWeapon(player: any, weaponId: string) {
   const slots: WeaponSlot[] = player.weaponSlots || [];
-  const slot = slots.find(s => s.weaponId === weaponId);
+  const slot = slots.find((s) => s.weaponId === weaponId);
   if (!slot) return;
 
   slot.level++;
@@ -348,7 +363,7 @@ function applyHealthUpgrade(player: any) {
 
 function levelUpPassive(player: any, passiveId: string) {
   const slots: PassiveSlot[] = player.passiveSlots || [];
-  const slot = slots.find(s => s.passiveId === passiveId);
+  const slot = slots.find((s) => s.passiveId === passiveId);
   if (!slot) return;
 
   slot.level++;

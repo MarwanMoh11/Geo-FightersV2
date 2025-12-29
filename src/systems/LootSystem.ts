@@ -12,7 +12,12 @@ import { world } from '../core/world';
 import * as THREE from 'three';
 import { triggerLevelUp } from './UpgradeSystem';
 import { playCollect, playLevelUp } from '../core/audio';
-import { bankXP, XP_DESPAWN_RADIUS_SQ, shouldDeliverBankedXP, withdrawAllXP } from '../core/XPManager';
+import {
+  bankXP,
+  XP_DESPAWN_RADIUS_SQ,
+  shouldDeliverBankedXP,
+  withdrawAllXP,
+} from '../core/XPManager';
 import { spawnXP } from '../core/factories';
 
 // --- PRECOMPUTED CONSTANTS ---
@@ -122,4 +127,3 @@ function despawn(entity: any, scene: THREE.Scene) {
   if (entity.transform) scene.remove(entity.transform);
   world.remove(entity);
 }
-

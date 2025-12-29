@@ -86,7 +86,16 @@ let lastBossPercent = -1;
 
 export function UISystem() {
   // 1. Find Player Data
-  const player = world.with('isPlayer', 'health', 'xp', 'xpMax', 'level', 'score', 'weaponSlots', 'passiveSlots').first;
+  const player = world.with(
+    'isPlayer',
+    'health',
+    'xp',
+    'xpMax',
+    'level',
+    'score',
+    'weaponSlots',
+    'passiveSlots',
+  ).first;
 
   // Safety Check
   if (!player || !player.health) return;
@@ -193,8 +202,8 @@ export function UISystem() {
 
 function updateInventoryDisplay(weapons: WeaponSlot[], passives: PassiveSlot[]) {
   // Create hash to check if update needed
-  const weaponHash = weapons.map(w => `${w.weaponId}:${w.level}`).join(',');
-  const passiveHash = passives.map(p => `${p.passiveId}:${p.level}`).join(',');
+  const weaponHash = weapons.map((w) => `${w.weaponId}:${w.level}`).join(',');
+  const passiveHash = passives.map((p) => `${p.passiveId}:${p.level}`).join(',');
 
   // Only update if changed
   if (weaponHash !== lastWeaponHash || passiveHash !== lastPassiveHash) {
@@ -214,68 +223,76 @@ function updateInventoryDisplay(weapons: WeaponSlot[], passives: PassiveSlot[]) 
 
 function renderDesktopWeapons(weapons: WeaponSlot[]) {
   if (!ui.weaponSlots) return;
-  ui.weaponSlots.innerHTML = weapons.map(w => {
-    const def = WEAPONS[w.weaponId];
-    const iconPath = WEAPON_ICONS[w.weaponId] || '';
-    const name = def?.name || w.weaponId;
-    const isImage = iconPath.endsWith('.png');
-    const iconHtml = isImage
-      ? `<img class="slot-icon-img" src="${iconPath}" alt="${name}"/>`
-      : `<span class="slot-icon">${iconPath || '🔹'}</span>`;
-    return `
+  ui.weaponSlots.innerHTML = weapons
+    .map((w) => {
+      const def = WEAPONS[w.weaponId];
+      const iconPath = WEAPON_ICONS[w.weaponId] || '';
+      const name = def?.name || w.weaponId;
+      const isImage = iconPath.endsWith('.png');
+      const iconHtml = isImage
+        ? `<img class="slot-icon-img" src="${iconPath}" alt="${name}"/>`
+        : `<span class="slot-icon">${iconPath || '🔹'}</span>`;
+      return `
       <div class="inv-slot weapon" title="${name}">
         ${iconHtml}
         <span class="level-badge">${w.level}</span>
       </div>
     `;
-  }).join('');
+    })
+    .join('');
 }
 
 function renderDesktopPassives(passives: PassiveSlot[]) {
   if (!ui.passiveSlots) return;
-  ui.passiveSlots.innerHTML = passives.map(p => {
-    const def = PASSIVES[p.passiveId];
-    const icon = PASSIVE_ICONS[p.passiveId] || '🔸';
-    const name = def?.name || p.passiveId;
-    return `
+  ui.passiveSlots.innerHTML = passives
+    .map((p) => {
+      const def = PASSIVES[p.passiveId];
+      const icon = PASSIVE_ICONS[p.passiveId] || '🔸';
+      const name = def?.name || p.passiveId;
+      return `
       <div class="inv-slot passive" title="${name}">
         <span class="slot-icon">${icon}</span>
         <span class="level-badge">${p.level}</span>
       </div>
     `;
-  }).join('');
+    })
+    .join('');
 }
 
 function renderMobileInventory(weapons: WeaponSlot[], passives: PassiveSlot[]) {
   if (!ui.mobileAllSlots) return;
 
   // Render weapons as hexagonal slots
-  const weaponHtml = weapons.map(w => {
-    const iconPath = WEAPON_ICONS[w.weaponId] || '';
-    const name = WEAPONS[w.weaponId]?.name || w.weaponId;
-    const isImage = iconPath.endsWith('.png');
-    const iconHtml = isImage
-      ? `<img class="slot-icon-img" src="${iconPath}" alt="${name}"/>`
-      : `<span class="slot-icon">${iconPath || '🔹'}</span>`;
-    return `
+  const weaponHtml = weapons
+    .map((w) => {
+      const iconPath = WEAPON_ICONS[w.weaponId] || '';
+      const name = WEAPONS[w.weaponId]?.name || w.weaponId;
+      const isImage = iconPath.endsWith('.png');
+      const iconHtml = isImage
+        ? `<img class="slot-icon-img" src="${iconPath}" alt="${name}"/>`
+        : `<span class="slot-icon">${iconPath || '🔹'}</span>`;
+      return `
       <div class="mobile-hex-slot weapon" title="${name}">
         ${iconHtml}
         <span class="level-badge">LV${w.level}</span>
       </div>
     `;
-  }).join('');
+    })
+    .join('');
 
   // Render passives as hexagonal slots
-  const passiveHtml = passives.map(p => {
-    const icon = PASSIVE_ICONS[p.passiveId] || '🔸';
-    const name = PASSIVES[p.passiveId]?.name || p.passiveId;
-    return `
+  const passiveHtml = passives
+    .map((p) => {
+      const icon = PASSIVE_ICONS[p.passiveId] || '🔸';
+      const name = PASSIVES[p.passiveId]?.name || p.passiveId;
+      return `
       <div class="mobile-hex-slot passive" title="${name}">
         <span class="slot-icon">${icon}</span>
         <span class="level-badge">LV${p.level}</span>
       </div>
     `;
-  }).join('');
+    })
+    .join('');
 
   ui.mobileAllSlots.innerHTML = weaponHtml + passiveHtml;
 }

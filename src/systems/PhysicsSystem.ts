@@ -1,5 +1,10 @@
 import { world } from '../core/world';
-import { getBlockingObstacles, checkAABBCollision, MAP_HALF_WIDTH, MAP_HALF_HEIGHT } from '../core/LevelData';
+import {
+  getBlockingObstacles,
+  checkAABBCollision,
+  MAP_HALF_WIDTH,
+  MAP_HALF_HEIGHT,
+} from '../core/LevelData';
 
 // Entity collision radius (hitbox size)
 const PLAYER_RADIUS = 0.8;
@@ -23,18 +28,18 @@ export function PhysicsSystem(dt: number) {
           entity.position.x,
           entity.position.z,
           PROJECTILE_RADIUS,
-          obstacle
+          obstacle,
         );
 
         if (collision.colliding) {
           // Mark projectile for immediate removal by setting lifeTimer to max
           if (entity.lifeTimer !== undefined && entity.maxLife !== undefined) {
-            entity.lifeTimer = entity.maxLife;  // Will be removed by LifecycleSystem
+            entity.lifeTimer = entity.maxLife; // Will be removed by LifecycleSystem
           }
-          break;  // No need to check more obstacles
+          break; // No need to check more obstacles
         }
       }
-      continue;  // Skip ground clamp and other checks for projectiles
+      continue; // Skip ground clamp and other checks for projectiles
     }
 
     // 3. GROUND CLAMP (The Gravity Fix) - for non-projectiles only
@@ -42,15 +47,10 @@ export function PhysicsSystem(dt: number) {
     entity.velocity.y = 0; // Cancel any vertical launch forces
 
     // 4. OBSTACLE COLLISION for player/enemies
-    const radius = entity.isPlayer ? PLAYER_RADIUS : (entity.isEnemy ? ENEMY_RADIUS : DEFAULT_RADIUS);
+    const radius = entity.isPlayer ? PLAYER_RADIUS : entity.isEnemy ? ENEMY_RADIUS : DEFAULT_RADIUS;
 
     for (const obstacle of obstacles) {
-      const collision = checkAABBCollision(
-        entity.position.x,
-        entity.position.z,
-        radius,
-        obstacle
-      );
+      const collision = checkAABBCollision(entity.position.x, entity.position.z, radius, obstacle);
 
       if (collision.colliding) {
         // Push entity out of obstacle
@@ -62,9 +62,13 @@ export function PhysicsSystem(dt: number) {
     // 5. MAP BOUNDARY CLAMPING
     // Keep entities within the playable area
     const boundaryPadding = radius;
-    entity.position.x = Math.max(-MAP_HALF_WIDTH + boundaryPadding,
-      Math.min(MAP_HALF_WIDTH - boundaryPadding, entity.position.x));
-    entity.position.z = Math.max(-MAP_HALF_HEIGHT + boundaryPadding,
-      Math.min(MAP_HALF_HEIGHT - boundaryPadding, entity.position.z));
+    entity.position.x = Math.max(
+      -MAP_HALF_WIDTH + boundaryPadding,
+      Math.min(MAP_HALF_WIDTH - boundaryPadding, entity.position.x),
+    );
+    entity.position.z = Math.max(
+      -MAP_HALF_HEIGHT + boundaryPadding,
+      Math.min(MAP_HALF_HEIGHT - boundaryPadding, entity.position.z),
+    );
   }
 }

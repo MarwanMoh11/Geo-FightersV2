@@ -59,7 +59,15 @@ export function CollisionSystem(scene: THREE.Scene) {
       // DIRECT HIT
       if (distSq < BULLET_HIT_RADIUS_SQ) {
         // 1. APPLY DAMAGE
-        applyDamage(enemy, bullet.damage || 1, bullet.velocity, bullet.projectile.knockback, scene, enemies, e);
+        applyDamage(
+          enemy,
+          bullet.damage || 1,
+          bullet.velocity,
+          bullet.projectile.knockback,
+          scene,
+          enemies,
+          e,
+        );
 
         // 2. REGISTER HIT
         bullet.projectile.hitList.push(enemy.id!);
@@ -94,7 +102,15 @@ export function CollisionSystem(scene: THREE.Scene) {
               } else {
                 // Normal AoE damage
                 _blastDir.set(tdx, 0, tdz).normalize();
-                applyDamage(target, bullet.damage || 1, _blastDir.multiplyScalar(20), 10, scene, enemies, t);
+                applyDamage(
+                  target,
+                  bullet.damage || 1,
+                  _blastDir.multiplyScalar(20),
+                  10,
+                  scene,
+                  enemies,
+                  t,
+                );
               }
             }
           }
@@ -159,7 +175,7 @@ function applyDamage(
   knockback: number,
   scene: THREE.Scene,
   _enemies: any[],
-  _index: number
+  _index: number,
 ) {
   if (!enemy.health) return;
   enemy.health.current -= dmg;
@@ -185,7 +201,7 @@ function applyDamage(
     // Standard elite (1 chest)
     if (type === 'firewall' || type === 'enforcer' || type === 'warden') {
       const roll = Math.random();
-      const rarity = roll < 0.70 ? 'common' : roll < 0.95 ? 'rare' : 'epic';
+      const rarity = roll < 0.7 ? 'common' : roll < 0.95 ? 'rare' : 'epic';
       spawnChest(scene, px, pz, rarity as 'common' | 'rare' | 'epic');
       console.log(`[Chest] ${type} dropped ${rarity} chest`);
     }
@@ -233,7 +249,7 @@ function spawnExplosionFX(pos: THREE.Vector3, scene: THREE.Scene) {
     _particleVels[i].set(
       (Math.random() - 0.5) * 15,
       Math.random() * 8 + 2,
-      (Math.random() - 0.5) * 15
+      (Math.random() - 0.5) * 15,
     );
     const mesh = new THREE.Mesh(explosionGeo, explosionMat);
     mesh.position.copy(pos);

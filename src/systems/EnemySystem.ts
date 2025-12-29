@@ -8,7 +8,7 @@
  * 4. Limited separation checks (only nearby enemies)
  * 5. Early-out on stunned enemies
  * 6. Screen-bound despawning (enemies far from player are removed)
- * 
+ *
  * Signal Hijacker: Confused enemies attack other enemies
  */
 

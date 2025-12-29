@@ -20,7 +20,9 @@ const TEXTURE_PATHS = [
 ];
 
 // Preload all textures and return a promise
-export function preloadTextures(onProgress?: (loaded: number, total: number) => void): Promise<void> {
+export function preloadTextures(
+  onProgress?: (loaded: number, total: number) => void,
+): Promise<void> {
   let loadedCount = 0;
   const total = TEXTURE_PATHS.length;
 
