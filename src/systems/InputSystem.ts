@@ -74,14 +74,33 @@ if (joystickZone && joystickKnob && joystickVisuals) {
       const touch = e.changedTouches[0];
       touchId = touch.identifier;
 
-      joyCenterX = touch.clientX;
-      joyCenterY = touch.clientY;
+      // Calculate coordinates relative to the zone (which starts at top: 40%)
+      const rect = joystickZone.getBoundingClientRect();
+      joyCenterX = touch.clientX - rect.left;
+      joyCenterY = touch.clientY - rect.top;
 
-      // Position Visuals at touch point
+      // Position Visuals at local touch point
       joystickVisuals.style.transform = `translate(${joyCenterX}px, ${joyCenterY}px)`;
       joystickVisuals.classList.add('active');
 
-      // Reset knob processing immediately (at center)
+      // Update logic uses global clientX/Y against global touch, so we need consistent logic
+      // Actually, updateJoystick compares (x - joyCenterX).
+      // If x is global (touch.clientX) and joyCenterX is local, that's WRONG.
+      // We must store joyCenterX as GLOBAL for the delta calculation,
+      // BUT use LOCAL for the visual transform.
+
+      // Let's split them:
+      // joyCenterX/Y = Global center for input delta
+      // localX/Y = Local center for CSS transform
+      joyCenterX = touch.clientX;
+      joyCenterY = touch.clientY;
+
+      const localX = touch.clientX - rect.left;
+      const localY = touch.clientY - rect.top;
+
+      joystickVisuals.style.transform = `translate(${localX}px, ${localY}px)`;
+      joystickVisuals.classList.add('active');
+
       updateJoystick(touch.clientX, touch.clientY);
     },
     { passive: false },
