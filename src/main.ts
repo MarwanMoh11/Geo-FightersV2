@@ -79,6 +79,24 @@ preloadTextures(updateLoadingProgress).then(async () => {
 
   const { scene, camera, renderer } = await initRenderer();
 
+  // --- MOBILE VISUAL DEBUG ---
+  const backendDebug = document.createElement('div');
+  backendDebug.style.position = 'fixed';
+  backendDebug.style.bottom = '10px';
+  backendDebug.style.left = '10px';
+  backendDebug.style.color = '#00ff00';
+  backendDebug.style.backgroundColor = 'rgba(0,0,0,0.5)';
+  backendDebug.style.padding = '5px 10px';
+  backendDebug.style.fontFamily = 'monospace';
+  backendDebug.style.zIndex = '9999';
+  backendDebug.style.pointerEvents = 'none';
+
+  const backend = (renderer as any).backend || {};
+  const isWebGPU = backend.isWebGPUBackend || false;
+  backendDebug.textContent = `Renderer: ${isWebGPU ? 'WebGPU ⚡' : 'WebGL2 (Fallback) 🛡️'}`;
+  document.body.appendChild(backendDebug);
+  // ---------------------------
+
   // --- LEVEL SETUP ---
   initLevel(scene); // Spawn ground, obstacles, neon lighting
   initMinimap(); // Initialize minimap canvas
