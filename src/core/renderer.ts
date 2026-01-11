@@ -1,5 +1,9 @@
 import * as THREE from 'three';
-import { WebGPURenderer } from 'three/webgpu';
+
+// Feature detection: Check if WebGPU is available
+function isWebGPUAvailable(): boolean {
+  return 'gpu' in navigator;
+}
 
 export async function initRenderer() {
   // 1. The Scene
@@ -14,11 +18,26 @@ export async function initRenderer() {
   camera.position.set(0, 40, 40);
   camera.lookAt(0, 0, 0);
 
-  // 3. The Renderer - WebGPU
-  const renderer = new WebGPURenderer({ antialias: true });
+  // 3. The Renderer - WebGPU with WebGL fallback
+  let renderer: any;
 
-  // Initialize WebGPU (required, returns a promise)
-  await renderer.init();
+  if (isWebGPUAvailable()) {
+    try {
+      console.log('[Renderer] WebGPU is available, attempting to initialize...');
+      const { WebGPURenderer } = await import('three/webgpu');
+      renderer = new WebGPURenderer({ antialias: true, forceWebGL: false });
+      await renderer.init();
+      console.log('[Renderer] WebGPU initialized successfully');
+    } catch (error) {
+      console.warn('[Renderer] WebGPU initialization failed, falling back to WebGL:', error);
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.shadowMap.enabled = true;
+    }
+  } else {
+    console.log('[Renderer] WebGPU not available, using WebGL renderer');
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.shadowMap.enabled = true;
+  }
 
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
