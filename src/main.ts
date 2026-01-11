@@ -97,8 +97,14 @@ preloadTextures(updateLoadingProgress).then(async () => {
   document.body.appendChild(backendDebug);
   // ---------------------------
 
+  // --- RAPIER PHYSICS INITIALIZATION ---
+  if (loadingText) loadingText.textContent = 'Initializing Physics...';
+  const { initRapier } = await import('./core/RapierWorld');
+  await initRapier();
+  // ------------------------------------
+
   // --- LEVEL SETUP ---
-  initLevel(scene); // Spawn ground, obstacles, neon lighting
+  initLevel(scene); // Spawn ground, obstacles, neon lighting + physics colliders
   initMinimap(); // Initialize minimap canvas
 
   // --- COMPUTE SYSTEMS SETUP (WebGPU) ---

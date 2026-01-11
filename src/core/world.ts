@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { PlayerStats } from './PlayerStats';
+import type RAPIER from '@dimforge/rapier3d-compat';
 
 let nextId = 0;
 export const generateId = () => ++nextId;
@@ -117,6 +118,10 @@ export type Entity = {
   hitFlashTimer?: number;
   stunTimer?: number;
   baseColor?: number;
+
+  // Rapier physics body (Phase 2)
+  rigidBody?: RAPIER.RigidBody;
+  collider?: RAPIER.Collider;
 };
 
 function createECS() {

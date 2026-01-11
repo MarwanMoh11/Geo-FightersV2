@@ -5,23 +5,49 @@ import {
   MAP_HALF_WIDTH,
   MAP_HALF_HEIGHT,
 } from '../core/LevelData';
+import { stepPhysics, isRapierInitialized } from '../core/RapierWorld';
 
-// Entity collision radius (hitbox size)
+// Entity collision radius (hitbox size) - for legacy fallback
 const PLAYER_RADIUS = 0.8;
 const ENEMY_RADIUS = 0.6;
 const DEFAULT_RADIUS = 0.5;
 const PROJECTILE_RADIUS = 0.3;
 
 export function PhysicsSystem(dt: number) {
-  // Cache obstacles for this frame
+  // --- RAPIER PHYSICS ---
+  if (isRapierInitialized()) {
+    // 1. Apply velocities from ECS to Rapier bodies
+    for (const entity of world.with('rigidBody', 'velocity')) {
+      const vel = entity.velocity;
+      entity.rigidBody!.setLinvel({ x: vel.x, y: 0, z: vel.z }, true);
+    }
+
+    // 2. Step physics world
+    stepPhysics(dt);
+
+    // 3. Sync positions from Rapier back to ECS
+    for (const entity of world.with('rigidBody', 'position')) {
+      const pos = entity.rigidBody!.translation();
+      entity.position.set(pos.x, 0.5, pos.z);
+
+      // Sync to visual transform
+      if (entity.transform) {
+        entity.transform.position.copy(entity.position);
+      }
+    }
+  }
+
+  // --- LEGACY FALLBACK (for entities without rigidBody) ---
   const obstacles = getBlockingObstacles();
 
   for (const entity of world.with('position', 'velocity')) {
+    // Skip entities managed by Rapier
+    if (entity.rigidBody) continue;
+
     // 1. Move
     entity.position.add(entity.velocity.clone().multiplyScalar(dt));
 
     // 2. PROJECTILE WALL COLLISION
-    // Projectiles should be destroyed when hitting walls
     if (entity.isProjectile) {
       for (const obstacle of obstacles) {
         const collision = checkAABBCollision(
@@ -32,35 +58,32 @@ export function PhysicsSystem(dt: number) {
         );
 
         if (collision.colliding) {
-          // Mark projectile for immediate removal by setting lifeTimer to max
           if (entity.lifeTimer !== undefined && entity.maxLife !== undefined) {
-            entity.lifeTimer = entity.maxLife; // Will be removed by LifecycleSystem
+            entity.lifeTimer = entity.maxLife;
           }
-          break; // No need to check more obstacles
+          break;
         }
       }
-      continue; // Skip ground clamp and other checks for projectiles
+      continue;
     }
 
-    // 3. GROUND CLAMP (The Gravity Fix) - for non-projectiles only
-    entity.position.y = 0.5; // Hard lock to ground height
-    entity.velocity.y = 0; // Cancel any vertical launch forces
+    // 3. GROUND CLAMP
+    entity.position.y = 0.5;
+    entity.velocity.y = 0;
 
-    // 4. OBSTACLE COLLISION for player/enemies
+    // 4. OBSTACLE COLLISION
     const radius = entity.isPlayer ? PLAYER_RADIUS : entity.isEnemy ? ENEMY_RADIUS : DEFAULT_RADIUS;
 
     for (const obstacle of obstacles) {
       const collision = checkAABBCollision(entity.position.x, entity.position.z, radius, obstacle);
 
       if (collision.colliding) {
-        // Push entity out of obstacle
         entity.position.x += collision.pushX;
         entity.position.z += collision.pushZ;
       }
     }
 
     // 5. MAP BOUNDARY CLAMPING
-    // Keep entities within the playable area
     const boundaryPadding = radius;
     entity.position.x = Math.max(
       -MAP_HALF_WIDTH + boundaryPadding,

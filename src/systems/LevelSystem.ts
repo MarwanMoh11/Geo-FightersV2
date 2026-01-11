@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { getCurrentLevel, type Obstacle, type LevelConfig } from '../core/LevelData';
 import { loadTexture } from '../core/assets';
+import { createStaticCuboid, isRapierInitialized } from '../core/RapierWorld';
 
 // Store references for cleanup
 let groundMesh: THREE.Mesh | null = null;
@@ -29,15 +30,30 @@ export function initLevel(scene: THREE.Scene): void {
   // Create ground plane
   createGround(scene, level);
 
-  // Spawn all obstacles
+  // Spawn all obstacles (visual + physics)
   for (const obstacle of level.obstacles) {
     spawnObstacle(scene, obstacle);
+
+    // Create Rapier physics collider for blocking obstacles
+    if (obstacle.blocking && isRapierInitialized()) {
+      const height = obstacle.height ?? (obstacle.type === 'wall' ? 6 : 3);
+      createStaticCuboid(
+        obstacle.x,
+        obstacle.z,
+        obstacle.width / 2,  // halfWidth
+        height / 2,          // halfHeight
+        obstacle.depth / 2   // halfDepth
+      );
+    }
   }
 
   // Add ambient neon lighting for cyberpunk mood
   addNeonLighting(scene);
 
   console.log(`[LEVEL] Initialization complete`);
+  if (isRapierInitialized()) {
+    console.log(`[LEVEL] ✅ ${level.obstacles.filter(o => o.blocking).length} physics colliders created`);
+  }
 }
 
 /**
