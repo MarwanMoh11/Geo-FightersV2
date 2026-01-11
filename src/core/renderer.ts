@@ -27,7 +27,16 @@ export async function initRenderer() {
       const { WebGPURenderer } = await import('three/webgpu');
       renderer = new WebGPURenderer({ antialias: true, forceWebGL: false });
       await renderer.init();
-      console.log('[Renderer] WebGPU initialized successfully');
+
+      // Check if WebGPU actually initialized or fell back to WebGL
+      const backend = (renderer as any).backend || {};
+      const isUsingWebGPU = backend.isWebGPUBackend || false;
+
+      if (isUsingWebGPU) {
+        console.log('[Renderer] ✅ WebGPU initialized successfully');
+      } else {
+        console.log('[Renderer] ⚠️ WebGPU context creation failed, using WebGL2 fallback');
+      }
     } catch (error) {
       console.warn('[Renderer] WebGPU initialization failed, falling back to WebGL:', error);
       renderer = new THREE.WebGLRenderer({ antialias: true });
