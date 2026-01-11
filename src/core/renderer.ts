@@ -1,6 +1,7 @@
 import * as THREE from 'three';
+import { WebGPURenderer } from 'three/webgpu';
 
-export function initRenderer() {
+export async function initRenderer() {
   // 1. The Scene
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x222222); // Dark Grey (easier on eyes than black)
@@ -13,11 +14,14 @@ export function initRenderer() {
   camera.position.set(0, 40, 40);
   camera.lookAt(0, 0, 0);
 
-  // 3. The Renderer
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  // 3. The Renderer - WebGPU
+  const renderer = new WebGPURenderer({ antialias: true });
+
+  // Initialize WebGPU (required, returns a promise)
+  await renderer.init();
+
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.shadowMap.enabled = true;
 
   // Append to #app container (not body) to prevent layout issues
   const appContainer = document.getElementById('app');

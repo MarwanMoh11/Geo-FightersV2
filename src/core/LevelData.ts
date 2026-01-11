@@ -335,6 +335,55 @@ export const LEVEL_1_NEON_SLUMS: LevelConfig = {
   ],
 };
 
+// --- LEVEL DEBUG: SANDBOX ---
+export const LEVEL_DEBUG: LevelConfig = {
+  name: 'Debug Sandbox',
+  mapWidth: 2000,
+  mapHeight: 2000,
+  spawnPoint: { x: 0, z: 0 },
+  groundTexture: '/textures/environments/ground_grid.png', // Fallback to solid if missing
+  backgroundColor: 0x222222,
+  obstacles: [
+    // Just border walls to prevent falling off world
+    {
+      id: 'debug_wall_n',
+      x: 0,
+      z: -1000 - WALL_THICKNESS / 2,
+      width: 2000 + WALL_THICKNESS * 2,
+      depth: WALL_THICKNESS,
+      type: 'wall',
+      blocking: true,
+    },
+    {
+      id: 'debug_wall_s',
+      x: 0,
+      z: 1000 + WALL_THICKNESS / 2,
+      width: 2000 + WALL_THICKNESS * 2,
+      depth: WALL_THICKNESS,
+      type: 'wall',
+      blocking: true,
+    },
+    {
+      id: 'debug_wall_e',
+      x: 1000 + WALL_THICKNESS / 2,
+      z: 0,
+      width: WALL_THICKNESS,
+      depth: 2000,
+      type: 'wall',
+      blocking: true,
+    },
+    {
+      id: 'debug_wall_w',
+      x: -1000 - WALL_THICKNESS / 2,
+      z: 0,
+      width: WALL_THICKNESS,
+      depth: 2000,
+      type: 'wall',
+      blocking: true,
+    },
+  ],
+};
+
 // Helper: Get current level config (for future multi-level support)
 let currentLevel: LevelConfig = LEVEL_1_NEON_SLUMS;
 

@@ -1453,4 +1453,4 @@ select option {
   .setting-row label {
     font-size: 10px;
   }
-}
+}@import './components/debug.css';

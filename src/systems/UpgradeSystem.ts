@@ -46,20 +46,33 @@ export let isGamePaused = false;
 
 // --- PUBLIC API ---
 export function triggerLevelUp() {
-  isGamePaused = true;
-  if (modal) modal.classList.remove('hidden');
-  renderCards();
-}
-
-// --- CARD RENDERING ---
-function renderCards() {
-  if (!container) return;
-  container.innerHTML = '';
-
   const player = world.with('isPlayer', 'weaponSlots', 'passiveSlots', 'stats').first;
   if (!player) return;
 
   const options = generateUpgradePool(player);
+
+  // Auto-pick if only Health is available
+  if (options.length === 1 && options[0].type === 'health') {
+    selectUpgrade(options[0]);
+    return;
+  }
+
+  isGamePaused = true;
+  if (modal) modal.classList.remove('hidden');
+  renderCards(options);
+}
+
+// --- CARD RENDERING ---
+function renderCards(precalcOptions?: UpgradeOption[]) {
+  if (!container) return;
+  container.innerHTML = '';
+
+  let options = precalcOptions;
+  if (!options) {
+    const player = world.with('isPlayer', 'weaponSlots', 'passiveSlots', 'stats').first;
+    if (!player) return;
+    options = generateUpgradePool(player);
+  }
   const choices = selectWeightedChoices(options, UPGRADE_CHOICES);
 
   choices.forEach((option) => {

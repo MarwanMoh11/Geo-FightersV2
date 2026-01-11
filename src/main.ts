@@ -30,6 +30,9 @@ import { OrbitalSystem } from './systems/OrbitalSystem';
 import { updateFPS } from './systems/MainMenuSystem';
 import { initLevel } from './systems/LevelSystem';
 import { initMinimap, MinimapSystem } from './systems/MinimapSystem';
+import { DebugSystem } from './systems/DebugSystem';
+import { initParticleComputeSystem, ParticleComputeSystem } from './systems/ParticleComputeSystem';
+import { initEnemyComputeSystem, EnemyComputeSystem } from './systems/EnemyComputeSystem';
 
 // --- AUDIO UNLOCK & MUSIC START ---
 const unlockAudio = () => {
@@ -71,14 +74,18 @@ function hideLoadingScreen() {
 }
 
 // --- PRELOAD ALL ASSETS THEN START GAME ---
-preloadTextures(updateLoadingProgress).then(() => {
-  if (loadingText) loadingText.textContent = 'Initializing...';
+preloadTextures(updateLoadingProgress).then(async () => {
+  if (loadingText) loadingText.textContent = 'Initializing WebGPU...';
 
-  const { scene, camera, renderer } = initRenderer();
+  const { scene, camera, renderer } = await initRenderer();
 
   // --- LEVEL SETUP ---
   initLevel(scene); // Spawn ground, obstacles, neon lighting
   initMinimap(); // Initialize minimap canvas
+
+  // --- COMPUTE SYSTEMS SETUP (WebGPU) ---
+  initParticleComputeSystem();
+  initEnemyComputeSystem();
 
   // --- INITIAL SETUP ---
   spawnPlayer(scene);
@@ -93,7 +100,7 @@ preloadTextures(updateLoadingProgress).then(() => {
 import { spawnChest } from './systems/ChestSystem';
 import { world } from './core/world';
 
-function startGameLoop(scene: THREE.Scene, camera: THREE.Camera, renderer: THREE.WebGLRenderer) {
+function startGameLoop(scene: THREE.Scene, camera: THREE.Camera, renderer: any) {
   // DEBUG: Press 'C' to spawn a chest for testing
   document.addEventListener('keydown', (e) => {
     if (e.key === 'c' || e.key === 'C') {
@@ -143,7 +150,14 @@ function startGameLoop(scene: THREE.Scene, camera: THREE.Camera, renderer: THREE
     // 3. Physics/Visuals
     PhysicsSystem(dt);
     LifecycleSystem(dt, scene);
+
+    // GPU-Accelerated Systems (compute shaders)
+    ParticleComputeSystem(dt, renderer);
+    EnemyComputeSystem(dt, renderer);
+
+    // Legacy CPU systems (can be removed once compute is fully operational)
     ParticleSystem(dt);
+
     LootSystem(dt, scene);
     PassiveEffectsSystem(dt); // Apply health regen, etc.
     OrbitalSystem(dt); // Update orbital weapon projectiles
@@ -161,6 +175,7 @@ function startGameLoop(scene: THREE.Scene, camera: THREE.Camera, renderer: THREE
     const t3 = performance.now();
     UISystem();
     MinimapSystem(); // Update minimap
+    DebugSystem(scene); // Handle debug inputs/level
     const t4 = performance.now();
 
     // Log slow frames (> 2ms total for new systems)
