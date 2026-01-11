@@ -7,7 +7,9 @@ const textures = new Map<string, THREE.Texture>();
 const TEXTURE_PATHS = [
   // Player & Enemies
   '/sprites/player/player_robot.png',
+  '/sprites/enemies/enemy_virus.png',
   '/sprites/enemies/enemy_glitch.png',
+  '/sprites/enemies/enemy_firewall.png',
   // Environment - Level 1
   '/textures/environments/ground_asphalt.png',
   '/textures/environments/wall_texture.png',
