@@ -18,7 +18,7 @@ export function initEnemyComputeSystem() {
     console.log('[EnemyComputeSystem] Initialized (CPU mode, GPU-ready)');
 }
 
-export function EnemyComputeSystem(dt: number, renderer: any) {
+export function EnemyComputeSystem(dt: number, _renderer: any) {
     // Get enemies
     const enemyEntities = Array.from(world.with('isEnemy', 'position', 'velocity'));
 

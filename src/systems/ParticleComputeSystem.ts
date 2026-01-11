@@ -14,7 +14,7 @@ export function initParticleComputeSystem() {
     console.log('[ParticleComputeSystem] Initialized (CPU mode, GPU-ready)');
 }
 
-export function ParticleComputeSystem(dt: number, renderer: any) {
+export function ParticleComputeSystem(dt: number, _renderer: any) {
     // Get current particles
     const particleEntities = Array.from(world.with('isParticle', 'transform', 'lifeTimer', 'maxLife'));
 
