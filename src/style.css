@@ -1,12 +1,15 @@
+@import './ui/tokens.css';
+
 :root {
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-body);
   line-height: 1.5;
-  font-weight: 700;
+  font-weight: 400;
   color-scheme: dark;
 }
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body,
@@ -15,7 +18,8 @@ html {
   padding: 0;
   width: 100%;
   height: 100%;
-  background-color: #111;
+  background-color: var(--color-bg-dark);
+  color: var(--color-text-main);
   overflow: hidden;
   user-select: none;
   touch-action: none;
@@ -1453,4 +1457,6 @@ select option {
   .setting-row label {
     font-size: 10px;
   }
-}@import './components/debug.css';
+}
+
+@import './components/debug.css';

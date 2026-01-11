@@ -21,15 +21,17 @@ import {
 } from '../core/PassiveRegistry';
 import type { PlayerStats } from '../core/PlayerStats';
 
+import { uiState } from '../core/UIState.svelte.ts';
+
 // --- CONSTANTS ---
 const MAX_WEAPON_SLOTS = 6;
 const MAX_PASSIVE_SLOTS = 6;
 const UPGRADE_CHOICES = 3;
 
 // --- UPGRADE TYPES ---
-type UpgradeType = 'weapon_new' | 'weapon_level' | 'passive_new' | 'passive_level' | 'health';
+export type UpgradeType = 'weapon_new' | 'weapon_level' | 'passive_new' | 'passive_level' | 'health';
 
-interface UpgradeOption {
+export interface UpgradeOption {
   type: UpgradeType;
   id: string;
   name: string;
@@ -39,9 +41,9 @@ interface UpgradeOption {
   weight: number;
 }
 
-// --- DOM ---
-const modal = document.getElementById('upgrade-modal');
-const container = document.getElementById('cards-container');
+// --- DOM (LEGACY - REMOVED) ---
+// const modal = document.getElementById('upgrade-modal');
+// const container = document.getElementById('cards-container');
 export let isGamePaused = false;
 
 // --- PUBLIC API ---
@@ -58,97 +60,9 @@ export function triggerLevelUp() {
   }
 
   isGamePaused = true;
-  if (modal) modal.classList.remove('hidden');
-  renderCards(options);
-}
-
-// --- CARD RENDERING ---
-function renderCards(precalcOptions?: UpgradeOption[]) {
-  if (!container) return;
-  container.innerHTML = '';
-
-  let options = precalcOptions;
-  if (!options) {
-    const player = world.with('isPlayer', 'weaponSlots', 'passiveSlots', 'stats').first;
-    if (!player) return;
-    options = generateUpgradePool(player);
-  }
   const choices = selectWeightedChoices(options, UPGRADE_CHOICES);
-
-  choices.forEach((option) => {
-    const card = document.createElement('div');
-    card.className = 'upgrade-card';
-
-    // Style by type
-    let borderColor = '#4a9eff';
-    let typeLabel = 'UPGRADE';
-
-    if (option.type === 'weapon_new') {
-      borderColor = '#ffaa00';
-      typeLabel = 'NEW WEAPON';
-    } else if (option.type === 'passive_new') {
-      borderColor = '#00ff88';
-      typeLabel = 'NEW PASSIVE';
-    } else if (option.type === 'weapon_level') {
-      typeLabel = `LEVEL ${option.currentLevel} → ${option.nextLevel}`;
-    } else if (option.type === 'passive_level') {
-      typeLabel = `LEVEL ${option.currentLevel} → ${option.nextLevel}`;
-    } else if (option.type === 'health') {
-      borderColor = '#ff5577';
-      typeLabel = 'HEAL';
-    }
-
-    card.style.borderColor = borderColor;
-    card.style.boxShadow = `0 0 15px ${borderColor}40`;
-
-    // Get icon for this upgrade
-    const iconHtml = getUpgradeIconHtml(option);
-
-    card.innerHTML = `
-      ${iconHtml}
-      <div class="card-title" style="color:${borderColor}">${option.name}</div>
-      <div class="card-desc">${option.description}</div>
-      <div class="card-rarity">${typeLabel}</div>
-    `;
-
-    card.onclick = () => selectUpgrade(option);
-    container.appendChild(card);
-  });
-}
-
-// Helper to get icon HTML for upgrade cards
-function getUpgradeIconHtml(option: UpgradeOption): string {
-  let iconPath = '';
-
-  if (option.type === 'weapon_new' || option.type === 'weapon_level') {
-    // Use image path for weapons
-    iconPath = `/textures/ui/weapons/${option.id}.png`;
-  } else if (option.type === 'passive_new' || option.type === 'passive_level') {
-    // Passives still use emoji fallback until we generate them
-    const passiveEmojis: Record<string, string> = {
-      power_cell: '⚡',
-      accelerator_chip: '🚀',
-      capacitor: '🔋',
-      cooling_system: '❄️',
-      clock_skipper: '⏱️',
-      magnet_loader: '🧲',
-      shield_matrix: '🛡️',
-      regen_module: '💚',
-      speed_boosters: '👟',
-      ai_core: '🤖',
-      optics_suite: '👁️',
-      signal_booster: '📶',
-      targeting_os: '🎯',
-      quantum_regulator: '⚛️',
-      debug_suite: '🐛',
-    };
-    return `<div class="card-icon-emoji">${passiveEmojis[option.id] || '🔸'}</div>`;
-  } else if (option.type === 'health') {
-    return `<div class="card-icon-emoji">❤️</div>`;
-  }
-
-  // Return image for weapons, with fallback
-  return `<img class="card-icon" src="${iconPath}" alt="${option.name}" onerror="this.style.display='none'"/>`;
+  uiState.upgradeChoices = choices;
+  uiState.showUpgrade = true;
 }
 
 // --- POOL GENERATION ---
@@ -259,7 +173,7 @@ function selectWeightedChoices(pool: UpgradeOption[], count: number): UpgradeOpt
 }
 
 // --- UPGRADE APPLICATION ---
-function selectUpgrade(option: UpgradeOption) {
+export function selectUpgrade(option: UpgradeOption) {
   const player = world.with('isPlayer', 'weaponSlots', 'passiveSlots', 'stats').first;
   if (!player) return;
 
@@ -284,7 +198,6 @@ function selectUpgrade(option: UpgradeOption) {
   // Recalculate stats from passives
   recalculateStats(player);
 
-  if (modal) modal.classList.add('hidden');
   isGamePaused = false;
 }
 

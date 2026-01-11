@@ -114,13 +114,15 @@ export function createDynamicBody(
 
     // Use kinematic position-based: we control position, Rapier handles collision detection
     const bodyDesc = RAPIER.RigidBodyDesc.kinematicPositionBased()
-        .setTranslation(x, 0.5, z);
+        .setTranslation(x, 0.5, z)
+        .setCcdEnabled(true);
 
     const rigidBody = world.createRigidBody(bodyDesc);
 
     // Create ball collider (NOT a sensor - we want physical collision response)
     const colliderDesc = RAPIER.ColliderDesc.ball(radius)
-        .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
+        .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS)
+        .setActiveCollisionTypes(RAPIER.ActiveCollisionTypes.DEFAULT | RAPIER.ActiveCollisionTypes.KINEMATIC_KINEMATIC);
 
     const collider = world.createCollider(colliderDesc, rigidBody);
 
@@ -142,14 +144,16 @@ export function createKinematicBody(
 
     // Kinematic position-based body (we control position directly)
     const bodyDesc = RAPIER.RigidBodyDesc.kinematicPositionBased()
-        .setTranslation(x, 0.5, z);
+        .setTranslation(x, 0.5, z)
+        .setCcdEnabled(true);
 
     const rigidBody = world.createRigidBody(bodyDesc);
 
     // Sensor collider (detects overlaps but doesn't push)
     const colliderDesc = RAPIER.ColliderDesc.ball(radius)
         .setSensor(true)
-        .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
+        .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS)
+        .setActiveCollisionTypes(RAPIER.ActiveCollisionTypes.DEFAULT | RAPIER.ActiveCollisionTypes.KINEMATIC_KINEMATIC);
 
     const collider = world.createCollider(colliderDesc, rigidBody);
 

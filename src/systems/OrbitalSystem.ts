@@ -1,14 +1,9 @@
-/**
- * OrbitalSystem - Simple orbital weapon handling
- *
- * Orbital projectiles rotate around the player at fixed positions.
- * Much simpler implementation than before.
- */
-
 import { world } from '../core/world';
 import * as THREE from 'three';
+import { createKinematicBody, isRapierInitialized } from '../core/RapierWorld';
 
 const ORBIT_RADIUS = 3.5;
+// ... (rest of constants and OrbitalSystem unchanged)
 const ORBIT_SPEED = 2.5; // Radians per second
 
 // Track orbital angle globally
@@ -97,7 +92,7 @@ export function spawnOrbitalProjectile(
 
     scene.add(mesh);
 
-    world.add({
+    const projectile = world.add({
       isOrbital: true,
       isProjectile: true,
       position: mesh.position,
@@ -120,6 +115,19 @@ export function spawnOrbitalProjectile(
       lifeTimer: 0,
       maxLife: 9999,
     });
+
+    // Add Rapier rigid body for collision
+    if (isRapierInitialized() && projectile.id !== undefined) {
+      const radius = bulletWidth * 1.5; // Orbitals have a larger presence
+      const { rigidBody, collider } = createKinematicBody(
+        mesh.position.x,
+        mesh.position.z,
+        radius,
+        projectile.id
+      );
+      projectile.rigidBody = rigidBody;
+      projectile.collider = collider;
+    }
   }
 }
 

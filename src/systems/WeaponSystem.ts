@@ -4,9 +4,9 @@ import { addTrauma } from './CameraSystem';
 import { playShoot } from '../core/audio';
 import { getDefaultStats, getEffectiveDamage, getEffectiveAmount } from '../core/PlayerStats';
 import { spawnOrbitalProjectile } from './OrbitalSystem';
+import { createKinematicBody, isRapierInitialized } from '../core/RapierWorld';
 
-// --- PERFORMANCE CACHE ---
-// 1. Shared Geometries (Created Once)
+// ... (muzzleGeo/boltGeo etc unchanged)
 const muzzleGeo = new THREE.SphereGeometry(0.4, 8, 8);
 const muzzleMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 });
 
@@ -16,8 +16,8 @@ boltGeo.rotateX(Math.PI / 2);
 const shardGeo = new THREE.TetrahedronGeometry(0.5);
 const orbGeo = new THREE.IcosahedronGeometry(0.5, 1);
 
-// 2. Shared Materials Cache (Key: Color Hex)
-// We reuse the exact same material instance for all bullets of the same color.
+const PROJECTILE_RADIUS = 0.3;
+// ... (materials cache remains)
 const bulletMatCache = new Map<number, THREE.MeshStandardMaterial>();
 const wireframeCache = new Map<number, THREE.MeshBasicMaterial>();
 
@@ -250,7 +250,7 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
     // Velocity must be a new instance
     const velocity = dir.multiplyScalar(finalSpeed);
 
-    world.add({
+    const projectile = world.add({
       isProjectile: true,
       position: mesh.position,
       velocity: velocity,
@@ -268,5 +268,18 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
         confusionDuration: finalDamage === 0 && weaponStats.bulletExplodeRadius > 0 ? 3.0 : 0,
       },
     });
+
+    // Add Rapier rigid body for collision
+    if (isRapierInitialized() && projectile.id !== undefined) {
+      const radius = weaponStats.bulletWidth ? weaponStats.bulletWidth * 0.6 : PROJECTILE_RADIUS;
+      const { rigidBody, collider } = createKinematicBody(
+        mesh.position.x,
+        mesh.position.z,
+        radius,
+        projectile.id
+      );
+      projectile.rigidBody = rigidBody;
+      projectile.collider = collider;
+    }
   }
 }

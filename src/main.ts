@@ -114,6 +114,10 @@ preloadTextures(updateLoadingProgress).then(async () => {
   // --- INITIAL SETUP ---
   spawnPlayer(scene);
 
+  const { mount } = await import('svelte');
+  const App = (await import('./ui/App.svelte')).default;
+  mount(App, { target: document.getElementById('app')! });
+
   hideLoadingScreen();
 
   // --- DEBUG: Press 'C' to spawn a chest for testing ---

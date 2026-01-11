@@ -148,6 +148,9 @@ function createECS() {
         },
       };
     },
+    get: (id: number) => {
+      return entities.find((e) => e.id === id);
+    },
   };
 }
 

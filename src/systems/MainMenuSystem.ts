@@ -6,63 +6,22 @@ import type { GameStateType } from '../core/GameState';
 import type { GameSettings } from '../core/SettingsManager';
 import {
   getSettings,
-  setSetting,
-  resetSettings,
   loadSettings,
   onSettingsChange,
 } from '../core/SettingsManager';
-import { setMasterGain, setMusicGain, setSFXGain, stopMusic, resumeMusic } from '../core/audio';
+import { setMasterGain, setMusicGain, setSFXGain, resumeMusic } from '../core/audio';
+
+import { uiState } from '../core/UIState.svelte.ts';
 
 // --- DOM ELEMENTS ---
-const mainMenu = document.getElementById('main-menu');
-const settingsModal = document.getElementById('settings-modal');
-const pauseModal = document.getElementById('pause-modal');
+// mainMenu, settingsModal, pauseModal are now handled by Svelte
 const fpsCounter = document.getElementById('fps-counter');
-const mobilePauseBtn = document.getElementById('mobile-pause-btn');
-
-// Main Menu Buttons
-const startBtn = document.getElementById('start-btn');
-const settingsBtn = document.getElementById('settings-btn');
-
-// Settings Elements
-const closeSettingsBtn = document.getElementById('close-settings-btn');
-const resetSettingsBtn = document.getElementById('reset-settings-btn');
-const tabButtons = document.querySelectorAll('.tab-btn');
-const settingsPanels = document.querySelectorAll('.settings-panel');
-
-// Pause Modal Buttons
-const resumeBtn = document.getElementById('resume-btn');
-const pauseSettingsBtn = document.getElementById('pause-settings-btn');
-const mainMenuBtn = document.getElementById('main-menu-btn');
-
-// Settings Inputs
-const masterVolumeInput = document.getElementById('master-volume') as HTMLInputElement;
-const musicVolumeInput = document.getElementById('music-volume') as HTMLInputElement;
-const sfxVolumeInput = document.getElementById('sfx-volume') as HTMLInputElement;
-const musicEnabledInput = document.getElementById('music-enabled') as HTMLInputElement;
-const screenShakeInput = document.getElementById('screen-shake') as HTMLInputElement;
-const showFpsInput = document.getElementById('show-fps') as HTMLInputElement;
-const qualityLevelInput = document.getElementById('quality-level') as HTMLSelectElement;
-const damageNumbersInput = document.getElementById('damage-numbers') as HTMLInputElement;
-const joystickSensitivityInput = document.getElementById(
-  'joystick-sensitivity',
-) as HTMLInputElement;
-const invertControlsInput = document.getElementById('invert-controls') as HTMLInputElement;
-
-// Value Displays
-const masterVolumeVal = document.getElementById('master-volume-val');
-const musicVolumeVal = document.getElementById('music-volume-val');
-const sfxVolumeVal = document.getElementById('sfx-volume-val');
-const joystickSensitivityVal = document.getElementById('joystick-sensitivity-val');
-
-// Track where settings was opened from
-let settingsOpenedFrom: 'menu' | 'pause' | 'playing' = 'menu';
+// const mobilePauseBtn = document.getElementById('mobile-pause-btn');
 
 // --- INITIALIZATION ---
 export function initMainMenuSystem(): void {
   // Load settings and apply to UI
   const settings = loadSettings();
-  applySettingsToUI(settings);
   applySettingsToGame(settings);
 
   // Setup event listeners
@@ -83,13 +42,8 @@ export function initMainMenuSystem(): void {
 
 // --- STATE CHANGE HANDLER ---
 function handleStateChange(newState: GameStateType, _oldState: GameStateType): void {
-  // Update UI visibility based on state
-  if (mainMenu) {
-    mainMenu.classList.toggle('hidden', newState !== 'MENU');
-  }
-  if (pauseModal) {
-    pauseModal.classList.toggle('hidden', newState !== 'PAUSED');
-  }
+  // Sync to Svelte UIState
+  uiState.gameState = newState;
 
   // Handle music based on state
   if (newState === 'PLAYING' && getSettings().musicEnabled) {
@@ -101,170 +55,17 @@ function handleStateChange(newState: GameStateType, _oldState: GameStateType): v
 
 // --- MENU LISTENERS ---
 function setupMenuListeners(): void {
-  if (startBtn) {
-    startBtn.addEventListener('click', () => {
-      setGameState('PLAYING');
-    });
-  }
-
-  if (settingsBtn) {
-    settingsBtn.addEventListener('click', () => {
-      settingsOpenedFrom = 'menu';
-      openSettings();
-    });
-  }
+  // Handled in Svelte now
 }
 
 // --- SETTINGS LISTENERS ---
 function setupSettingsListeners(): void {
-  // Tab switching
-  tabButtons.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const tabName = btn.getAttribute('data-tab');
-      if (!tabName) return;
-
-      // Update active tab
-      tabButtons.forEach((b) => b.classList.remove('active'));
-      btn.classList.add('active');
-
-      // Update active panel
-      settingsPanels.forEach((panel) => {
-        panel.classList.toggle('active', panel.id === `${tabName}-panel`);
-      });
-    });
-  });
-
-  // Close settings
-  if (closeSettingsBtn) {
-    closeSettingsBtn.addEventListener('click', closeSettings);
-  }
-
-  // Reset settings
-  if (resetSettingsBtn) {
-    resetSettingsBtn.addEventListener('click', () => {
-      resetSettings();
-      const settings = getSettings();
-      applySettingsToUI(settings);
-    });
-  }
-
-  // Audio settings
-  if (masterVolumeInput) {
-    masterVolumeInput.addEventListener('input', () => {
-      const value = parseInt(masterVolumeInput.value);
-      setSetting('masterVolume', value);
-      if (masterVolumeVal) masterVolumeVal.textContent = `${value}%`;
-    });
-  }
-
-  if (musicVolumeInput) {
-    musicVolumeInput.addEventListener('input', () => {
-      const value = parseInt(musicVolumeInput.value);
-      setSetting('musicVolume', value);
-      if (musicVolumeVal) musicVolumeVal.textContent = `${value}%`;
-    });
-  }
-
-  if (sfxVolumeInput) {
-    sfxVolumeInput.addEventListener('input', () => {
-      const value = parseInt(sfxVolumeInput.value);
-      setSetting('sfxVolume', value);
-      if (sfxVolumeVal) sfxVolumeVal.textContent = `${value}%`;
-    });
-  }
-
-  if (musicEnabledInput) {
-    musicEnabledInput.addEventListener('change', () => {
-      setSetting('musicEnabled', musicEnabledInput.checked);
-      if (musicEnabledInput.checked) {
-        resumeMusic();
-      } else {
-        stopMusic();
-      }
-    });
-  }
-
-  // Display settings
-  if (screenShakeInput) {
-    screenShakeInput.addEventListener('change', () => {
-      setSetting('screenShake', screenShakeInput.checked);
-    });
-  }
-
-  if (showFpsInput) {
-    showFpsInput.addEventListener('change', () => {
-      setSetting('showFps', showFpsInput.checked);
-      if (fpsCounter) {
-        fpsCounter.classList.toggle('hidden', !showFpsInput.checked);
-      }
-    });
-  }
-
-  if (qualityLevelInput) {
-    qualityLevelInput.addEventListener('change', () => {
-      setSetting('qualityLevel', qualityLevelInput.value as 'low' | 'medium' | 'high');
-    });
-  }
-
-  if (damageNumbersInput) {
-    damageNumbersInput.addEventListener('change', () => {
-      setSetting('showDamageNumbers', damageNumbersInput.checked);
-    });
-  }
-
-  if (joystickSensitivityInput) {
-    joystickSensitivityInput.addEventListener('input', () => {
-      const value = parseInt(joystickSensitivityInput.value);
-      setSetting('joystickSensitivity', value);
-      if (joystickSensitivityVal) joystickSensitivityVal.textContent = `${value}%`;
-    });
-  }
-
-  if (invertControlsInput) {
-    invertControlsInput.addEventListener('change', () => {
-      setSetting('invertControls', invertControlsInput.checked);
-    });
-  }
+  // Handled in Svelte now
 }
 
 // --- PAUSE LISTENERS ---
 function setupPauseListeners(): void {
-  if (resumeBtn) {
-    resumeBtn.addEventListener('click', () => {
-      setGameState('PLAYING');
-    });
-  }
-
-  if (pauseSettingsBtn) {
-    pauseSettingsBtn.addEventListener('click', () => {
-      settingsOpenedFrom = 'pause';
-      // Hide pause modal first, then open settings
-      if (pauseModal) {
-        pauseModal.classList.add('hidden');
-      }
-      openSettings();
-    });
-  }
-
-  if (mainMenuBtn) {
-    mainMenuBtn.addEventListener('click', () => {
-      // Reload page to reset game completely
-      location.reload();
-    });
-  }
-
-  // Mobile Pause Button
-  if (mobilePauseBtn) {
-    mobilePauseBtn.addEventListener('click', (e) => {
-      e.stopPropagation(); // Prevent touch from propagating to game
-      const state = getGameState();
-      if (state === 'PLAYING') {
-        setGameState('PAUSED');
-      } else if (state === 'PAUSED') {
-        setGameState('PLAYING');
-      }
-    });
-  }
+  // Handled in Svelte now
 }
 
 // --- KEYBOARD LISTENERS ---
@@ -274,8 +75,8 @@ function setupKeyboardListeners(): void {
       const state = getGameState();
 
       // Close settings if open
-      if (settingsModal && !settingsModal.classList.contains('hidden')) {
-        closeSettings();
+      if (uiState.showSettings) {
+        uiState.showSettings = false;
         return;
       }
 
@@ -289,74 +90,8 @@ function setupKeyboardListeners(): void {
   });
 }
 
-// --- SETTINGS HELPERS ---
-function openSettings(): void {
-  if (settingsModal) {
-    settingsModal.classList.remove('hidden');
-  }
-}
-
-function closeSettings(): void {
-  if (settingsModal) {
-    settingsModal.classList.add('hidden');
-  }
-
-  // Return to the appropriate screen based on where settings was opened from
-  if (settingsOpenedFrom === 'pause') {
-    // Show pause menu again
-    if (pauseModal) {
-      pauseModal.classList.remove('hidden');
-    }
-  }
-  // If opened from menu, menu is still visible behind settings
-  // If opened from playing (ESC), pause modal should show
-}
-
-function applySettingsToUI(settings: GameSettings): void {
-  // Audio
-  if (masterVolumeInput) {
-    masterVolumeInput.value = settings.masterVolume.toString();
-    if (masterVolumeVal) masterVolumeVal.textContent = `${settings.masterVolume}%`;
-  }
-  if (musicVolumeInput) {
-    musicVolumeInput.value = settings.musicVolume.toString();
-    if (musicVolumeVal) musicVolumeVal.textContent = `${settings.musicVolume}%`;
-  }
-  if (sfxVolumeInput) {
-    sfxVolumeInput.value = settings.sfxVolume.toString();
-    if (sfxVolumeVal) sfxVolumeVal.textContent = `${settings.sfxVolume}%`;
-  }
-  if (musicEnabledInput) {
-    musicEnabledInput.checked = settings.musicEnabled;
-  }
-
-  // Display
-  if (screenShakeInput) {
-    screenShakeInput.checked = settings.screenShake;
-  }
-  if (showFpsInput) {
-    showFpsInput.checked = settings.showFps;
-    if (fpsCounter) {
-      fpsCounter.classList.toggle('hidden', !settings.showFps);
-    }
-  }
-  if (qualityLevelInput) {
-    qualityLevelInput.value = settings.qualityLevel;
-  }
-
-  // Gameplay
-  if (damageNumbersInput) {
-    damageNumbersInput.checked = settings.showDamageNumbers;
-  }
-  if (joystickSensitivityInput) {
-    joystickSensitivityInput.value = settings.joystickSensitivity.toString();
-    if (joystickSensitivityVal)
-      joystickSensitivityVal.textContent = `${settings.joystickSensitivity}%`;
-  }
-  if (invertControlsInput) {
-    invertControlsInput.checked = settings.invertControls;
-  }
-}
+// --- HELPERS (LEGACY - REMOVED) ---
+// openSettings, closeSettings, applySettingsToUI are now handled by Svelte
 
 function applySettingsToGame(settings: GameSettings): void {
   // Apply volume settings

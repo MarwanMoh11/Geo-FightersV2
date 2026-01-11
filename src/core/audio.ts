@@ -77,9 +77,21 @@ export function stopMusic(): void {
 
 export function resumeMusic(): void {
   isMusicStopped = false;
-  if (musicGainNode && ctx) {
-    musicGainNode.gain.setValueAtTime(musicVolume, ctx.currentTime);
+  const c = getCtx();
+  if (c.state === 'suspended') {
+    c.resume();
   }
+  if (musicGainNode && ctx) {
+    musicGainNode.gain.setTargetAtTime(musicVolume, ctx.currentTime, 0.1);
+  }
+}
+
+export function resumeAudioContext(): Promise<void> {
+  const c = getCtx();
+  if (c.state === 'suspended') {
+    return c.resume();
+  }
+  return Promise.resolve();
 }
 
 // --- SOUNDTRACK ENGINE ---
@@ -99,6 +111,7 @@ export function startMusic() {
 
   console.log('♫ STARTING PROCEDURAL MUSIC ENGINE ♫');
   isMusicPlaying = true;
+  isMusicStopped = false; // Ensure it's not starting in a stopped state
 
   // A. THE DRONE (Atmosphere)
   droneOsc = c.createOscillator();

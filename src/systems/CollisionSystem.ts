@@ -17,154 +17,133 @@ import { triggerGameOver } from './GameManager';
 import { playExplosion } from '../core/audio';
 import { reportDamageTaken, reportKill } from '../core/FlowStateManager';
 import { spawnChest } from './ChestSystem';
-import { removeBody } from '../core/RapierWorld';
+import { removeBody, getEventQueue, getEntityByColliderHandle, isRapierInitialized } from '../core/RapierWorld';
 
 // --- REUSABLE VECTORS (Zero GC pressure) ---
 const _pushDir = new THREE.Vector3();
 const _blastDir = new THREE.Vector3();
 const _tempVec = new THREE.Vector3();
 
-// --- PRECOMPUTED SQUARED RADII ---
-const BULLET_HIT_RADIUS_SQ = 0.8 * 0.8;
-const PLAYER_HIT_RADIUS_SQ = 1.0 * 1.0;
-
 export function CollisionSystem(scene: THREE.Scene) {
-  // Cache enemy array once per frame
-  const enemies = Array.from(world.with('isEnemy', 'position', 'health', 'velocity'));
-  const bullets = Array.from(world.with('isProjectile', 'position', 'velocity', 'projectile'));
+  // --- RAPIER EVENT-DRIVEN COLLISION ---
+  if (!isRapierInitialized()) return;
 
-  // Early out if no entities
-  if (enemies.length === 0) return;
+  try {
+    const eventQueue = getEventQueue();
 
-  // A. Bullet vs Enemy (One-way: bullets check enemies)
-  for (let b = bullets.length - 1; b >= 0; b--) {
-    const bullet = bullets[b];
-    if (!bullet.projectile) continue;
+    // 1. DRAIN COLLISION EVENTS (Solid vs Solid & Sensor vs Solid)
+    eventQueue.drainCollisionEvents((h1, h2, started) => {
+      if (!started) return;
+      processCollision(h1, h2, scene);
+    });
+  } catch (e) {
+    // Fail silently if physics not yet initialized
+  }
+}
 
-    let bulletDead = false;
+function processCollision(h1: number, h2: number, scene: THREE.Scene) {
+  const e1 = world.get(getEntityByColliderHandle(h1) as any);
+  const e2 = world.get(getEntityByColliderHandle(h2) as any);
 
-    for (let e = enemies.length - 1; e >= 0; e--) {
-      const enemy = enemies[e];
+  if (!e1 || !e2) return;
 
-      // EARLY OUT: Dead enemy
-      if (!enemy.health || enemy.health.current <= 0) continue;
+  // Determine roles
+  const projectile = e1.isProjectile ? e1 : e2.isProjectile ? e2 : null;
+  const enemy = e1.isEnemy ? e1 : e2.isEnemy ? e2 : null;
+  const player = e1.isPlayer ? e1 : e2.isPlayer ? e2 : null;
 
-      // PIERCE CHECK: Already hit
-      if (enemy.id && bullet.projectile.hitList.includes(enemy.id)) continue;
-
-      // SQUARED DISTANCE (No sqrt!)
-      const dx = bullet.position.x - enemy.position.x;
-      const dz = bullet.position.z - enemy.position.z;
-      const distSq = dx * dx + dz * dz;
-
-      // DIRECT HIT
-      if (distSq < BULLET_HIT_RADIUS_SQ) {
-        // 1. APPLY DAMAGE
-        applyDamage(
-          enemy,
-          bullet.damage || 1,
-          bullet.velocity,
-          bullet.projectile.knockback,
-          scene,
-          enemies,
-          e,
-        );
-
-        // 2. REGISTER HIT
-        bullet.projectile.hitList.push(enemy.id!);
-        bullet.projectile.pierce -= 1;
-
-        // 3. EXPLOSION LOGIC (Geometry-based AoE damage)
-        if (bullet.projectile.explodeRadius > 0) {
-          const blastRadiusSq = bullet.projectile.explodeRadius * bullet.projectile.explodeRadius;
-          spawnBlastFX(bullet.position, bullet.projectile.explodeRadius, scene);
-          addTrauma(0.3);
-          playExplosion();
-
-          // Check if this is a confusion weapon (Signal Hijacker)
-          const confusionDuration = bullet.projectile.confusionDuration || 0;
-
-          // Batch damage/confuse all enemies in blast radius
-          for (let t = enemies.length - 1; t >= 0; t--) {
-            if (t === e) continue; // Already hit
-            const target = enemies[t];
-            if (!target.health || target.health.current <= 0) continue;
-
-            const tdx = target.position.x - bullet.position.x;
-            const tdz = target.position.z - bullet.position.z;
-            const tDistSq = tdx * tdx + tdz * tdz;
-
-            if (tDistSq < blastRadiusSq) {
-              if (confusionDuration > 0) {
-                // Apply confusion (Signal Hijacker effect)
-                target.confusedTimer = confusionDuration;
-                target.hitFlashTimer = 0.2;
-                console.log(`[Signal Hijacker] Confused enemy for ${confusionDuration}s`);
-              } else {
-                // Normal AoE damage
-                _blastDir.set(tdx, 0, tdz).normalize();
-                applyDamage(
-                  target,
-                  bullet.damage || 1,
-                  _blastDir.multiplyScalar(20),
-                  10,
-                  scene,
-                  enemies,
-                  t,
-                );
-              }
-            }
-          }
-        }
-
-        // 4. BULLET DEATH
-        if (bullet.projectile.explodeRadius > 0 || bullet.projectile.pierce <= 0) {
-          despawn(bullet, scene);
-          bulletDead = true;
-          break;
-        }
-      }
-    }
-
-    if (bulletDead) continue;
+  // A. BULLET VS ENEMY
+  if (projectile && enemy) {
+    handleProjectileEnemyCollision(projectile, enemy, scene);
   }
 
-  // B. Enemy vs Player (One check per enemy)
-  const player = world.with('isPlayer', 'position', 'health').first;
-  if (player && player.health && player.health.current > 0) {
-    const px = player.position.x;
-    const pz = player.position.z;
+  // B. ENEMY VS PLAYER
+  if (enemy && player) {
+    handleEnemyPlayerCollision(enemy, player, scene);
+  }
+}
 
-    for (let e = 0; e < enemies.length; e++) {
-      const enemy = enemies[e];
-      if (!enemy.health || enemy.health.current <= 0) continue;
+function handleProjectileEnemyCollision(bullet: any, enemy: any, scene: THREE.Scene) {
+  if (!bullet.projectile || !enemy.health || enemy.health.current <= 0) return;
 
-      // SQUARED DISTANCE
-      const dx = px - enemy.position.x;
-      const dz = pz - enemy.position.z;
+  // PIERCE CHECK: Already hit
+  if (enemy.id && bullet.projectile.hitList.includes(enemy.id)) return;
+
+  // 1. APPLY DAMAGE
+  applyDamage(
+    enemy,
+    bullet.damage || 1,
+    bullet.velocity || new THREE.Vector3(0, 0, 0),
+    bullet.projectile.knockback,
+    scene
+  );
+
+  // 2. REGISTER HIT
+  bullet.projectile.hitList.push(enemy.id!);
+  bullet.projectile.pierce -= 1;
+
+  // 3. EXPLOSION LOGIC (AoE)
+  if (bullet.projectile.explodeRadius > 0) {
+    const blastRadiusSq = bullet.projectile.explodeRadius * bullet.projectile.explodeRadius;
+    spawnBlastFX(bullet.position, bullet.projectile.explodeRadius, scene);
+    addTrauma(0.3);
+    playExplosion();
+
+    const confusionDuration = bullet.projectile.confusionDuration || 0;
+    const enemies = Array.from(world.with('isEnemy', 'position', 'health'));
+
+    for (const target of enemies) {
+      if (target === enemy) continue;
+      if (!target.health || target.health.current <= 0) continue;
+
+      const dx = target.position.x - bullet.position.x;
+      const dz = target.position.z - bullet.position.z;
       const distSq = dx * dx + dz * dz;
 
-      if (distSq < PLAYER_HIT_RADIUS_SQ) {
-        // Apply armor reduction from passive stats
-        const baseDamage = 5;
-        const armor = player.stats?.armor || 0;
-        const actualDamage = Math.max(1, baseDamage - armor); // Minimum 1 damage
-
-        player.health.current -= actualDamage;
-        reportDamageTaken(actualDamage);
-        addTrauma(0.5);
-
-        // Reuse vector for push
-        _pushDir.set(-dx, 0, -dz).normalize().multiplyScalar(5);
-        enemy.velocity.add(_pushDir);
-        enemy.stunTimer = 0.5;
-
-        if (player.health.current <= 0) {
-          triggerGameOver();
-          return;
+      if (distSq < blastRadiusSq) {
+        if (confusionDuration > 0) {
+          target.confusedTimer = confusionDuration;
+          target.hitFlashTimer = 0.2;
+        } else {
+          _blastDir.set(dx, 0, dz).normalize();
+          applyDamage(
+            target,
+            bullet.damage || 1,
+            _blastDir.multiplyScalar(20),
+            10,
+            scene
+          );
         }
       }
     }
+  }
+
+  // 4. BULLET DEATH
+  if (bullet.projectile.explodeRadius > 0 || bullet.projectile.pierce <= 0) {
+    despawn(bullet, scene);
+  }
+}
+
+function handleEnemyPlayerCollision(enemy: any, player: any, _scene: THREE.Scene) {
+  if (!enemy.health || enemy.health.current <= 0 || !player.health || player.health.current <= 0) return;
+
+  const baseDamage = 5;
+  const armor = player.stats?.armor || 0;
+  const actualDamage = Math.max(1, baseDamage - armor);
+
+  player.health.current -= actualDamage;
+  reportDamageTaken(actualDamage);
+  addTrauma(0.5);
+
+  // Knock enemy back a bit
+  const dx = player.position.x - enemy.position.x;
+  const dz = player.position.z - enemy.position.z;
+  _pushDir.set(-dx, 0, -dz).normalize().multiplyScalar(5);
+  enemy.velocity.add(_pushDir);
+  enemy.stunTimer = 0.5;
+
+  if (player.health.current <= 0) {
+    triggerGameOver();
   }
 }
 
@@ -175,8 +154,6 @@ function applyDamage(
   vel: THREE.Vector3,
   knockback: number,
   scene: THREE.Scene,
-  _enemies: any[],
-  _index: number,
 ) {
   if (!enemy.health) return;
   enemy.health.current -= dmg;

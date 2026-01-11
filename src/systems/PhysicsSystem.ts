@@ -16,10 +16,48 @@ const PROJECTILE_RADIUS = 0.3;
 export function PhysicsSystem(dt: number) {
   const obstacles = getBlockingObstacles();
 
-  // Process ALL entities with position/velocity
+  // --- RAPIER PHYSICS STEP ---
+  if (isRapierInitialized()) {
+    // 1. Prepare Kinematic Targets (Tell Rapier where we WANT to go)
+    for (const entity of world.with('rigidBody', 'position', 'velocity')) {
+      // Calculate next desired position based on velocity
+      const nextPos = entity.position.clone().add(entity.velocity.clone().multiplyScalar(dt));
+
+      entity.rigidBody!.setNextKinematicTranslation({
+        x: nextPos.x,
+        y: 0.5,
+        z: nextPos.z
+      });
+    }
+
+    // 2. Step Simulation (Rapier moves bodies and resolves collisions)
+    stepPhysics(dt);
+
+    // 3. Sync Rapier Positions back to ECS (Get actual result after collision)
+    for (const entity of world.with('rigidBody', 'position')) {
+      const pos = entity.rigidBody!.translation();
+      entity.position.set(pos.x, 0.5, pos.z);
+
+      // Sync to visual transform
+      if (entity.transform) {
+        entity.transform.position.copy(entity.position);
+      }
+    }
+  }
+
+  // --- LEGACY OBSTACLE / BOUNDARY FALLBACK ---
+  // AABB collision is still required for static obstacles because Rapier kinematic bodies
+  // do not automatically respond to static collisions (they only report them).
   for (const entity of world.with('position', 'velocity')) {
-    // 1. Move
-    entity.position.add(entity.velocity.clone().multiplyScalar(dt));
+    // 1. Move (Rapier entities already moved by setNextKinematicTranslation, this handles legacy ones)
+    if (!entity.rigidBody) {
+      entity.position.add(entity.velocity.clone().multiplyScalar(dt));
+    } else {
+      // For Rapier entities, we must fetch the LATEST position from the physics step
+      // to ensure AABB clamping works on the post-physics position
+      const pos = entity.rigidBody.translation();
+      entity.position.set(pos.x, 0.5, pos.z);
+    }
 
     // 2. PROJECTILE WALL COLLISION
     if (entity.isProjectile) {
@@ -33,19 +71,18 @@ export function PhysicsSystem(dt: number) {
 
         if (collision.colliding) {
           if (entity.lifeTimer !== undefined && entity.maxLife !== undefined) {
-            entity.lifeTimer = entity.maxLife;
+            entity.lifeTimer = entity.maxLife; // Die instantly
           }
           break;
         }
       }
-      continue;
     }
 
     // 3. GROUND CLAMP
     entity.position.y = 0.5;
     entity.velocity.y = 0;
 
-    // 4. OBSTACLE COLLISION (AABB - works for all entities)
+    // 4. OBSTACLE COLLISION
     const radius = entity.isPlayer ? PLAYER_RADIUS : entity.isEnemy ? ENEMY_RADIUS : DEFAULT_RADIUS;
 
     for (const obstacle of obstacles) {
@@ -68,23 +105,9 @@ export function PhysicsSystem(dt: number) {
       Math.min(MAP_HALF_HEIGHT - boundaryPadding, entity.position.z),
     );
 
-    // 6. Sync position to Rapier body (for entity-entity collision detection)
-    if (entity.rigidBody) {
-      entity.rigidBody.setNextKinematicTranslation({
-        x: entity.position.x,
-        y: 0.5,
-        z: entity.position.z
-      });
-    }
-
-    // 7. Sync to visual transform
+    // Sync transform
     if (entity.transform) {
       entity.transform.position.copy(entity.position);
     }
-  }
-
-  // Step Rapier world (for future entity-entity collision events)
-  if (isRapierInitialized()) {
-    stepPhysics(dt);
   }
 }
