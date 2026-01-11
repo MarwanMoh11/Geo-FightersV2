@@ -17,6 +17,7 @@ import { triggerGameOver } from './GameManager';
 import { playExplosion } from '../core/audio';
 import { reportDamageTaken, reportKill } from '../core/FlowStateManager';
 import { spawnChest } from './ChestSystem';
+import { removeBody } from '../core/RapierWorld';
 
 // --- REUSABLE VECTORS (Zero GC pressure) ---
 const _pushDir = new THREE.Vector3();
@@ -292,5 +293,13 @@ function spawnBlastFX(pos: THREE.Vector3, radius: number, scene: THREE.Scene) {
 
 function despawn(entity: any, scene: THREE.Scene) {
   if (entity.transform) scene.remove(entity.transform);
+
+  // Clean up Rapier rigid body
+  if (entity.rigidBody) {
+    removeBody(entity.rigidBody);
+    entity.rigidBody = undefined;
+    entity.collider = undefined;
+  }
+
   world.remove(entity);
 }

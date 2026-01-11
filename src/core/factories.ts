@@ -4,6 +4,11 @@ import { loadTexture } from './assets';
 import { getDefaultStats } from './PlayerStats';
 import { WEAPONS, getWeaponStatsAtLevel } from './WeaponRegistry';
 import { getTierForValue, bankXP, MAX_ACTIVE_XP } from './XPManager';
+import { createDynamicBody, isRapierInitialized } from './RapierWorld';
+
+// Player/enemy collision radii
+const PLAYER_RADIUS = 0.8;
+const ENEMY_RADIUS = 0.6;
 
 // --- SHARED RESOURCES ---
 const shadowGeo = new THREE.CircleGeometry(0.4, 16);
@@ -124,6 +129,13 @@ export function spawnPlayer(scene: THREE.Scene) {
     passiveSlots: [],
     stats: getDefaultStats(),
   });
+
+  // 1b. CREATE RAPIER RIGID BODY for player
+  if (isRapierInitialized() && player.id !== undefined) {
+    const { rigidBody, collider } = createDynamicBody(0, 0, PLAYER_RADIUS, player.id);
+    player.rigidBody = rigidBody;
+    player.collider = collider;
+  }
 
   // 2. EQUIP STARTER WEAPON from registry
   world.add({
@@ -280,7 +292,7 @@ export function spawnEnemy(
   shadow.position.y = 0.05;
   group.add(shadow);
 
-  world.add({
+  const enemy = world.add({
     isEnemy: true,
     enemyType: type,
     position: group.position,
@@ -295,6 +307,15 @@ export function spawnEnemy(
     xpValue: stats.xp,
     baseColor: stats.color,
   });
+
+  // Create Rapier rigid body for enemy
+  if (isRapierInitialized() && enemy.id !== undefined) {
+    // Use enemy size to determine radius (scaled down for gameplay)
+    const radius = Math.max(ENEMY_RADIUS, stats.size * 0.3);
+    const { rigidBody, collider } = createDynamicBody(x, z, radius, enemy.id);
+    enemy.rigidBody = rigidBody;
+    enemy.collider = collider;
+  }
 }
 
 export function spawnXP(scene: THREE.Scene, x: number, z: number, value: number) {
