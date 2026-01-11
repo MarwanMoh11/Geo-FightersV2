@@ -103,6 +103,7 @@ export function createStaticCuboid(
 
 /**
  * Create a dynamic rigid body with ball collider for entities.
+ * Uses kinematic position-based for arcade control - we set position, Rapier detects collisions.
  */
 export function createDynamicBody(
     x: number, z: number,
@@ -111,15 +112,13 @@ export function createDynamicBody(
 ): { rigidBody: RAPIER.RigidBody; collider: RAPIER.Collider } {
     const world = getRapierWorld();
 
-    // Create dynamic rigid body
-    const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
-        .setTranslation(x, 0.5, z)
-        .setLinearDamping(5.0) // High damping for arcade feel
-        .lockRotations(); // Prevent tumbling
+    // Use kinematic position-based: we control position, Rapier handles collision detection
+    const bodyDesc = RAPIER.RigidBodyDesc.kinematicPositionBased()
+        .setTranslation(x, 0.5, z);
 
     const rigidBody = world.createRigidBody(bodyDesc);
 
-    // Create ball collider
+    // Create ball collider (NOT a sensor - we want physical collision response)
     const colliderDesc = RAPIER.ColliderDesc.ball(radius)
         .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
 

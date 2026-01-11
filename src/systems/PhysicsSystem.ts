@@ -16,16 +16,20 @@ const PROJECTILE_RADIUS = 0.3;
 export function PhysicsSystem(dt: number) {
   // --- RAPIER PHYSICS ---
   if (isRapierInitialized()) {
-    // 1. Apply velocities from ECS to Rapier bodies
-    for (const entity of world.with('rigidBody', 'velocity')) {
-      const vel = entity.velocity;
-      entity.rigidBody!.setLinvel({ x: vel.x, y: 0, z: vel.z }, true);
+    // 1. Calculate next position for kinematic bodies and update Rapier
+    for (const entity of world.with('rigidBody', 'position', 'velocity')) {
+      // Calculate next position using ECS velocity
+      const nextX = entity.position.x + entity.velocity.x * dt;
+      const nextZ = entity.position.z + entity.velocity.z * dt;
+
+      // Tell Rapier where we want to move (it will handle collision)
+      entity.rigidBody!.setNextKinematicTranslation({ x: nextX, y: 0.5, z: nextZ });
     }
 
     // 2. Step physics world
     stepPhysics(dt);
 
-    // 3. Sync positions from Rapier back to ECS
+    // 3. Sync positions from Rapier back to ECS (Rapier resolves collisions)
     for (const entity of world.with('rigidBody', 'position')) {
       const pos = entity.rigidBody!.translation();
       entity.position.set(pos.x, 0.5, pos.z);
