@@ -29,7 +29,12 @@ const MAX_PASSIVE_SLOTS = 6;
 const UPGRADE_CHOICES = 3;
 
 // --- UPGRADE TYPES ---
-export type UpgradeType = 'weapon_new' | 'weapon_level' | 'passive_new' | 'passive_level' | 'health';
+export type UpgradeType =
+  | 'weapon_new'
+  | 'weapon_level'
+  | 'passive_new'
+  | 'passive_level'
+  | 'health';
 
 export interface UpgradeOption {
   type: UpgradeType;

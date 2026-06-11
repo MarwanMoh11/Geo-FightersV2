@@ -26,7 +26,7 @@ export function PhysicsSystem(dt: number) {
       entity.rigidBody!.setNextKinematicTranslation({
         x: nextPos.x,
         y: 0.5,
-        z: nextPos.z
+        z: nextPos.z,
       });
     }
 

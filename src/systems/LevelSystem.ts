@@ -40,9 +40,9 @@ export function initLevel(scene: THREE.Scene): void {
       createStaticCuboid(
         obstacle.x,
         obstacle.z,
-        obstacle.width / 2,  // halfWidth
-        height / 2,          // halfHeight
-        obstacle.depth / 2   // halfDepth
+        obstacle.width / 2, // halfWidth
+        height / 2, // halfHeight
+        obstacle.depth / 2, // halfDepth
       );
     }
   }
@@ -52,7 +52,9 @@ export function initLevel(scene: THREE.Scene): void {
 
   console.log(`[LEVEL] Initialization complete`);
   if (isRapierInitialized()) {
-    console.log(`[LEVEL] ✅ ${level.obstacles.filter(o => o.blocking).length} physics colliders created`);
+    console.log(
+      `[LEVEL] ✅ ${level.obstacles.filter((o) => o.blocking).length} physics colliders created`,
+    );
   }
 }
 

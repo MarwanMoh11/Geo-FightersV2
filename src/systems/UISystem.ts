@@ -48,4 +48,3 @@ export function UISystem() {
     uiState.bossHealth.active = false;
   }
 }
-
