@@ -1,37 +1,69 @@
 <script lang="ts">
   import { uiState } from '../../core/UIState.svelte.ts';
+  import { fade, fly } from 'svelte/transition';
+
+  let leaving = $state(false);
 
   function restart() {
-    location.reload();
+    // Brief fade-out before the hard reset so the click feels acknowledged
+    leaving = true;
+    setTimeout(() => location.reload(), 250);
   }
+
+  let minutes = $derived(
+    Math.floor(uiState.gameTime / 60)
+      .toString()
+      .padStart(2, '0'),
+  );
+  let seconds = $derived(
+    Math.floor(uiState.gameTime % 60)
+      .toString()
+      .padStart(2, '0'),
+  );
 </script>
 
-<div id="game-over-modal" class:hidden={uiState.gameState !== 'GAME_OVER'}>
-  <div class="modal-overlay"></div>
+{#if uiState.gameState === 'GAME_OVER'}
+  <div
+    id="game-over-modal"
+    class:victory={uiState.isVictory}
+    class:leaving
+    transition:fade={{ duration: 600 }}
+  >
+    <div class="modal-overlay"></div>
 
-  <div class="game-over-content glass">
-    <div class="header">
-      <h2 class="title">FATAL ERROR</h2>
-      <div class="subtitle">SYSTEM INTEGRITY COMPROMISED</div>
-    </div>
-
-    <div class="stats-grid">
-      <div class="stat-card">
-        <span class="label">FINAL LEVEL</span>
-        <span class="value cyan">{uiState.level}</span>
+    <div class="game-over-content glass" in:fly={{ y: 40, duration: 600, delay: 250 }}>
+      <div class="header">
+        {#if uiState.isVictory}
+          <h2 class="title win">CORRUPTION PURGED</h2>
+          <div class="subtitle">YOU SURVIVED THE SYSTEM</div>
+        {:else}
+          <h2 class="title">FATAL ERROR</h2>
+          <div class="subtitle">SYSTEM INTEGRITY COMPROMISED</div>
+        {/if}
       </div>
-      <div class="stat-card">
-        <span class="label">DATA RECOVERED</span>
-        <span class="value pink">{uiState.score}</span>
-      </div>
-    </div>
 
-    <button class="reboot-btn glow" onclick={restart}>
-      <span class="btn-text">INITIATE REBOOT</span>
-      <span class="btn-subtext">RESTORE SYSTEM STATE</span>
-    </button>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <span class="label">TIME SURVIVED</span>
+          <span class="value gold">{minutes}:{seconds}</span>
+        </div>
+        <div class="stat-card">
+          <span class="label">FINAL LEVEL</span>
+          <span class="value cyan">{uiState.level}</span>
+        </div>
+        <div class="stat-card">
+          <span class="label">DATA RECOVERED</span>
+          <span class="value pink">{uiState.score}</span>
+        </div>
+      </div>
+
+      <button class="reboot-btn" onclick={restart}>
+        <span class="btn-text">{uiState.isVictory ? 'RUN IT BACK' : 'INITIATE REBOOT'}</span>
+        <span class="btn-subtext">RESTORE SYSTEM STATE</span>
+      </button>
+    </div>
   </div>
-</div>
+{/if}
 
 <style>
   #game-over-modal {
@@ -43,38 +75,75 @@
     align-items: center;
     background: rgba(15, 0, 5, 0.8);
     backdrop-filter: blur(15px);
+    transition: opacity 0.25s ease;
   }
 
-  .hidden {
-    display: none !important;
+  #game-over-modal.victory {
+    background: rgba(0, 12, 8, 0.8);
+  }
+
+  #game-over-modal.leaving {
+    opacity: 0;
   }
 
   .modal-overlay {
     position: absolute;
     inset: 0;
-    background: radial-gradient(circle at center, transparent 0%, rgba(255, 0, 85, 0.1) 100%);
+    background: radial-gradient(circle at center, transparent 0%, rgba(255, 46, 136, 0.1) 100%);
+  }
+
+  .victory .modal-overlay {
+    background: radial-gradient(circle at center, transparent 0%, rgba(0, 255, 136, 0.08) 100%);
   }
 
   .game-over-content {
-    width: min(90%, 450px);
+    width: min(90%, 480px);
     border-radius: 28px;
-    padding: 4rem 2rem;
+    padding: 3.5rem 2rem;
     z-index: 1;
     display: flex;
     flex-direction: column;
-    gap: 3rem;
+    gap: 2.5rem;
     text-align: center;
-    border: 1px solid rgba(255, 0, 85, 0.1);
+    border: 1px solid rgba(255, 46, 136, 0.1);
+  }
+
+  .victory .game-over-content {
+    border-color: rgba(0, 255, 136, 0.15);
   }
 
   .title {
     font-family: var(--font-heading);
-    font-size: 2.5rem;
+    font-size: 2.25rem;
     font-weight: 900;
     letter-spacing: 0.1em;
     margin: 0;
     color: var(--color-secondary);
-    text-shadow: 0 0 30px rgba(255, 0, 85, 0.4);
+    text-shadow: 0 0 30px rgba(255, 46, 136, 0.4);
+    animation: title-glitch 3s ease-in-out infinite;
+  }
+
+  .title.win {
+    color: var(--color-accent);
+    text-shadow: 0 0 30px rgba(0, 255, 136, 0.4);
+    animation: none;
+  }
+
+  @keyframes title-glitch {
+    0%,
+    92%,
+    100% {
+      transform: translateX(0);
+      opacity: 1;
+    }
+    94% {
+      transform: translateX(-3px);
+      opacity: 0.8;
+    }
+    96% {
+      transform: translateX(2px);
+      opacity: 1;
+    }
   }
 
   .subtitle {
@@ -87,13 +156,13 @@
 
   .stats-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
   }
 
   .stat-card {
     background: rgba(255, 255, 255, 0.03);
-    padding: 1.5rem;
+    padding: 1.25rem 0.75rem;
     border-radius: 16px;
     display: flex;
     flex-direction: column;
@@ -101,14 +170,15 @@
   }
 
   .stat-card .label {
-    font-size: 0.6rem;
+    font-family: var(--font-mono);
+    font-size: 0.55rem;
     letter-spacing: 0.1em;
     color: var(--color-text-dim);
   }
 
   .stat-card .value {
     font-family: var(--font-heading);
-    font-size: 1.75rem;
+    font-size: 1.5rem;
     font-weight: 700;
   }
 
@@ -117,6 +187,10 @@
   }
   .pink {
     color: var(--color-secondary);
+  }
+  .gold {
+    color: var(--color-gold);
+    text-shadow: 0 0 12px rgba(255, 225, 77, 0.4);
   }
 
   .reboot-btn {
@@ -133,10 +207,28 @@
     transition: all var(--transition-smooth);
   }
 
+  .victory .reboot-btn {
+    background: var(--color-accent);
+    color: #00170d;
+  }
+
   .reboot-btn:hover {
     transform: translateY(-4px);
-    box-shadow: 0 0 40px rgba(255, 0, 85, 0.5);
+    box-shadow: 0 0 40px rgba(255, 46, 136, 0.5);
     filter: brightness(1.1);
+  }
+
+  .victory .reboot-btn:hover {
+    box-shadow: 0 0 40px rgba(0, 255, 136, 0.5);
+  }
+
+  .reboot-btn:active {
+    transform: translateY(-1px) scale(0.99);
+  }
+
+  .reboot-btn:focus-visible {
+    outline: 2px solid var(--color-text-main);
+    outline-offset: 3px;
   }
 
   .reboot-btn .btn-text {
@@ -147,8 +239,15 @@
   }
 
   .reboot-btn .btn-subtext {
+    font-family: var(--font-mono);
     font-size: 0.6rem;
     opacity: 0.8;
     letter-spacing: 0.1em;
+  }
+
+  @media (max-width: 480px) {
+    .stats-grid {
+      grid-template-columns: 1fr;
+    }
   }
 </style>

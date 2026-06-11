@@ -1,28 +1,29 @@
 <!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>GeoFighters</title>
+  </head>
 
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>GeoFighters</title>
-</head>
+  <body>
+    <div id="app"></div>
 
-<body>
-  <div id="app"></div>
-
-  <!-- Loading Screen (shown during asset preload) -->
-  <div id="loading-screen">
-    <div class="loading-content">
-      <div class="loading-title">GEOFIGHTERS</div>
-      <div class="loading-subtitle">INITIALIZING SYSTEMS</div>
-      <div class="loading-bar-container">
-        <div id="loading-bar-fill"></div>
+    <!-- Loading Screen (shown during asset preload) -->
+    <div id="loading-screen">
+      <div class="loading-content">
+        <div class="loading-title">GEOFIGHTERS</div>
+        <div class="loading-subtitle">INITIALIZING SYSTEMS</div>
+        <div class="loading-bar-container">
+          <div id="loading-bar-fill"></div>
+        </div>
+        <div id="loading-text">Loading assets...</div>
       </div>
-      <div id="loading-text">Loading assets...</div>
     </div>
-  </div>
 
-  <script type="module" src="/src/main.ts"></script>
-</body>
-
+    <script type="module" src="/src/main.ts"></script>
+  </body>
 </html>

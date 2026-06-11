@@ -22,6 +22,8 @@ import {
 import type { PlayerStats } from '../core/PlayerStats';
 
 import { uiState } from '../core/UIState.svelte.ts';
+import { getWeaponIcon, getPassiveIcon } from '../ui/icons';
+import { dlog } from '../core/debug';
 
 // --- CONSTANTS ---
 const MAX_WEAPON_SLOTS = 6;
@@ -44,6 +46,9 @@ export interface UpgradeOption {
   currentLevel?: number;
   nextLevel?: number;
   weight: number;
+  // Presentation (consumed by UpgradeModal)
+  icon?: string;
+  rarity?: 'common' | 'uncommon' | 'rare' | 'epic';
 }
 
 // --- DOM (LEGACY - REMOVED) ---
@@ -83,14 +88,17 @@ function generateUpgradePool(player: any): UpgradeOption[] {
   for (const slot of weaponSlots) {
     if (canLevelUp(slot.weaponId, slot.level)) {
       const def = WEAPONS[slot.weaponId];
+      const nextLevel = slot.level + 1;
       pool.push({
         type: 'weapon_level',
         id: slot.weaponId,
         name: def.name,
         description: getWeaponLevelUpDesc(slot.weaponId, slot.level),
         currentLevel: slot.level,
-        nextLevel: slot.level + 1,
+        nextLevel,
         weight: 70, // High priority for owned weapons
+        icon: getWeaponIcon(slot.weaponId),
+        rarity: nextLevel >= def.maxLevel ? 'epic' : nextLevel >= 5 ? 'rare' : 'common',
       });
     }
   }
@@ -105,6 +113,8 @@ function generateUpgradePool(player: any): UpgradeOption[] {
           name: def.name,
           description: def.description,
           weight: 30,
+          icon: getWeaponIcon(def.id),
+          rarity: 'rare',
         });
       }
     }
@@ -114,14 +124,17 @@ function generateUpgradePool(player: any): UpgradeOption[] {
   for (const slot of passiveSlots) {
     if (canLevelUpPassive(slot.passiveId, slot.level)) {
       const def = PASSIVES[slot.passiveId];
+      const nextLevel = slot.level + 1;
       pool.push({
         type: 'passive_level',
         id: slot.passiveId,
         name: def.name,
         description: def.description,
         currentLevel: slot.level,
-        nextLevel: slot.level + 1,
+        nextLevel,
         weight: 60,
+        icon: getPassiveIcon(slot.passiveId),
+        rarity: nextLevel >= def.maxLevel ? 'rare' : 'common',
       });
     }
   }
@@ -136,6 +149,8 @@ function generateUpgradePool(player: any): UpgradeOption[] {
           name: def.name,
           description: def.description,
           weight: 40,
+          icon: getPassiveIcon(def.id),
+          rarity: 'uncommon',
         });
       }
     }
@@ -148,6 +163,8 @@ function generateUpgradePool(player: any): UpgradeOption[] {
     name: 'HEALTH RECHARGE',
     description: 'Restore 20 HP',
     weight: 15, // Low priority - appears less often unless pool is small
+    icon: '💚',
+    rarity: 'common',
   });
 
   return pool;
@@ -242,7 +259,7 @@ function addNewWeapon(player: any, weaponId: string) {
     },
   });
 
-  console.log(`[Upgrade] Added weapon: ${def.name}`);
+  dlog(`[Upgrade] Added weapon: ${def.name}`);
 }
 
 function levelUpWeapon(player: any, weaponId: string) {
@@ -279,14 +296,14 @@ function levelUpWeapon(player: any, weaponId: string) {
               orbital.lifeTimer = -1;
             }
           }
-          console.log(`[Upgrade] Refreshed orbitals for ${def.name}`);
+          dlog(`[Upgrade] Refreshed orbitals for ${def.name}`);
         }
         break;
       }
     }
   }
 
-  console.log(`[Upgrade] Leveled up ${def.name} to ${slot.level}`);
+  dlog(`[Upgrade] Leveled up ${def.name} to ${slot.level}`);
 }
 
 // --- PASSIVE OPERATIONS ---
@@ -298,7 +315,7 @@ function addNewPassive(player: any, passiveId: string) {
   slots.push({ passiveId, level: 1 });
   player.passiveSlots = slots;
 
-  console.log(`[Upgrade] Added passive: ${def.name}`);
+  dlog(`[Upgrade] Added passive: ${def.name}`);
 }
 
 // --- HEALTH RECHARGE ---
@@ -307,7 +324,7 @@ function applyHealthUpgrade(player: any) {
     // Heal 20 HP (capped at max)
     player.health.current = Math.min(player.health.current + 20, player.health.max);
   }
-  console.log('[Upgrade] Health recharge applied (+20 HP)');
+  dlog('[Upgrade] Health recharge applied (+20 HP)');
 }
 
 function levelUpPassive(player: any, passiveId: string) {
@@ -318,7 +335,7 @@ function levelUpPassive(player: any, passiveId: string) {
   slot.level++;
 
   const def = PASSIVES[passiveId];
-  console.log(`[Upgrade] Leveled up ${def.name} to ${slot.level}`);
+  dlog(`[Upgrade] Leveled up ${def.name} to ${slot.level}`);
 }
 
 // --- STAT RECALCULATION ---

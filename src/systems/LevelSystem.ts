@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { getCurrentLevel, type Obstacle, type LevelConfig } from '../core/LevelData';
 import { loadTexture } from '../core/assets';
 import { createStaticCuboid, isRapierInitialized } from '../core/RapierWorld';
+import { dlog, dwarn } from '../core/debug';
 
 // Store references for cleanup
 let groundMesh: THREE.Mesh | null = null;
@@ -20,15 +21,20 @@ let propMaterial: THREE.MeshStandardMaterial | null = null;
 export function initLevel(scene: THREE.Scene): void {
   const level = getCurrentLevel();
 
-  console.log(`[LEVEL] Initializing: ${level.name}`);
-  console.log(`[LEVEL] Map size: ${level.mapWidth}x${level.mapHeight}`);
-  console.log(`[LEVEL] Obstacles: ${level.obstacles.length}`);
+  dlog(`[LEVEL] Initializing: ${level.name}`);
+  dlog(`[LEVEL] Map size: ${level.mapWidth}x${level.mapHeight}`);
+  dlog(`[LEVEL] Obstacles: ${level.obstacles.length}`);
 
-  // Set scene background
+  // Set scene background + distance fog so the horizon melts into the void
   scene.background = new THREE.Color(level.backgroundColor);
+  scene.fog = new THREE.Fog(level.backgroundColor, 70, 180);
 
   // Create ground plane
   createGround(scene, level);
+
+  // Neon dress: faint grid overlay + glowing boundary strips
+  addNeonGrid(scene, level);
+  addBoundaryGlow(scene, level);
 
   // Spawn all obstacles (visual + physics)
   for (const obstacle of level.obstacles) {
@@ -50,11 +56,55 @@ export function initLevel(scene: THREE.Scene): void {
   // Add ambient neon lighting for cyberpunk mood
   addNeonLighting(scene);
 
-  console.log(`[LEVEL] Initialization complete`);
+  dlog(`[LEVEL] Initialization complete`);
   if (isRapierInitialized()) {
-    console.log(
-      `[LEVEL] ✅ ${level.obstacles.filter((o) => o.blocking).length} physics colliders created`,
-    );
+    dlog(`[LEVEL] ${level.obstacles.filter((o) => o.blocking).length} physics colliders created`);
+  }
+}
+
+/**
+ * Faint cyan grid laid over the ground — sells the "neon arena" look and
+ * gives the player a motion reference while sprinting through empty areas.
+ */
+function addNeonGrid(scene: THREE.Scene, level: LevelConfig): void {
+  const grid = new THREE.GridHelper(
+    Math.max(level.mapWidth, level.mapHeight),
+    Math.max(level.mapWidth, level.mapHeight) / 10,
+    0x00e5ff,
+    0x103044,
+  );
+  grid.position.y = 0.02;
+  const gridMaterial = grid.material as THREE.Material;
+  gridMaterial.transparent = true;
+  gridMaterial.opacity = 0.18;
+  gridMaterial.depthWrite = false;
+  scene.add(grid);
+  obstacleMeshes.push(grid);
+}
+
+/**
+ * Glowing strips along the map edges so the playable bounds read at a
+ * glance instead of being an invisible wall.
+ */
+function addBoundaryGlow(scene: THREE.Scene, level: LevelConfig): void {
+  const halfW = level.mapWidth / 2;
+  const halfH = level.mapHeight / 2;
+  const stripMaterial = new THREE.MeshBasicMaterial({ color: 0x00e5ff });
+  const horizontal = new THREE.BoxGeometry(level.mapWidth, 0.5, 0.35);
+  const vertical = new THREE.BoxGeometry(0.35, 0.5, level.mapHeight);
+
+  const strips = [
+    { geometry: horizontal, x: 0, z: -halfH },
+    { geometry: horizontal, x: 0, z: halfH },
+    { geometry: vertical, x: -halfW, z: 0 },
+    { geometry: vertical, x: halfW, z: 0 },
+  ];
+
+  for (const { geometry, x, z } of strips) {
+    const strip = new THREE.Mesh(geometry, stripMaterial);
+    strip.position.set(x, 0.25, z);
+    scene.add(strip);
+    obstacleMeshes.push(strip);
   }
 }
 
@@ -90,7 +140,7 @@ function createGround(scene: THREE.Scene, level: LevelConfig): void {
       texture.repeat.set(level.mapWidth / 50, level.mapHeight / 50);
       groundMaterial.map = texture;
     } catch {
-      console.warn('[LEVEL] Ground texture not found, using solid color');
+      dwarn('[LEVEL] Ground texture not found, using solid color');
     }
   }
 
@@ -128,7 +178,7 @@ function spawnObstacle(scene: THREE.Scene, obstacle: Obstacle): void {
         texture.repeat.set(0.05, 0.1); // Tile based on wall size
         wallMaterial.map = texture;
       } catch {
-        console.warn('[LEVEL] Wall texture not found');
+        dwarn('[LEVEL] Wall texture not found');
       }
     }
     material = wallMaterial;

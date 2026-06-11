@@ -17,18 +17,16 @@ import { world } from '../core/world';
 import { spawnEnemy, EnemyType } from '../core/factories';
 import { getGameTime, LEVEL_DURATION, BOSS_SPAWN_TIME } from './ChestSystem';
 import { triggerVictory } from './GameManager';
+import { loadTexture } from '../core/assets';
+import { addTrauma } from './CameraSystem';
+import { playExplosion } from '../core/audio';
+import { dlog } from '../core/debug';
 
 // --- BOSS STATE ---
 let bossSpawned = false;
 let bossEntity: any = null;
 
-// --- SHARED RESOURCES ---
-const bossGeometry = new THREE.BoxGeometry(4, 6, 4);
-const bossMaterial = new THREE.MeshBasicMaterial({
-  color: 0xff0044,
-  transparent: true,
-  opacity: 0.9,
-});
+const BOSS_SIZE = 9;
 
 // --- RESET ---
 export function resetBoss() {
@@ -52,7 +50,7 @@ export function FinaleBossSystem(dt: number, scene: THREE.Scene) {
   if (!bossSpawned && gameTime >= BOSS_SPAWN_TIME) {
     spawnBoss(scene, player.position.x, player.position.z);
     bossSpawned = true;
-    console.log('[BOSS] SYSTEM CORRUPTION has emerged!');
+    dlog('[BOSS] SYSTEM CORRUPTION has emerged!');
   }
 
   // B. BOSS BEHAVIOR
@@ -75,10 +73,11 @@ export function FinaleBossSystem(dt: number, scene: THREE.Scene) {
     bossEntity.position.x += bossEntity.velocity.x * dt;
     bossEntity.position.z += bossEntity.velocity.z * dt;
 
-    // Sync transform
+    // Sync transform + menacing slow pulse
     if (bossEntity.transform) {
       bossEntity.transform.position.copy(bossEntity.position);
-      bossEntity.transform.rotation.y += 0.5 * dt;
+      const pulse = 1 + Math.sin(gameTime * 2.2) * 0.05;
+      bossEntity.transform.scale.setScalar(pulse);
     }
 
     // 2. Continuous enemy spawning (every 2 seconds)
@@ -102,7 +101,7 @@ export function FinaleBossSystem(dt: number, scene: THREE.Scene) {
 
     // 3. Boss escape check (10:00)
     if (gameTime >= LEVEL_DURATION) {
-      console.log('[BOSS] SYSTEM CORRUPTION is retreating...');
+      dlog('[BOSS] SYSTEM CORRUPTION is retreating...');
       despawnBoss(scene);
       triggerVictory();
     }
@@ -116,17 +115,37 @@ function spawnBoss(scene: THREE.Scene, nearX: number, nearZ: number) {
   const x = nearX + Math.cos(angle) * 20;
   const z = nearZ + Math.sin(angle) * 20;
 
-  const mesh = new THREE.Mesh(bossGeometry, bossMaterial);
-  mesh.position.set(x, 3, z);
-  scene.add(mesh);
+  // Billboard the Overseer sprite (matches the rest of the enemy art style)
+  const group = new THREE.Group();
+  group.position.set(x, 0, z);
+
+  const texture = loadTexture('/sprites/enemies/enemy_overseer.png');
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, color: 0xff8888 }));
+  sprite.scale.set(BOSS_SIZE, BOSS_SIZE, 1);
+  sprite.position.y = BOSS_SIZE / 2;
+  group.add(sprite);
+
+  const shadow = new THREE.Mesh(
+    new THREE.CircleGeometry(BOSS_SIZE * 0.3, 24),
+    new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45 }),
+  );
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.y = 0.05;
+  group.add(shadow);
+
+  scene.add(group);
+
+  // ENTRANCE: heavy rumble + boom so the spawn is felt, not just seen
+  addTrauma(0.8);
+  playExplosion();
 
   bossEntity = world.add({
     isBoss: true,
     isEnemy: true,
-    position: mesh.position,
+    position: group.position,
     velocity: new THREE.Vector3(0, 0, 0),
     health: { current: 50000, max: 50000 }, // Functionally infinite
-    transform: mesh,
+    transform: group,
     spawnTimer: 0,
   });
 }

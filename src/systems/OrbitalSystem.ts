@@ -1,3 +1,4 @@
+import { dlog } from '../core/debug';
 import { world } from '../core/world';
 import * as THREE from 'three';
 import { createKinematicBody, isRapierInitialized } from '../core/RapierWorld';
@@ -62,7 +63,7 @@ export function spawnOrbitalProjectile(
   const toSpawn = count - existing.length;
   if (toSpawn <= 0) return;
 
-  console.log(`[Orbital] Spawning ${toSpawn} new orbitals for count=${count}`);
+  dlog(`[Orbital] Spawning ${toSpawn} new orbitals for count=${count}`);
 
   // Create material
   const material = new THREE.MeshStandardMaterial({

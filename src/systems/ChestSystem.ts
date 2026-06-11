@@ -14,6 +14,7 @@ import { scanForEvolutions, selectEvolution } from '../core/EvolutionRegistry';
 import { WEAPONS, getWeaponStatsAtLevel } from '../core/WeaponRegistry';
 import { triggerLevelUp } from './UpgradeSystem';
 import { playLevelUp } from '../core/audio';
+import { dlog } from '../core/debug';
 
 // --- CONSTANTS ---
 export const LEVEL_DURATION = 600; // 10 minutes for testing (boss at 8:00, escape at 10:00)
@@ -35,10 +36,11 @@ export function getGameTime(): number {
 
 // --- SHARED RESOURCES ---
 const chestGeometry = new THREE.BoxGeometry(0.8, 0.6, 0.5);
+// Brighter rarity colors that read instantly against the dark ground
 const chestMaterials = {
-  common: new THREE.MeshBasicMaterial({ color: 0x8b4513 }), // Brown
-  rare: new THREE.MeshBasicMaterial({ color: 0x4169e1 }), // Blue
-  epic: new THREE.MeshBasicMaterial({ color: 0x9400d3 }), // Purple
+  common: new THREE.MeshBasicMaterial({ color: 0xc9974b }), // Gold-brown
+  rare: new THREE.MeshBasicMaterial({ color: 0x3fa7ff }), // Electric blue
+  epic: new THREE.MeshBasicMaterial({ color: 0xc44dff }), // Vivid purple
 };
 
 // --- REUSABLE VECTORS ---
@@ -90,11 +92,15 @@ export function ChestSystem(dt: number, scene: THREE.Scene) {
       continue;
     }
 
-    // B. MAGNETISM
-    if (distSq < CHEST_MAGNET_RADIUS * CHEST_MAGNET_RADIUS) {
+    // B. MAGNETISM (eased in with proximity so the pull feels organic)
+    const magnetRadiusSq = CHEST_MAGNET_RADIUS * CHEST_MAGNET_RADIUS;
+    if (distSq < magnetRadiusSq) {
       _dir.subVectors(player.position, chest.position).normalize();
-      chest.velocity.x += _dir.x * CHEST_MAGNET_FORCE * dt;
-      chest.velocity.z += _dir.z * CHEST_MAGNET_FORCE * dt;
+      const closeness = 1 - distSq / magnetRadiusSq;
+      const pull = closeness * closeness * (3 - 2 * closeness); // smoothstep
+      const force = CHEST_MAGNET_FORCE * (0.3 + 0.7 * pull);
+      chest.velocity.x += _dir.x * force * dt;
+      chest.velocity.z += _dir.z * force * dt;
       chest.velocity.multiplyScalar(0.92);
     } else {
       chest.velocity.multiplyScalar(0.95);
@@ -104,9 +110,10 @@ export function ChestSystem(dt: number, scene: THREE.Scene) {
     chest.position.x += chest.velocity.x * dt;
     chest.position.z += chest.velocity.z * dt;
 
-    // D. SPIN ANIMATION
+    // D. IDLE ANIMATION: slow spin + hover bob so chests beckon from afar
     if (chest.transform) {
       chest.transform.rotation.y += 1.5 * dt;
+      chest.transform.position.y = 0.4 + Math.sin(gameTime * 3 + chest.position.x) * 0.08;
     }
   }
 }
@@ -189,7 +196,7 @@ function performEvolution(
     }
   }
 
-  console.log(`[Evolution] ${oldWeaponId} → ${evolvedWeaponId}`);
+  dlog(`[Evolution] ${oldWeaponId} → ${evolvedWeaponId}`);
 
   // Spawn evolution VFX
   spawnEvolutionVFX(player.position, scene);
@@ -199,7 +206,7 @@ function performEvolution(
  * Spawn evolution visual effect
  */
 function spawnEvolutionVFX(pos: THREE.Vector3, scene: THREE.Scene) {
-  const geo = new THREE.RingGeometry(0.5, 2.0, 16);
+  const geo = new THREE.RingGeometry(0.5, 2.0, 32);
   const mat = new THREE.MeshBasicMaterial({
     color: 0xffff00,
     transparent: true,
@@ -215,10 +222,11 @@ function spawnEvolutionVFX(pos: THREE.Vector3, scene: THREE.Scene) {
   world.add({
     isParticle: true,
     position: pos.clone(),
-    velocity: new THREE.Vector3(5, 0, 0), // Expansion speed stored in x
+    velocity: new THREE.Vector3(0, 0, 0),
     transform: mesh,
     lifeTimer: 0,
-    maxLife: 0.5,
+    maxLife: 0.6,
+    ringGrow: 2.5, // expand outward as it fades (handled by ParticleSystem)
   });
 }
 

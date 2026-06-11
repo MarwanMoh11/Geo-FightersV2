@@ -1,6 +1,7 @@
 // --- MINIMAP SYSTEM ---
 // Renders a top-down view of the level showing obstacles, player, and enemies
 
+import { dlog, dwarn } from '../core/debug';
 import { world } from '../core/world';
 import { getBlockingObstacles } from '../core/LevelData';
 
@@ -30,9 +31,9 @@ export function initMinimap(): void {
   canvas = document.getElementById('minimap-canvas') as HTMLCanvasElement;
   if (canvas) {
     ctx = canvas.getContext('2d');
-    console.log('[MINIMAP] Initialized');
+    dlog('[MINIMAP] Initialized');
   } else {
-    console.warn('[MINIMAP] Canvas not found');
+    dwarn('[MINIMAP] Canvas not found');
   }
 }
 

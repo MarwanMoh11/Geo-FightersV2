@@ -2,58 +2,10 @@
   import { uiState } from '../core/UIState.svelte.ts';
   import { WEAPONS } from '../core/WeaponRegistry';
   import { PASSIVES } from '../core/PassiveRegistry';
-
-  // Map IDs to specific icons (images or emojis)
-  const WEAPON_ICONS: Record<string, string> = {
-    pulse_repeater: '/textures/ui/weapons/pulse_repeater.png',
-    monowire_lash: '/textures/ui/weapons/monowire_lash.png',
-    smart_rail_needles: '/textures/ui/weapons/smart_rail_needles.png',
-    emp_pulse_node: '/textures/ui/weapons/emp_pulse_node.png',
-    cryo_foam_disperser: '/textures/ui/weapons/cryo_foam_disperser.png',
-    drone_halo: '/textures/ui/weapons/drone_halo.png',
-    photon_blades: '/textures/ui/weapons/photon_blades.png',
-    signal_hijacker: '/textures/ui/weapons/signal_hijacker.png',
-    orbital_kill_ping: '🎯',
-    overclock_engine: '🔥',
-    memory_leak: '💾',
-    omega_pulse: '/textures/ui/weapons/omega_pulse.png',
-    nanofiber_guillotine: '/textures/ui/weapons/nanofiber_guillotine.png',
-    magnetic_railstorm: '/textures/ui/weapons/magnetic_railstorm.png',
-    blackout_field: '/textures/ui/weapons/blackout_field.png',
-    thermal_collapse: '/textures/ui/weapons/thermal_collapse.png',
-    swarm_intelligence: '/textures/ui/weapons/swarm_intelligence.png',
-    photon_curtain: '/textures/ui/weapons/photon_curtain.png',
-    neural_cascade: '/textures/ui/weapons/neural_cascade.png',
-    saturation_strike: '☄️',
-    runaway_singularity: '💥',
-    heap_overflow: '🔮',
-  };
-
-  const PASSIVE_ICONS: Record<string, string> = {
-    power_cell: '⚡',
-    accelerator_chip: '🚀',
-    capacitor: '🔋',
-    cooling_system: '❄️',
-    clock_skipper: '⏱️',
-    magnet_loader: '🧲',
-    shield_matrix: '🛡️',
-    regen_module: '💚',
-    speed_boosters: '👟',
-    ai_core: '🤖',
-    optics_suite: '👁️',
-    signal_booster: '📶',
-    targeting_os: '🎯',
-    quantum_regulator: '⚛️',
-    debug_suite: '🐛',
-  };
+  import { getWeaponIcon, getPassiveIcon } from './icons';
 
   let weapons = $derived(uiState.weaponSlots);
   let passives = $derived(uiState.passiveSlots);
-
-  function getIcon(id: string, type: 'weapon' | 'passive') {
-    if (type === 'weapon') return WEAPON_ICONS[id] || '🔹';
-    return PASSIVE_ICONS[id] || '🔸';
-  }
 
   function getName(id: string, type: 'weapon' | 'passive') {
     if (type === 'weapon') return WEAPONS[id]?.name || id;
@@ -67,14 +19,19 @@
     <div class="inv-group weapons">
       <div class="group-label">OFFENSIVE MODULES</div>
       <div class="slots">
-        {#each weapons as slot}
-          {@const icon = getIcon(slot.weaponId, 'weapon')}
+        {#each weapons as slot, i}
+          {@const icon = getWeaponIcon(slot.weaponId)}
           {@const name = getName(slot.weaponId, 'weapon')}
+          {@const readiness = uiState.weaponReadiness[i] ?? 1}
           <div class="slot weapon glass active" title={name}>
             {#if icon.endsWith('.png')}
               <img src={icon} alt={name} class="item-icon-img" />
             {:else}
               <div class="item-icon">{icon}</div>
+            {/if}
+            <!-- Cooldown sweep: dark overlay drains away as the weapon recharges -->
+            {#if readiness < 0.95}
+              <div class="cooldown-overlay" style="height: {(1 - readiness) * 100}%"></div>
             {/if}
             <div class="level-badge">{slot.level}</div>
           </div>
@@ -90,7 +47,7 @@
       <div class="group-label">ENHANCEMENT NODES</div>
       <div class="slots">
         {#each passives as slot}
-          {@const icon = getIcon(slot.passiveId, 'passive')}
+          {@const icon = getPassiveIcon(slot.passiveId)}
           {@const name = getName(slot.passiveId, 'passive')}
           <div class="slot passive glass active" title={name}>
             {#if icon.endsWith('.png')}
@@ -157,17 +114,39 @@
     position: relative;
     transition: all var(--transition-smooth);
     background: rgba(255, 255, 255, 0.02);
+    overflow: hidden;
   }
 
   .slot.active {
     background: rgba(255, 255, 255, 0.05);
     border-color: rgba(255, 255, 255, 0.15);
     pointer-events: auto; /* Enable tooltips */
+    animation: slot-pop var(--transition-springy) both;
+  }
+
+  @keyframes slot-pop {
+    from {
+      transform: scale(0.6);
+      opacity: 0;
+    }
+    to {
+      transform: scale(1);
+      opacity: 1;
+    }
   }
 
   .slot.empty {
     opacity: 0.3;
     border: 1px dashed rgba(255, 255, 255, 0.1);
+  }
+
+  .cooldown-overlay {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    background: rgba(0, 0, 0, 0.55);
+    pointer-events: none;
   }
 
   .item-icon {
@@ -184,8 +163,8 @@
 
   .level-badge {
     position: absolute;
-    bottom: -4px;
-    right: -4px;
+    bottom: 2px;
+    right: 2px;
     background: var(--color-secondary);
     color: white;
     font-size: 0.6rem;
@@ -198,7 +177,7 @@
 
   .weapon.active {
     border-color: var(--color-primary);
-    box-shadow: inset 0 0 10px rgba(45, 226, 230, 0.1);
+    box-shadow: inset 0 0 10px rgba(0, 229, 255, 0.1);
   }
 
   .passive.active {

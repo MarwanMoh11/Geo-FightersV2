@@ -1,5 +1,6 @@
 import { world } from '../core/world';
 import * as THREE from 'three';
+import { removeBody } from '../core/RapierWorld';
 
 export function LifecycleSystem(dt: number, scene: THREE.Scene) {
   // Entities with lifeTimer (like bullets)
@@ -12,6 +13,18 @@ export function LifecycleSystem(dt: number, scene: THREE.Scene) {
       if (entity.lifeTimer >= entity.maxLife) {
         if (entity.transform) {
           scene.remove(entity.transform);
+          // Ring FX clone their material for the fade-out; dispose it here
+          if (entity.ringGrow !== undefined && entity.transform instanceof THREE.Mesh) {
+            const material = entity.transform.material;
+            if (material instanceof THREE.Material) material.dispose();
+          }
+        }
+        // Free the Rapier body too — leaking one per expired bullet
+        // degrades the physics step over the course of a run
+        if (entity.rigidBody) {
+          removeBody(entity.rigidBody);
+          entity.rigidBody = undefined;
+          entity.collider = undefined;
         }
         world.remove(entity);
       }

@@ -38,6 +38,18 @@ export function UISystem() {
   uiState.weaponSlots = [...(player.weaponSlots || [])];
   uiState.passiveSlots = [...(player.passiveSlots || [])];
 
+  // 4b. Weapon readiness (0 = just fired, 1 = ready) for cooldown sweeps
+  uiState.weaponReadiness = (player.weaponSlots || []).map((slot) => {
+    for (const entity of world.with('isWeapon', 'ownerId', 'weapon')) {
+      if (entity.ownerId === player.id && entity.weaponId === slot.weaponId && entity.weapon) {
+        const { cooldownTimer, fireRate } = entity.weapon;
+        if (fireRate <= 0) return 1;
+        return 1 - Math.min(Math.max(cooldownTimer / fireRate, 0), 1);
+      }
+    }
+    return 1; // entity not found (e.g., starter weapon without weaponId): show ready
+  });
+
   // 5. Boss Info
   const boss = world.with('isBoss', 'health').first;
   if (boss && boss.health) {

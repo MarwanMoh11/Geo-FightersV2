@@ -1,5 +1,6 @@
 <script lang="ts">
   import { uiState } from '../../core/UIState.svelte.ts';
+  import { fade, scale } from 'svelte/transition';
   import {
     getSettings,
     setSetting,
@@ -24,148 +25,151 @@
   }
 </script>
 
-<div id="settings-modal" class:hidden={!uiState.showSettings}>
-  <div class="modal-overlay"></div>
+{#if uiState.showSettings}
+  <div id="settings-modal" transition:fade={{ duration: 200 }}>
+    <div class="modal-overlay"></div>
 
-  <div class="settings-content glass">
-    <div class="header">
-      <h2 class="title">CONFIGURATION</h2>
-      <div class="tabs">
-        <button
-          class="tab-btn"
-          class:active={uiState.activeSettingsTab === 'audio'}
-          onclick={() => (uiState.activeSettingsTab = 'audio')}>AUDIO</button
-        >
-        <button
-          class="tab-btn"
-          class:active={uiState.activeSettingsTab === 'display'}
-          onclick={() => (uiState.activeSettingsTab = 'display')}>DISPLAY</button
-        >
-        <button
-          class="tab-btn"
-          class:active={uiState.activeSettingsTab === 'gameplay'}
-          onclick={() => (uiState.activeSettingsTab = 'gameplay')}>GAMEPLAY</button
-        >
+    <div class="settings-content glass" transition:scale={{ duration: 250, start: 0.94 }}>
+      <div class="header">
+        <h2 class="title">CONFIGURATION</h2>
+        <div class="tabs">
+          <button
+            class="tab-btn"
+            class:active={uiState.activeSettingsTab === 'audio'}
+            onclick={() => (uiState.activeSettingsTab = 'audio')}>AUDIO</button
+          >
+          <button
+            class="tab-btn"
+            class:active={uiState.activeSettingsTab === 'display'}
+            onclick={() => (uiState.activeSettingsTab = 'display')}>DISPLAY</button
+          >
+          <button
+            class="tab-btn"
+            class:active={uiState.activeSettingsTab === 'gameplay'}
+            onclick={() => (uiState.activeSettingsTab = 'gameplay')}>GAMEPLAY</button
+          >
+        </div>
+      </div>
+
+      <div class="scroll-area">
+        {#if uiState.activeSettingsTab === 'audio'}
+          <div class="panel">
+            <div class="setting-item">
+              <div class="info">
+                <label for="masterVol">MASTER VOLUME</label>
+                <span class="val">{settings.masterVolume}%</span>
+              </div>
+              <input
+                id="masterVol"
+                type="range"
+                min="0"
+                max="100"
+                value={settings.masterVolume}
+                oninput={(e) => updateSetting('masterVolume', parseInt(e.currentTarget.value))}
+              />
+            </div>
+            <div class="setting-item">
+              <div class="info">
+                <label for="musicVol">MUSIC VOLUME</label>
+                <span class="val">{settings.musicVolume}%</span>
+              </div>
+              <input
+                id="musicVol"
+                type="range"
+                min="0"
+                max="100"
+                value={settings.musicVolume}
+                oninput={(e) => updateSetting('musicVolume', parseInt(e.currentTarget.value))}
+              />
+            </div>
+            <div class="setting-item">
+              <div class="info">
+                <label for="musicToggle">MUSIC ENABLED</label>
+              </div>
+              <button
+                id="musicToggle"
+                class="toggle"
+                class:checked={settings.musicEnabled}
+                onclick={() => updateSetting('musicEnabled', !settings.musicEnabled)}
+                aria-label="Toggle Music"
+              >
+                <div class="thumb"></div>
+              </button>
+            </div>
+          </div>
+        {:else if uiState.activeSettingsTab === 'display'}
+          <div class="panel">
+            <div class="setting-item">
+              <div class="info">
+                <label for="shakeToggle">SCREEN SHAKE</label>
+              </div>
+              <button
+                id="shakeToggle"
+                class="toggle"
+                class:checked={settings.screenShake}
+                onclick={() => updateSetting('screenShake', !settings.screenShake)}
+                aria-label="Toggle Screen Shake"
+              >
+                <div class="thumb"></div>
+              </button>
+            </div>
+            <div class="setting-item">
+              <div class="info">
+                <label for="fpsToggle">SHOW FPS</label>
+              </div>
+              <button
+                id="fpsToggle"
+                class="toggle"
+                class:checked={settings.showFps}
+                onclick={() => updateSetting('showFps', !settings.showFps)}
+                aria-label="Toggle FPS Counter"
+              >
+                <div class="thumb"></div>
+              </button>
+            </div>
+          </div>
+        {:else if uiState.activeSettingsTab === 'gameplay'}
+          <div class="panel">
+            <div class="setting-item">
+              <div class="info">
+                <label for="sens">JOYSTICK SENSITIVITY</label>
+                <span class="val">{settings.joystickSensitivity}%</span>
+              </div>
+              <input
+                id="sens"
+                type="range"
+                min="25"
+                max="150"
+                value={settings.joystickSensitivity}
+                oninput={(e) =>
+                  updateSetting('joystickSensitivity', parseInt(e.currentTarget.value))}
+              />
+            </div>
+            <div class="setting-item">
+              <div class="info">
+                <label for="invertToggle">INVERT CONTROLS (L/R)</label>
+              </div>
+              <button
+                id="invertToggle"
+                class="toggle"
+                class:checked={settings.invertControls}
+                onclick={() => updateSetting('invertControls', !settings.invertControls)}
+                aria-label="Toggle Inverse Controls"
+              >
+                <div class="thumb"></div>
+              </button>
+            </div>
+          </div>
+        {/if}
+      </div>
+
+      <div class="footer">
+        <button class="footer-btn" onclick={reset}>RESET DEFAULTS</button>
+        <button class="footer-btn primary" onclick={close}>CLOSE</button>
       </div>
     </div>
-
-    <div class="scroll-area">
-      {#if uiState.activeSettingsTab === 'audio'}
-        <div class="panel">
-          <div class="setting-item">
-            <div class="info">
-              <label for="masterVol">MASTER VOLUME</label>
-              <span class="val">{settings.masterVolume}%</span>
-            </div>
-            <input
-              id="masterVol"
-              type="range"
-              min="0"
-              max="100"
-              value={settings.masterVolume}
-              oninput={(e) => updateSetting('masterVolume', parseInt(e.currentTarget.value))}
-            />
-          </div>
-          <div class="setting-item">
-            <div class="info">
-              <label for="musicVol">MUSIC VOLUME</label>
-              <span class="val">{settings.musicVolume}%</span>
-            </div>
-            <input
-              id="musicVol"
-              type="range"
-              min="0"
-              max="100"
-              value={settings.musicVolume}
-              oninput={(e) => updateSetting('musicVolume', parseInt(e.currentTarget.value))}
-            />
-          </div>
-          <div class="setting-item">
-            <div class="info">
-              <label for="musicToggle">MUSIC ENABLED</label>
-            </div>
-            <button
-              id="musicToggle"
-              class="toggle"
-              class:checked={settings.musicEnabled}
-              onclick={() => updateSetting('musicEnabled', !settings.musicEnabled)}
-              aria-label="Toggle Music"
-            >
-              <div class="thumb"></div>
-            </button>
-          </div>
-        </div>
-      {:else if uiState.activeSettingsTab === 'display'}
-        <div class="panel">
-          <div class="setting-item">
-            <div class="info">
-              <label for="shakeToggle">SCREEN SHAKE</label>
-            </div>
-            <button
-              id="shakeToggle"
-              class="toggle"
-              class:checked={settings.screenShake}
-              onclick={() => updateSetting('screenShake', !settings.screenShake)}
-              aria-label="Toggle Screen Shake"
-            >
-              <div class="thumb"></div>
-            </button>
-          </div>
-          <div class="setting-item">
-            <div class="info">
-              <label for="fpsToggle">SHOW FPS</label>
-            </div>
-            <button
-              id="fpsToggle"
-              class="toggle"
-              class:checked={settings.showFps}
-              onclick={() => updateSetting('showFps', !settings.showFps)}
-              aria-label="Toggle FPS Counter"
-            >
-              <div class="thumb"></div>
-            </button>
-          </div>
-        </div>
-      {:else if uiState.activeSettingsTab === 'gameplay'}
-        <div class="panel">
-          <div class="setting-item">
-            <div class="info">
-              <label for="sens">JOYSTICK SENSITIVITY</label>
-              <span class="val">{settings.joystickSensitivity}%</span>
-            </div>
-            <input
-              id="sens"
-              type="range"
-              min="25"
-              max="150"
-              value={settings.joystickSensitivity}
-              oninput={(e) => updateSetting('joystickSensitivity', parseInt(e.currentTarget.value))}
-            />
-          </div>
-          <div class="setting-item">
-            <div class="info">
-              <label for="invertToggle">INVERT CONTROLS (L/R)</label>
-            </div>
-            <button
-              id="invertToggle"
-              class="toggle"
-              class:checked={settings.invertControls}
-              onclick={() => updateSetting('invertControls', !settings.invertControls)}
-              aria-label="Toggle Inverse Controls"
-            >
-              <div class="thumb"></div>
-            </button>
-          </div>
-        </div>
-      {/if}
-    </div>
-
-    <div class="footer">
-      <button class="footer-btn" onclick={reset}>RESET DEFAULTS</button>
-      <button class="footer-btn primary" onclick={close}>CLOSE</button>
-    </div>
   </div>
-</div>
+{/if}
 
 <style>
   #settings-modal {
@@ -177,10 +181,6 @@
     align-items: center;
     background: rgba(10, 10, 18, 0.4);
     backdrop-filter: blur(8px);
-  }
-
-  .hidden {
-    display: none !important;
   }
 
   .modal-overlay {
@@ -279,6 +279,7 @@
   /* Slider */
   input[type='range'] {
     -webkit-appearance: none;
+    appearance: none;
     width: 100%;
     height: 4px;
     background: rgba(255, 255, 255, 0.1);

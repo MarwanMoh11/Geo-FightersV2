@@ -10,10 +10,16 @@
   let knobY = $state(0);
   let isDragging = $state(false);
   let touchId: number | null = null;
-  const MAX_RADIUS = 50;
+  // Scale the stick throw with screen size: tiny on phones, roomier on tablets
+  let maxRadius = 50;
+
+  function computeMaxRadius() {
+    return Math.min(70, Math.max(44, window.innerWidth * 0.07));
+  }
 
   function handleStart(e: TouchEvent | MouseEvent) {
     if (touchId !== null) return;
+    maxRadius = computeMaxRadius();
 
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
@@ -62,13 +68,13 @@
   function updatePos(x: number, y: number) {
     const dx = x - joyCenterX;
     const dy = y - joyCenterY;
-    const distance = Math.min(Math.sqrt(dx * dx + dy * dy), MAX_RADIUS);
+    const distance = Math.min(Math.sqrt(dx * dx + dy * dy), maxRadius);
     const angle = Math.atan2(dy, dx);
 
     knobX = Math.cos(angle) * distance;
     knobY = Math.sin(angle) * distance;
 
-    updateVirtualJoystick(knobX / MAX_RADIUS, knobY / MAX_RADIUS);
+    updateVirtualJoystick(knobX / maxRadius, knobY / maxRadius);
   }
 
   onMount(() => {

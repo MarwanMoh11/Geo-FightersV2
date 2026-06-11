@@ -1,31 +1,33 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Outfit:wght@400;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
 
 :root {
-  /* Core Colors */
-  --color-bg-dark: #0a0a12;
-  --color-bg-panel: rgba(16, 16, 28, 0.7);
-  --color-primary: #2de2e6; /* Cyan Neon */
-  --color-secondary: #ff0055; /* Pink Accent */
+  /* Core Colors — clean neon: cyan primary, magenta accent, gold highlight */
+  --color-bg-dark: #040410;
+  --color-bg-panel: rgba(12, 14, 26, 0.7);
+  --color-primary: #00e5ff; /* Cyan Neon */
+  --color-secondary: #ff2e88; /* Magenta Accent */
   --color-accent: #00ff88; /* Green Success */
-  --color-text-main: #f0f0f0;
-  --color-text-dim: #94a3b8;
-  --color-border: rgba(45, 226, 230, 0.2);
-  --color-border-bright: rgba(45, 226, 230, 0.5);
+  --color-gold: #ffe14d; /* Gold Highlight */
+  --color-text-main: #eef6ff;
+  --color-text-dim: #8fa3bd;
+  --color-border: rgba(0, 229, 255, 0.2);
+  --color-border-bright: rgba(0, 229, 255, 0.5);
 
   /* Glassmorphism */
-  --glass-bg: rgba(10, 10, 18, 0.7);
+  --glass-bg: rgba(8, 10, 20, 0.72);
   --glass-border: 1px solid rgba(255, 255, 255, 0.1);
   --glass-blur: blur(12px);
   --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
 
   /* Typography */
-  --font-heading: 'Outfit', sans-serif;
+  --font-heading: 'Orbitron', 'Inter', sans-serif;
   --font-body: 'Inter', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
   /* Transitions */
   --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-smooth: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-springy: 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 /* Glassmorphism Utility */
@@ -39,10 +41,18 @@
 
 .text-neon-cyan {
   color: var(--color-primary);
-  text-shadow: 0 0 10px rgba(45, 226, 230, 0.5);
+  text-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
 }
 
 .text-neon-pink {
   color: var(--color-secondary);
-  text-shadow: 0 0 10px rgba(255, 0, 85, 0.5);
+  text-shadow: 0 0 10px rgba(255, 46, 136, 0.5);
+}
+
+/* Shared focus affordance: keyboard navigation must always be visible */
+button:focus-visible,
+[role='button']:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }

@@ -1,4 +1,5 @@
 import type { WeaponSlot, PassiveSlot } from './world';
+import type { UpgradeOption } from '../systems/UpgradeSystem';
 
 export const uiState = $state({
   // Player Stats
@@ -11,19 +12,25 @@ export const uiState = $state({
   // Inventory
   weaponSlots: [] as WeaponSlot[],
   passiveSlots: [] as PassiveSlot[],
+  // Weapon readiness (0 = just fired, 1 = ready), parallel to weaponSlots
+  weaponReadiness: [] as number[],
 
   // Game Status
   gameState: 'MENU' as 'MENU' | 'PLAYING' | 'PAUSED' | 'GAME_OVER',
   gameTime: 0,
   isPaused: false,
   isGameOver: false,
+  isVictory: false,
   bossHealth: { current: 0, max: 100, active: false },
+
+  // Feedback pulses (incrementing counters restart the CSS animations)
+  damageFlash: 0,
 
   // UI Visibility
   showSettings: false,
   showUpgrade: false,
   activeSettingsTab: 'audio' as 'audio' | 'display' | 'gameplay',
-  upgradeChoices: [] as any[],
+  upgradeChoices: [] as UpgradeOption[],
 
   // Settings
   fps: 60,

@@ -104,12 +104,9 @@ export function startMusic() {
 
   // Safety: Resume context if suspended
   if (c.state === 'suspended') {
-    c.resume().then(() => {
-      console.log('Audio Context Resumed');
-    });
+    void c.resume();
   }
 
-  console.log('♫ STARTING PROCEDURAL MUSIC ENGINE ♫');
   isMusicPlaying = true;
   isMusicStopped = false; // Ensure it's not starting in a stopped state
 
@@ -296,7 +293,6 @@ export function playShoot() {
 }
 
 export function playExplosion() {
-  const start = performance.now();
   const c = getCtx();
   if (!c || !sfxGainNode) return;
   const bufferSize = c.sampleRate * 0.5;
@@ -316,25 +312,62 @@ export function playExplosion() {
   filter.connect(gain);
   gain.connect(sfxGainNode);
   noise.start();
-
-  const dur = performance.now() - start;
-  if (dur > 2.0) console.warn(`[AUDIO LAG] playExplosion took ${dur.toFixed(2)}ms`);
 }
 
-export function playCollect() {
+/**
+ * XP pickup blip. `pitchMult` raises the tone for rapid collect streaks
+ * (1.0 = base pitch).
+ */
+export function playCollect(pitchMult = 1) {
   const c = getCtx();
   if (!c || !sfxGainNode) return;
   const osc = c.createOscillator();
   const gain = c.createGain();
   osc.type = 'sine';
-  osc.frequency.setValueAtTime(1200, c.currentTime);
-  osc.frequency.linearRampToValueAtTime(2000, c.currentTime + 0.1);
+  osc.frequency.setValueAtTime(1200 * pitchMult, c.currentTime);
+  osc.frequency.linearRampToValueAtTime(2000 * pitchMult, c.currentTime + 0.1);
   gain.gain.setValueAtTime(0.05, c.currentTime);
   gain.gain.linearRampToValueAtTime(0, c.currentTime + 0.1);
   osc.connect(gain);
   gain.connect(sfxGainNode);
   osc.start();
   osc.stop(c.currentTime + 0.1);
+}
+
+/** Player damage: short low saw drop with a noise thud. */
+export function playHurt() {
+  const c = getCtx();
+  if (!c || !sfxGainNode) return;
+  const t = c.currentTime;
+
+  const osc = c.createOscillator();
+  const gain = c.createGain();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(280, t);
+  osc.frequency.exponentialRampToValueAtTime(60, t + 0.25);
+  gain.gain.setValueAtTime(0.18, t);
+  gain.gain.linearRampToValueAtTime(0, t + 0.25);
+  osc.connect(gain);
+  gain.connect(sfxGainNode);
+  osc.start(t);
+  osc.stop(t + 0.25);
+
+  const bufferSize = Math.floor(c.sampleRate * 0.12);
+  const buffer = c.createBuffer(1, bufferSize, c.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+  const noise = c.createBufferSource();
+  noise.buffer = buffer;
+  const filter = c.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(900, t);
+  const noiseGain = c.createGain();
+  noiseGain.gain.setValueAtTime(0.12, t);
+  noiseGain.gain.linearRampToValueAtTime(0, t + 0.12);
+  noise.connect(filter);
+  filter.connect(noiseGain);
+  noiseGain.connect(sfxGainNode);
+  noise.start(t);
 }
 
 export function playLevelUp() {

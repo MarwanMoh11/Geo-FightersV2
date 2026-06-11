@@ -7,38 +7,18 @@
  * NOTE: Full GPU compute implementation pending Three.js StorageBuffer API stabilization
  */
 
-import { world } from '../core/world';
+import { dlog } from '../core/debug';
 
 export function initParticleComputeSystem() {
   // GPU buffer initialization will go here once Three.js WebGPU compute API is stable
-  console.log('[ParticleComputeSystem] Initialized (CPU mode, GPU-ready)');
+  dlog('[ParticleComputeSystem] Initialized (placeholder, GPU-ready)');
 }
 
-export function ParticleComputeSystem(dt: number, _renderer: any) {
-  // Get current particles
-  const particleEntities = Array.from(
-    world.with('isParticle', 'transform', 'lifeTimer', 'maxLife'),
-  );
-
-  // Early exit if no particles
-  if (particleEntities.length === 0) return;
-
-  // CPU-based updates (ready for GPU migration)
-  for (const entity of particleEntities) {
-    if (!entity.transform || entity.lifeTimer === undefined || entity.maxLife === undefined)
-      continue;
-
-    // Calculate age (0.0 = new, 1.0 = dead)
-    const age = entity.lifeTimer / entity.maxLife;
-
-    // Calculate scale (shrink over time)
-    const scale = 1.0 - age;
-    entity.transform.scale.setScalar(scale);
-
-    // Update rotation (spin wildly)
-    entity.transform.rotateX(10 * dt);
-    entity.transform.rotateZ(5 * dt);
-  }
+export function ParticleComputeSystem(_dt: number, _renderer: unknown) {
+  // Intentionally a no-op for now: ParticleSystem owns the CPU update.
+  // Running a CPU copy here as well double-applied scale/rotation each frame.
+  // When the WebGPU compute path lands, it should REPLACE ParticleSystem's
+  // loop rather than run alongside it.
 }
 
 /**
