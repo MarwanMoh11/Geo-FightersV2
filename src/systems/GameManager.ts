@@ -1,38 +1,33 @@
 import { world } from '../core/world';
+import { setGameState } from '../core/GameState';
+import { uiState } from '../core/UIState.svelte.ts';
+import { stopMusic, playExplosion } from '../core/audio';
+import { addTrauma } from './CameraSystem';
+import { dlog } from '../core/debug';
 
 export let isGameOver = false;
 export let isVictory = false;
 
-// DOM Elements
-const modal = document.getElementById('game-over-modal');
-const finalLevel = document.getElementById('final-level');
-const finalScore = document.getElementById('final-score');
-const restartBtn = document.getElementById('restart-btn');
-const modalTitle = modal?.querySelector('h2');
-
-// Setup Restart
-if (restartBtn) {
-  restartBtn.addEventListener('click', () => {
-    location.reload(); // Hard Reset
-  });
+function captureFinalStats() {
+  const player = world.with('isPlayer', 'level', 'score').first;
+  uiState.level = player?.level || uiState.level;
+  uiState.score = player?.score || uiState.score;
 }
 
 export function triggerGameOver() {
   if (isGameOver || isVictory) return; // Prevent double trigger
   isGameOver = true;
 
-  // Fetch Stats
-  const player = world.with('isPlayer', 'level', 'score').first;
-  const lvl = player?.level || 1;
-  const score = player?.score || 0;
+  captureFinalStats();
+  uiState.isVictory = false;
 
-  // Populate UI
-  if (modalTitle) modalTitle.innerText = 'SYSTEM FAILURE';
-  if (finalLevel) finalLevel.innerText = lvl.toString().padStart(2, '0');
-  if (finalScore) finalScore.innerText = score.toString();
+  // Let the death land: explosion + heavy shake, music cuts out
+  addTrauma(1.0);
+  playExplosion();
+  stopMusic();
 
-  // Show Screen
-  if (modal) modal.classList.remove('hidden');
+  // Drive the Svelte GameOverModal via the state machine
+  setGameState('GAME_OVER');
 }
 
 export function triggerVictory() {
@@ -40,21 +35,9 @@ export function triggerVictory() {
   isVictory = true;
   isGameOver = true; // Also stop game loop
 
-  // Fetch Stats
-  const player = world.with('isPlayer', 'level', 'score').first;
-  const lvl = player?.level || 1;
-  const score = player?.score || 0;
+  captureFinalStats();
+  uiState.isVictory = true;
+  setGameState('GAME_OVER');
 
-  // Populate UI with victory message
-  if (modalTitle) modalTitle.innerText = '🏆 SURVIVED 🏆';
-  if (finalLevel) finalLevel.innerText = lvl.toString().padStart(2, '0');
-  if (finalScore) finalScore.innerText = score.toString();
-
-  // Show Screen
-  if (modal) {
-    modal.classList.remove('hidden');
-    modal.style.borderColor = '#00ff00'; // Green border for victory
-  }
-
-  console.log('[VICTORY] Player survived the corruption!');
+  dlog('[VICTORY] Player survived the corruption!');
 }

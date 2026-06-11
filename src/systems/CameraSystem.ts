@@ -9,6 +9,18 @@ export function addTrauma(amount: number) {
   cameraTrauma = Math.min(cameraTrauma + amount, 1.0);
 }
 
+// Camera rig: fixed top-down offset, smoothed focus point with velocity
+// lookahead so the view leads slightly into the direction of travel.
+const CAMERA_HEIGHT = 40;
+const CAMERA_DISTANCE = 15;
+const LOOKAHEAD = 0.35; // seconds of velocity to lead by
+const FOLLOW_DAMPING = 6.0; // higher = tighter follow
+
+const _focus = new THREE.Vector3();
+const _desired = new THREE.Vector3();
+let focusInitialized = false;
+let shakeTime = 0;
+
 export function CameraSystem(dt: number, camera: THREE.Camera) {
   const player = world.with('isPlayer', 'transform').first;
   if (!player || !player.transform) return;
@@ -18,33 +30,37 @@ export function CameraSystem(dt: number, camera: THREE.Camera) {
     cameraTrauma = Math.max(cameraTrauma - dt * 2.5, 0);
   }
 
-  // 2. Calculate Shake Power (only if enabled in settings)
+  // 2. Shake offsets (smooth layered sines read nicer than per-frame random)
   let offsetX = 0;
   let offsetZ = 0;
 
-  if (isScreenShakeEnabled()) {
+  if (isScreenShakeEnabled() && cameraTrauma > 0) {
+    shakeTime += dt;
     const shake = cameraTrauma * cameraTrauma;
-    const MAX_SHAKE_OFFSET = 0.5;
-    offsetX = (Math.random() * 2 - 1) * shake * MAX_SHAKE_OFFSET;
-    offsetZ = (Math.random() * 2 - 1) * shake * MAX_SHAKE_OFFSET;
+    const MAX_SHAKE_OFFSET = 0.55;
+    offsetX = Math.sin(shakeTime * 41.7) * shake * MAX_SHAKE_OFFSET;
+    offsetZ = Math.sin(shakeTime * 53.3 + 1.7) * shake * MAX_SHAKE_OFFSET;
   }
 
-  // 3. HARD LOCK (The Fix)
-  // We removed the smoothing (Lerp). The camera now snaps instantly to the player.
-  // We still add the 'offset' so the screenshake works.
+  // 3. Smooth follow with lookahead (frame-rate independent damping)
+  _desired.copy(player.transform.position);
+  if (player.velocity) {
+    _desired.x += player.velocity.x * LOOKAHEAD;
+    _desired.z += player.velocity.z * LOOKAHEAD;
+  }
 
-  // Set X Position (Player X + Shake)
-  camera.position.x = player.transform.position.x + offsetX;
+  if (!focusInitialized) {
+    _focus.copy(_desired);
+    focusInitialized = true;
+  } else {
+    const t = 1 - Math.exp(-FOLLOW_DAMPING * dt);
+    _focus.lerp(_desired, t);
+  }
 
-  // Set Z Position (Player Z + Distance + Shake)
-  // Note: We maintain the +15 distance so we are looking from above
-  camera.position.z = player.transform.position.z + 15 + offsetZ;
+  camera.position.x = _focus.x + offsetX;
+  camera.position.y = CAMERA_HEIGHT;
+  camera.position.z = _focus.z + CAMERA_DISTANCE + offsetZ;
 
-  // 4. Look at Player
-  // We still look at the player's center (plus shake) to keep the view focused
-  camera.lookAt(
-    player.transform.position.x + offsetX,
-    player.transform.position.y,
-    player.transform.position.z + offsetZ,
-  );
+  // 4. Look at the focus point (plus shake) to keep the view centered
+  camera.lookAt(_focus.x + offsetX, 0, _focus.z + offsetZ);
 }

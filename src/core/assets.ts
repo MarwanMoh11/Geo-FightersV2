@@ -10,6 +10,12 @@ const TEXTURE_PATHS = [
   '/sprites/enemies/enemy_virus.png',
   '/sprites/enemies/enemy_glitch.png',
   '/sprites/enemies/enemy_firewall.png',
+  // Elites & bosses (previously loaded mid-game, causing a hitch + warning)
+  '/sprites/enemies/enemy_enforcer.png',
+  '/sprites/enemies/enemy_colossus.png',
+  '/sprites/enemies/enemy_warden.png',
+  '/sprites/enemies/enemy_hydra.png',
+  '/sprites/enemies/enemy_overseer.png',
   // Environment - Level 1
   '/textures/environments/ground_asphalt.png',
   '/textures/environments/wall_texture.png',
@@ -53,9 +59,7 @@ export function preloadTextures(
     });
   });
 
-  return Promise.all(loadPromises).then(() => {
-    console.log('All textures loaded!');
-  });
+  return Promise.all(loadPromises).then(() => undefined);
 }
 
 // Helper to get a cached texture (must be preloaded first)

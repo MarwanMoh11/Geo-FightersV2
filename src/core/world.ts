@@ -119,6 +119,16 @@ export type Entity = {
   stunTimer?: number;
   baseColor?: number;
 
+  // Post-hit invulnerability window (player)
+  invulnTimer?: number;
+  // Decaying knockback impulse, applied on top of input velocity (player)
+  knockback?: THREE.Vector3;
+  // Per-particle tumble rates so debris doesn't spin in lockstep
+  spinX?: number;
+  spinZ?: number;
+  // Expanding ring FX: target scale multiplier reached at end of life
+  ringGrow?: number;
+
   // Rapier physics body (Phase 2)
   rigidBody?: RAPIER.RigidBody;
   collider?: RAPIER.Collider;

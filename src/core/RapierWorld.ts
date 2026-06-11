@@ -5,6 +5,7 @@
  * Provides collision event handling and entity-collider mapping.
  */
 
+import { dlog } from './debug';
 import RAPIER from '@dimforge/rapier3d-compat';
 
 // Rapier world instance (singleton)
@@ -19,7 +20,7 @@ const colliderToEntityMap = new Map<number, number>();
  * Must be called before any physics operations.
  */
 export async function initRapier(): Promise<void> {
-  console.log('[Rapier] Initializing WASM module...');
+  dlog('[Rapier] Initializing WASM module...');
 
   // Initialize Rapier WASM
   await RAPIER.init();
@@ -31,7 +32,7 @@ export async function initRapier(): Promise<void> {
   // Create event queue for collision detection
   eventQueue = new RAPIER.EventQueue(true);
 
-  console.log('[Rapier] ✅ Physics world initialized');
+  dlog('[Rapier] Physics world initialized');
 }
 
 /**

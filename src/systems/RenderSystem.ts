@@ -38,21 +38,24 @@ export function RenderSystem(dt: number) {
 
       // 3. HIT FLASH
       if (entity.hitFlashTimer !== undefined) {
-        const activeSprite = entity.facingRight ? entity.spriteRight : entity.spriteLeft;
-        const inactiveSprite = entity.facingRight ? entity.spriteLeft : entity.spriteRight;
-
-        if (activeSprite && inactiveSprite) {
-          if (entity.hitFlashTimer > 0) {
-            entity.hitFlashTimer -= dt;
-            activeSprite.material.color.setHex(0xff0000);
-            inactiveSprite.material.color.setHex(0xff0000);
-          } else {
-            const baseColor = entity.baseColor ?? 0xffffff;
-            activeSprite.material.color.setHex(baseColor);
-            inactiveSprite.material.color.setHex(baseColor);
-            entity.hitFlashTimer = 0;
-          }
+        if (entity.hitFlashTimer > 0) {
+          entity.hitFlashTimer -= dt;
+          entity.spriteRight.material.color.setHex(0xff4444);
+          entity.spriteLeft.material.color.setHex(0xff4444);
+        } else if (entity.hitFlashTimer !== 0) {
+          const baseColor = entity.baseColor ?? 0xffffff;
+          entity.spriteRight.material.color.setHex(baseColor);
+          entity.spriteLeft.material.color.setHex(baseColor);
+          entity.hitFlashTimer = 0;
         }
+      }
+
+      // 3b. INVULNERABILITY BLINK (player i-frames)
+      if (entity.isPlayer) {
+        const invulnerable = (entity.invulnTimer ?? 0) > 0;
+        const blinkOpacity = invulnerable ? (Math.sin(time * 30) > 0 ? 0.35 : 0.9) : 1.0;
+        entity.spriteRight.material.opacity = blinkOpacity;
+        entity.spriteLeft.material.opacity = blinkOpacity;
       }
 
       // 4. Gentle Hover (apply to both sprites)

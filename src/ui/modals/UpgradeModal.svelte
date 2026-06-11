@@ -1,10 +1,22 @@
 <script lang="ts">
   import { uiState } from '../../core/UIState.svelte.ts';
   import { selectUpgrade, type UpgradeOption } from '../../systems/UpgradeSystem';
+  import { fade, fly } from 'svelte/transition';
+  import { playLevelUp } from '../../core/audio';
+
+  let selectedId: string | null = $state(null);
 
   function handleSelect(option: UpgradeOption) {
-    selectUpgrade(option);
-    uiState.showUpgrade = false;
+    if (selectedId) return; // a pick is already being committed
+    selectedId = option.id;
+    playLevelUp();
+
+    // Let the selection flash play before applying + resuming the game
+    setTimeout(() => {
+      selectUpgrade(option);
+      uiState.showUpgrade = false;
+      selectedId = null;
+    }, 350);
   }
 
   function getRarityColor(rarity: string = 'common') {
@@ -21,43 +33,50 @@
   }
 </script>
 
-<div id="upgrade-modal" class:hidden={!uiState.showUpgrade}>
-  <div class="modal-overlay"></div>
+{#if uiState.showUpgrade}
+  <div id="upgrade-modal" transition:fade={{ duration: 250 }}>
+    <div class="modal-overlay"></div>
 
-  <div class="upgrade-content">
-    <div class="header">
-      <h2 class="title">SYSTEM EVOLUTION</h2>
-      <div class="subtitle">SELECT ENHANCEMENT PROTOCOL</div>
-    </div>
+    <div class="upgrade-content">
+      <div class="header" in:fly={{ y: -24, duration: 400, delay: 100 }}>
+        <h2 class="title">SYSTEM EVOLUTION</h2>
+        <div class="subtitle">SELECT ENHANCEMENT PROTOCOL</div>
+      </div>
 
-    <div class="cards-container">
-      {#each uiState.upgradeChoices as option}
-        {@const color = getRarityColor(option.rarity)}
-        <button
-          class="upgrade-card glass"
-          onclick={() => handleSelect(option)}
-          style="--rarity-color: {color}"
-        >
-          <div class="rarity-tag">{option.rarity || 'COMMON'}</div>
+      <div class="cards-container">
+        {#each uiState.upgradeChoices as option, i}
+          {@const color = getRarityColor(option.rarity)}
+          <button
+            class="upgrade-card glass"
+            class:selected={selectedId === option.id}
+            class:dimmed={selectedId !== null && selectedId !== option.id}
+            onclick={() => handleSelect(option)}
+            style="--rarity-color: {color}; animation-delay: {i * 90}ms"
+          >
+            <div class="rarity-tag">{option.rarity || 'COMMON'}</div>
 
-          <div class="item-icon">
-            {#if option.icon && option.icon.endsWith('.png')}
-              <img src={option.icon} alt={option.name} class="icon-img" />
-            {:else}
-              {option.icon || '📦'}
-            {/if}
-          </div>
+            <div class="item-icon">
+              {#if option.icon && option.icon.endsWith('.png')}
+                <img src={option.icon} alt={option.name} class="icon-img" />
+              {:else}
+                {option.icon || '📦'}
+              {/if}
+            </div>
 
-          <div class="item-info">
-            <h3 class="item-name">{option.name}</h3>
-            <p class="item-desc">{option.description}</p>
-          </div>
-          <div class="selection-glow"></div>
-        </button>
-      {/each}
+            <div class="item-info">
+              <h3 class="item-name">{option.name}</h3>
+              {#if option.nextLevel}
+                <div class="level-step">LV {option.currentLevel} → {option.nextLevel}</div>
+              {/if}
+              <p class="item-desc">{option.description}</p>
+            </div>
+            <div class="selection-glow"></div>
+          </button>
+        {/each}
+      </div>
     </div>
   </div>
-</div>
+{/if}
 
 <style>
   #upgrade-modal {
@@ -67,12 +86,8 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    background: rgba(10, 10, 18, 0.8);
+    background: rgba(4, 4, 16, 0.8);
     backdrop-filter: blur(10px);
-  }
-
-  .hidden {
-    display: none !important;
   }
 
   .modal-overlay {
@@ -92,7 +107,6 @@
 
   .header {
     text-align: center;
-    animation: fade-up 0.5s ease-out;
   }
 
   .title {
@@ -102,6 +116,7 @@
     letter-spacing: 0.1em;
     margin: 0;
     color: var(--color-text-main);
+    text-shadow: 0 0 24px rgba(0, 229, 255, 0.45);
   }
 
   .subtitle {
@@ -128,17 +143,50 @@
     flex-direction: column;
     align-items: center;
     text-align: center;
-    gap: 1.5rem;
+    gap: 1.25rem;
     transition: all var(--transition-smooth);
     overflow: hidden;
     border: 1px solid rgba(255, 255, 255, 0.05);
     animation: card-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
-  .upgrade-card:hover {
+  .upgrade-card:hover,
+  .upgrade-card:focus-visible {
     transform: translateY(-10px) scale(1.02);
     border-color: var(--rarity-color);
     background: rgba(255, 255, 255, 0.05);
+  }
+
+  .upgrade-card:focus-visible {
+    outline: 2px solid var(--rarity-color);
+    outline-offset: 3px;
+  }
+
+  .upgrade-card:active {
+    transform: translateY(-6px) scale(0.99);
+  }
+
+  /* Commit animation: chosen card flares, the others fall away */
+  .upgrade-card.selected {
+    transform: scale(1.06);
+    border-color: var(--rarity-color);
+    box-shadow: 0 0 40px var(--rarity-color);
+    animation: selected-flash 0.35s ease-out both;
+  }
+
+  .upgrade-card.dimmed {
+    opacity: 0.25;
+    transform: scale(0.96);
+    filter: grayscale(0.8);
+  }
+
+  @keyframes selected-flash {
+    0% {
+      background: rgba(255, 255, 255, 0.35);
+    }
+    100% {
+      background: rgba(255, 255, 255, 0.08);
+    }
   }
 
   .rarity-tag {
@@ -171,10 +219,18 @@
 
   .item-name {
     font-family: var(--font-heading);
-    font-size: 1.25rem;
+    font-size: 1.15rem;
     font-weight: 700;
-    margin: 0 0 0.5rem 0;
+    margin: 0 0 0.35rem 0;
     color: var(--color-text-main);
+  }
+
+  .level-step {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    color: var(--rarity-color);
+    margin-bottom: 0.35rem;
   }
 
   .item-desc {
@@ -194,19 +250,9 @@
     pointer-events: none;
   }
 
-  .upgrade-card:hover .selection-glow {
-    opacity: 0.2;
-  }
-
-  @keyframes fade-up {
-    from {
-      opacity: 0;
-      transform: translateY(20px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
+  .upgrade-card:hover .selection-glow,
+  .upgrade-card.selected .selection-glow {
+    opacity: 0.25;
   }
 
   @keyframes card-in {
@@ -223,25 +269,44 @@
   @media (max-width: 600px) {
     .cards-container {
       grid-template-columns: 1fr;
+      gap: 0.75rem;
+    }
+
+    .upgrade-content {
+      gap: 1.5rem;
+    }
+
+    .title {
+      font-size: 1.5rem;
     }
 
     .upgrade-card {
       flex-direction: row;
       text-align: left;
-      padding: 1.25rem;
+      padding: 1rem 1.25rem;
       gap: 1.25rem;
     }
 
     .item-icon {
       font-size: 2.5rem;
-      width: 60px;
-      height: 60px;
+      width: 56px;
+      height: 56px;
+      flex-shrink: 0;
+    }
+
+    .item-name {
+      font-size: 1rem;
+    }
+
+    .item-desc {
+      font-size: 0.75rem;
     }
 
     .rarity-tag {
       position: absolute;
-      top: 1rem;
-      right: 1rem;
+      top: 0.75rem;
+      right: 0.75rem;
+      font-size: 0.5rem;
     }
   }
 </style>

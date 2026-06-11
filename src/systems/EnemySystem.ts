@@ -14,6 +14,7 @@
 
 import * as THREE from 'three';
 import { world } from '../core/world';
+import { removeBody } from '../core/RapierWorld';
 
 // --- PRECOMPUTED CONSTANTS ---
 const SEPARATION_RADIUS_SQ = 1.0 * 1.0;
@@ -161,6 +162,12 @@ export function EnemySystem(dt: number, scene: THREE.Scene) {
       // Remove from scene
       if (enemy.transform) {
         scene.remove(enemy.transform);
+      }
+      // Free the physics body (leaks otherwise — recycled enemies add up fast)
+      if (enemy.rigidBody) {
+        removeBody(enemy.rigidBody);
+        enemy.rigidBody = undefined;
+        enemy.collider = undefined;
       }
       // Remove from ECS world
       world.remove(enemy);

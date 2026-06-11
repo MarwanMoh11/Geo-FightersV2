@@ -19,14 +19,20 @@ import {
   withdrawAllXP,
 } from '../core/XPManager';
 import { spawnXP } from '../core/factories';
+import { dlog } from '../core/debug';
 
 // --- PRECOMPUTED CONSTANTS ---
 const MAGNET_RADIUS_SQ = 5.0 * 5.0;
 const COLLECT_RADIUS_SQ = 1.5 * 1.5;
-const MAGNET_FORCE = 25.0;
+const MAGNET_FORCE = 32.0;
 const FRICTION = 0.95;
 const GRAVITY = 20.0;
 const GROUND_Y = 0.3;
+
+// Collect streak: rapid pickups climb in pitch (classic VS dopamine)
+const STREAK_WINDOW = 1.0; // seconds between pickups to keep the streak
+let collectStreak = 0;
+let lastCollectTime = -Infinity;
 
 export function LootSystem(dt: number, scene: THREE.Scene) {
   const player = world.with('isPlayer', 'position', 'xp', 'xpMax', 'score', 'level', 'stats').first;
@@ -42,7 +48,7 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
     const offsetX = (Math.random() - 0.5) * 4;
     const offsetZ = (Math.random() - 0.5) * 4;
     spawnXP(scene, px + offsetX, pz + offsetZ, bankedAmount);
-    console.log(`[XP BANK] Delivered ${bankedAmount} XP`);
+    dlog(`[XP BANK] Delivered ${bankedAmount} XP`);
   }
 
   // Apply magnet stat multiplier (default 1.0)
@@ -67,7 +73,12 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
       if (xp.xpValue && player.xp !== undefined && player.score !== undefined) {
         player.xp += xp.xpValue;
         player.score += 1;
-        playCollect();
+
+        // Streak pickups climb in pitch, reset after a quiet second
+        const now = performance.now() / 1000;
+        collectStreak = now - lastCollectTime < STREAK_WINDOW ? collectStreak + 1 : 0;
+        lastCollectTime = now;
+        playCollect(1 + Math.min(collectStreak, 12) * 0.05);
 
         if (player.xp >= (player.xpMax || 100)) {
           player.xp = 0;
@@ -87,8 +98,14 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
       const nx = dx * invDist;
       const nz = dz * invDist;
 
-      xp.velocity.x += nx * MAGNET_FORCE * dt;
-      xp.velocity.z += nz * MAGNET_FORCE * dt;
+      // Ease the pull in with proximity (smoothstep) so shards arc toward
+      // the player instead of jerking the instant they cross the radius
+      const closeness = 1 - distSq / effectiveMagnetRadiusSq; // 0 at edge, 1 at player
+      const pull = closeness * closeness * (3 - 2 * closeness); // smoothstep
+      const force = MAGNET_FORCE * (0.25 + 0.75 * pull);
+
+      xp.velocity.x += nx * force * dt;
+      xp.velocity.z += nz * force * dt;
       xp.velocity.x *= 0.92;
       xp.velocity.z *= 0.92;
     } else {

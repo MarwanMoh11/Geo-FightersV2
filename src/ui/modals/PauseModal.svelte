@@ -1,6 +1,7 @@
 <script lang="ts">
   import { uiState } from '../../core/UIState.svelte.ts';
   import { setGameState } from '../../core/GameState';
+  import { fade, scale } from 'svelte/transition';
 
   function resume() {
     setGameState('PLAYING');
@@ -15,24 +16,27 @@
   }
 </script>
 
-<div id="pause-modal" class:hidden={uiState.gameState !== 'PAUSED' || uiState.showSettings}>
-  <div class="modal-overlay"></div>
+{#if uiState.gameState === 'PAUSED' && !uiState.showSettings}
+  <div id="pause-modal" transition:fade={{ duration: 200 }}>
+    <div class="modal-overlay"></div>
 
-  <div class="pause-content glass">
-    <h2 class="title">SYSTEM PAUSED</h2>
-    <div class="actions">
-      <button class="action-btn primary" onclick={resume}>
-        <span class="btn-text">RESUME</span>
-      </button>
-      <button class="action-btn" onclick={openSettings}>
-        <span class="btn-text">SETTINGS</span>
-      </button>
-      <button class="action-btn" onclick={backToMenu}>
-        <span class="btn-text">QUIT MISSION</span>
-      </button>
+    <div class="pause-content glass" transition:scale={{ duration: 250, start: 0.92 }}>
+      <h2 class="title">SYSTEM PAUSED</h2>
+      <div class="actions">
+        <button class="action-btn primary" onclick={resume}>
+          <span class="btn-text">RESUME</span>
+          <span class="btn-hint">ESC</span>
+        </button>
+        <button class="action-btn" onclick={openSettings}>
+          <span class="btn-text">SETTINGS</span>
+        </button>
+        <button class="action-btn" onclick={backToMenu}>
+          <span class="btn-text">QUIT MISSION</span>
+        </button>
+      </div>
     </div>
   </div>
-</div>
+{/if}
 
 <style>
   #pause-modal {
@@ -42,12 +46,8 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    background: rgba(10, 10, 18, 0.4);
+    background: rgba(4, 4, 16, 0.4);
     backdrop-filter: blur(8px);
-  }
-
-  .hidden {
-    display: none !important;
   }
 
   .modal-overlay {
@@ -74,7 +74,7 @@
     letter-spacing: 0.2em;
     margin: 0;
     color: var(--color-primary);
-    text-shadow: 0 0 20px rgba(45, 226, 230, 0.4);
+    text-shadow: 0 0 20px rgba(0, 229, 255, 0.4);
   }
 
   .actions {
@@ -91,11 +91,21 @@
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.05);
     transition: all var(--transition-fast);
+    position: relative;
   }
 
   .action-btn:hover {
     background: rgba(255, 255, 255, 0.05);
     transform: translateY(-2px);
+  }
+
+  .action-btn:active {
+    transform: translateY(0) scale(0.98);
+  }
+
+  .action-btn:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
   }
 
   .btn-text {
@@ -105,13 +115,32 @@
     letter-spacing: 0.1em;
   }
 
+  .btn-hint {
+    position: absolute;
+    right: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+    color: var(--color-text-dim);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    padding: 2px 6px;
+  }
+
   .action-btn.primary {
     background: var(--color-primary);
     color: #000;
     border: none;
   }
 
+  .action-btn.primary .btn-hint {
+    color: rgba(0, 0, 0, 0.6);
+    border-color: rgba(0, 0, 0, 0.3);
+  }
+
   .action-btn.primary:hover {
-    box-shadow: 0 0 30px rgba(45, 226, 230, 0.4);
+    box-shadow: 0 0 30px rgba(0, 229, 255, 0.4);
   }
 </style>

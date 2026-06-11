@@ -5,6 +5,7 @@ import { initRenderer } from './core/renderer';
 import { spawnPlayer } from './core/factories';
 import { getCtx, startMusic } from './core/audio';
 import { isPlaying } from './core/GameState';
+import { DEBUG, dlog } from './core/debug';
 
 // Systems
 import { InputSystem } from './systems/InputSystem';
@@ -60,7 +61,7 @@ import { preloadTextures } from './core/assets';
 function updateLoadingProgress(loaded: number, total: number) {
   const percent = (loaded / total) * 100;
   if (loadingBar) loadingBar.style.width = `${percent}%`;
-  if (loadingText) loadingText.textContent = `Loading assets... ${loaded}/${total}`;
+  if (loadingText) loadingText.textContent = `LOADING ASSETS ${loaded}/${total}`;
 }
 
 function hideLoadingScreen() {
@@ -75,30 +76,23 @@ function hideLoadingScreen() {
 
 // --- PRELOAD ALL ASSETS THEN START GAME ---
 preloadTextures(updateLoadingProgress).then(async () => {
-  if (loadingText) loadingText.textContent = 'Initializing WebGPU...';
+  if (loadingText) loadingText.textContent = 'INITIALIZING RENDERER';
 
   const { scene, camera, renderer } = await initRenderer();
 
-  // --- MOBILE VISUAL DEBUG ---
-  const backendDebug = document.createElement('div');
-  backendDebug.style.position = 'fixed';
-  backendDebug.style.bottom = '10px';
-  backendDebug.style.left = '10px';
-  backendDebug.style.color = '#00ff00';
-  backendDebug.style.backgroundColor = 'rgba(0,0,0,0.5)';
-  backendDebug.style.padding = '5px 10px';
-  backendDebug.style.fontFamily = 'monospace';
-  backendDebug.style.zIndex = '9999';
-  backendDebug.style.pointerEvents = 'none';
-
-  const backend = (renderer as any).backend || {};
-  const isWebGPU = backend.isWebGPUBackend || false;
-  backendDebug.textContent = `Renderer: ${isWebGPU ? 'WebGPU ⚡' : 'WebGL2 (Fallback) 🛡️'}`;
-  document.body.appendChild(backendDebug);
-  // ---------------------------
+  // Renderer backend indicator (debug builds only)
+  if (DEBUG) {
+    const backendDebug = document.createElement('div');
+    backendDebug.style.cssText =
+      'position:fixed;bottom:10px;left:10px;color:#00ff00;background:rgba(0,0,0,0.5);' +
+      'padding:5px 10px;font-family:monospace;z-index:9999;pointer-events:none';
+    const backend = (renderer as { backend?: { isWebGPUBackend?: boolean } }).backend ?? {};
+    backendDebug.textContent = `Renderer: ${backend.isWebGPUBackend ? 'WebGPU' : 'WebGL2'}`;
+    document.body.appendChild(backendDebug);
+  }
 
   // --- RAPIER PHYSICS INITIALIZATION ---
-  if (loadingText) loadingText.textContent = 'Initializing Physics...';
+  if (loadingText) loadingText.textContent = 'INITIALIZING PHYSICS';
   const { initRapier } = await import('./core/RapierWorld');
   await initRapier();
   // ------------------------------------
@@ -120,7 +114,6 @@ preloadTextures(updateLoadingProgress).then(async () => {
 
   hideLoadingScreen();
 
-  // --- DEBUG: Press 'C' to spawn a chest for testing ---
   startGameLoop(scene, camera, renderer);
 });
 
@@ -128,29 +121,37 @@ preloadTextures(updateLoadingProgress).then(async () => {
 import { spawnChest } from './systems/ChestSystem';
 import { world } from './core/world';
 
-function startGameLoop(scene: THREE.Scene, camera: THREE.Camera, renderer: any) {
-  // DEBUG: Press 'C' to spawn a chest for testing
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'c' || e.key === 'C') {
-      const player = world.with('isPlayer', 'position').first;
-      if (player) {
-        const x = player.position.x + (Math.random() - 0.5) * 4;
-        const z = player.position.z + (Math.random() - 0.5) * 4;
-        const rarities: ('common' | 'rare' | 'epic')[] = ['common', 'rare', 'epic'];
-        const rarity = rarities[Math.floor(Math.random() * 3)];
-        spawnChest(scene, x, z, rarity);
-        console.log('[DEBUG] Spawned', rarity, 'chest at', x.toFixed(1), z.toFixed(1));
+function startGameLoop(
+  scene: THREE.Scene,
+  camera: THREE.Camera,
+  renderer: { render: (scene: THREE.Scene, camera: THREE.Camera) => void },
+) {
+  // DEBUG ONLY: Press 'C' to spawn a chest for testing (requires ?debug)
+  if (DEBUG) {
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'c' || e.key === 'C') {
+        const player = world.with('isPlayer', 'position').first;
+        if (player) {
+          const x = player.position.x + (Math.random() - 0.5) * 4;
+          const z = player.position.z + (Math.random() - 0.5) * 4;
+          const rarities: ('common' | 'rare' | 'epic')[] = ['common', 'rare', 'epic'];
+          const rarity = rarities[Math.floor(Math.random() * 3)];
+          spawnChest(scene, x, z, rarity);
+          dlog('[DEBUG] Spawned', rarity, 'chest at', x.toFixed(1), z.toFixed(1));
+        }
       }
-    }
-  });
+    });
+  }
 
   // --- GAME LOOP ---
   const clock = new THREE.Clock();
+  // Clamp dt so a backgrounded tab doesn't cause physics to tunnel on return
+  const MAX_DT = 1 / 20;
 
   function animate() {
     requestAnimationFrame(animate);
 
-    const dt = clock.getDelta();
+    const dt = Math.min(clock.getDelta(), MAX_DT);
 
     // Update FPS counter
     updateFPS(performance.now());
@@ -167,7 +168,7 @@ function startGameLoop(scene: THREE.Scene, camera: THREE.Camera, renderer: any) 
     // 1. Logic
     InputSystem();
     AimSystem();
-    PlayerControlSystem();
+    PlayerControlSystem(dt);
     EnemySystem(dt, scene);
     TimelineSpawnerSystem(dt, scene);
 
@@ -179,44 +180,25 @@ function startGameLoop(scene: THREE.Scene, camera: THREE.Camera, renderer: any) 
     PhysicsSystem(dt);
     LifecycleSystem(dt, scene);
 
-    // GPU-Accelerated Systems (compute shaders)
+    // GPU compute systems (no-op placeholders until WebGPU compute lands;
+    // the CPU equivalents below own these updates to avoid double-applying)
     ParticleComputeSystem(dt, renderer);
     EnemyComputeSystem(dt, renderer);
 
-    // Legacy CPU systems (can be removed once compute is fully operational)
     ParticleSystem(dt);
-
     LootSystem(dt, scene);
     PassiveEffectsSystem(dt); // Apply health regen, etc.
     OrbitalSystem(dt); // Update orbital weapon projectiles
 
-    // === PROFILED NEW SYSTEMS ===
-    const t0 = performance.now();
     ChestSystem(dt, scene);
-    const t1 = performance.now();
     FinaleBossSystem(dt, scene);
-    const t2 = performance.now();
 
     // 4. UI & Camera
     RenderSystem(dt);
     CameraSystem(dt, camera);
-    const t3 = performance.now();
     UISystem();
     MinimapSystem(); // Update minimap
-    DebugSystem(scene); // Handle debug inputs/level
-    const t4 = performance.now();
-
-    // Log slow frames (> 2ms total for new systems)
-    const chestTime = t1 - t0;
-    const bossTime = t2 - t1;
-    const uiTime = t4 - t3;
-    const totalNew = chestTime + bossTime + uiTime;
-
-    if (totalNew > 2) {
-      console.warn(
-        `[PERF] Slow frame: Chest=${chestTime.toFixed(2)}ms, Boss=${bossTime.toFixed(2)}ms, UI=${uiTime.toFixed(2)}ms`,
-      );
-    }
+    if (DEBUG) DebugSystem(scene); // Debug panel (Shift+Alt+D, requires ?debug)
 
     renderer.render(scene, camera);
   }

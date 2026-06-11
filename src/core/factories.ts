@@ -140,6 +140,7 @@ export function spawnPlayer(scene: THREE.Scene) {
   // 2. EQUIP STARTER WEAPON from registry
   world.add({
     isWeapon: true,
+    weaponId: starterWeaponId,
     ownerId: player.id,
     position: new THREE.Vector3(),
     velocity: new THREE.Vector3(),

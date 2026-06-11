@@ -14,9 +14,11 @@ import * as THREE from 'three';
 import { addTrauma } from './CameraSystem';
 import { spawnXP } from '../core/factories';
 import { triggerGameOver } from './GameManager';
-import { playExplosion } from '../core/audio';
+import { playExplosion, playHurt } from '../core/audio';
 import { reportDamageTaken, reportKill } from '../core/FlowStateManager';
 import { spawnChest } from './ChestSystem';
+import { uiState } from '../core/UIState.svelte.ts';
+import { dlog } from '../core/debug';
 import {
   removeBody,
   getEventQueue,
@@ -123,21 +125,37 @@ function handleProjectileEnemyCollision(bullet: any, enemy: any, scene: THREE.Sc
   }
 }
 
+// How long the player is untouchable after taking a hit
+const PLAYER_IFRAME_DURATION = 0.8;
+
 function handleEnemyPlayerCollision(enemy: any, player: any, _scene: THREE.Scene) {
   if (!enemy.health || enemy.health.current <= 0 || !player.health || player.health.current <= 0)
     return;
+
+  // I-FRAMES: ignore contact while the post-hit window is active
+  if (player.invulnTimer && player.invulnTimer > 0) return;
 
   const baseDamage = 5;
   const armor = player.stats?.armor || 0;
   const actualDamage = Math.max(1, baseDamage - armor);
 
   player.health.current -= actualDamage;
+  player.invulnTimer = PLAYER_IFRAME_DURATION;
+  player.hitFlashTimer = 0.15;
   reportDamageTaken(actualDamage);
-  addTrauma(0.5);
+  addTrauma(0.45);
+  playHurt();
+  uiState.damageFlash++; // drives the HUD red vignette
 
-  // Knock enemy back a bit
   const dx = player.position.x - enemy.position.x;
   const dz = player.position.z - enemy.position.z;
+
+  // Knock the player away from the impact (decays in PlayerControlSystem)
+  if (!player.knockback) player.knockback = new THREE.Vector3();
+  _tempVec.set(dx, 0, dz).normalize().multiplyScalar(9);
+  player.knockback.add(_tempVec);
+
+  // Knock enemy back a bit
   _pushDir.set(-dx, 0, -dz).normalize().multiplyScalar(5);
   enemy.velocity.add(_pushDir);
   enemy.stunTimer = 0.5;
@@ -181,12 +199,12 @@ function applyDamage(
       const roll = Math.random();
       const rarity = roll < 0.7 ? 'common' : roll < 0.95 ? 'rare' : 'epic';
       spawnChest(scene, px, pz, rarity as 'common' | 'rare' | 'epic');
-      console.log(`[Chest] ${type} dropped ${rarity} chest`);
+      dlog(`[Chest] ${type} dropped ${rarity} chest`);
     }
     // Mid-tier elite (1 rare chest)
     else if (type === 'colossus') {
       spawnChest(scene, px, pz, 'rare');
-      console.log(`[Chest] ${type} dropped rare chest`);
+      dlog(`[Chest] ${type} dropped rare chest`);
     }
     // Mini-boss HYDRA (3 chests)
     else if (type === 'hydra') {
@@ -194,7 +212,7 @@ function applyDamage(
         const offset = (i - 1) * 1.5;
         spawnChest(scene, px + offset, pz, 'rare');
       }
-      console.log(`[Chest] HYDRA dropped 3 rare chests!`);
+      dlog(`[Chest] HYDRA dropped 3 rare chests!`);
     }
     // Major boss OVERSEER (5 chests)
     else if (type === 'overseer') {
@@ -203,7 +221,7 @@ function applyDamage(
         const dist = 2;
         spawnChest(scene, px + Math.cos(angle) * dist, pz + Math.sin(angle) * dist, 'epic');
       }
-      console.log(`[Chest] OVERSEER dropped 5 epic chests!`);
+      dlog(`[Chest] OVERSEER dropped 5 epic chests!`);
     }
 
     despawn(enemy, scene);
@@ -238,7 +256,10 @@ function spawnExplosionFX(pos: THREE.Vector3, scene: THREE.Scene) {
       velocity: _particleVels[i].clone(), // Must clone for entity
       transform: mesh,
       lifeTimer: 0,
-      maxLife: 0.3,
+      maxLife: 0.3 + Math.random() * 0.15,
+      // Randomized tumble so each shard spins differently
+      spinX: (Math.random() - 0.5) * 20,
+      spinZ: (Math.random() - 0.5) * 14,
     });
   }
 }
@@ -252,7 +273,8 @@ const blastMat = new THREE.MeshBasicMaterial({
 });
 
 function spawnBlastFX(pos: THREE.Vector3, radius: number, scene: THREE.Scene) {
-  const mesh = new THREE.Mesh(blastGeo, blastMat);
+  // Clone the material so the fade-out doesn't affect other live rings
+  const mesh = new THREE.Mesh(blastGeo, blastMat.clone());
   mesh.rotation.x = -Math.PI / 2;
   mesh.position.copy(pos);
   mesh.position.y = 0.5;
@@ -261,10 +283,12 @@ function spawnBlastFX(pos: THREE.Vector3, radius: number, scene: THREE.Scene) {
   world.add({
     isParticle: true,
     position: pos.clone(),
-    velocity: _tempVec.set(radius * 5, 0, 0).clone(),
+    velocity: new THREE.Vector3(0, 0, 0),
     transform: mesh,
-    lifeTimer: 0.3,
-    maxLife: 0.3,
+    lifeTimer: 0,
+    maxLife: 0.35,
+    // RingGeometry outer radius is 0.2, so scale to reach the blast radius
+    ringGrow: radius / 0.2 - 1,
   });
 }
 

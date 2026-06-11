@@ -7,7 +7,6 @@
   import UpgradeModal from './modals/UpgradeModal.svelte';
   import GameOverModal from './modals/GameOverModal.svelte';
   import MobileControls from './MobileControls.svelte';
-  import { uiState } from '../core/UIState.svelte.ts';
 </script>
 
 <div class="game-ui">
