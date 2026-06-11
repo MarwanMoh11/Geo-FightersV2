@@ -17,7 +17,12 @@ import { triggerGameOver } from './GameManager';
 import { playExplosion } from '../core/audio';
 import { reportDamageTaken, reportKill } from '../core/FlowStateManager';
 import { spawnChest } from './ChestSystem';
-import { removeBody, getEventQueue, getEntityByColliderHandle, isRapierInitialized } from '../core/RapierWorld';
+import {
+  removeBody,
+  getEventQueue,
+  getEntityByColliderHandle,
+  isRapierInitialized,
+} from '../core/RapierWorld';
 
 // --- REUSABLE VECTORS (Zero GC pressure) ---
 const _pushDir = new THREE.Vector3();
@@ -36,7 +41,7 @@ export function CollisionSystem(scene: THREE.Scene) {
       if (!started) return;
       processCollision(h1, h2, scene);
     });
-  } catch (e) {
+  } catch {
     // Fail silently if physics not yet initialized
   }
 }
@@ -75,7 +80,7 @@ function handleProjectileEnemyCollision(bullet: any, enemy: any, scene: THREE.Sc
     bullet.damage || 1,
     bullet.velocity || new THREE.Vector3(0, 0, 0),
     bullet.projectile.knockback,
-    scene
+    scene,
   );
 
   // 2. REGISTER HIT
@@ -106,13 +111,7 @@ function handleProjectileEnemyCollision(bullet: any, enemy: any, scene: THREE.Sc
           target.hitFlashTimer = 0.2;
         } else {
           _blastDir.set(dx, 0, dz).normalize();
-          applyDamage(
-            target,
-            bullet.damage || 1,
-            _blastDir.multiplyScalar(20),
-            10,
-            scene
-          );
+          applyDamage(target, bullet.damage || 1, _blastDir.multiplyScalar(20), 10, scene);
         }
       }
     }
@@ -125,7 +124,8 @@ function handleProjectileEnemyCollision(bullet: any, enemy: any, scene: THREE.Sc
 }
 
 function handleEnemyPlayerCollision(enemy: any, player: any, _scene: THREE.Scene) {
-  if (!enemy.health || enemy.health.current <= 0 || !player.health || player.health.current <= 0) return;
+  if (!enemy.health || enemy.health.current <= 0 || !player.health || player.health.current <= 0)
+    return;
 
   const baseDamage = 5;
   const armor = player.stats?.armor || 0;

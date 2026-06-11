@@ -13,21 +13,41 @@ const keys = { w: 0, a: 0, s: 0, d: 0, space: false };
 if (typeof window !== 'undefined') {
   window.addEventListener('keydown', (e) => {
     switch (e.code) {
-      case 'KeyW': keys.w = 1; break;
-      case 'KeyS': keys.s = 1; break;
-      case 'KeyA': keys.a = 1; break;
-      case 'KeyD': keys.d = 1; break;
-      case 'Space': keys.space = true; break;
+      case 'KeyW':
+        keys.w = 1;
+        break;
+      case 'KeyS':
+        keys.s = 1;
+        break;
+      case 'KeyA':
+        keys.a = 1;
+        break;
+      case 'KeyD':
+        keys.d = 1;
+        break;
+      case 'Space':
+        keys.space = true;
+        break;
     }
   });
 
   window.addEventListener('keyup', (e) => {
     switch (e.code) {
-      case 'KeyW': keys.w = 0; break;
-      case 'KeyS': keys.s = 0; break;
-      case 'KeyA': keys.a = 0; break;
-      case 'KeyD': keys.d = 0; break;
-      case 'Space': keys.space = false; break;
+      case 'KeyW':
+        keys.w = 0;
+        break;
+      case 'KeyS':
+        keys.s = 0;
+        break;
+      case 'KeyA':
+        keys.a = 0;
+        break;
+      case 'KeyD':
+        keys.d = 0;
+        break;
+      case 'Space':
+        keys.space = false;
+        break;
     }
   });
 }

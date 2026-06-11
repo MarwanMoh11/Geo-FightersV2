@@ -4,11 +4,7 @@
 import { getGameState, setGameState, onStateChange } from '../core/GameState';
 import type { GameStateType } from '../core/GameState';
 import type { GameSettings } from '../core/SettingsManager';
-import {
-  getSettings,
-  loadSettings,
-  onSettingsChange,
-} from '../core/SettingsManager';
+import { getSettings, loadSettings, onSettingsChange } from '../core/SettingsManager';
 import { setMasterGain, setMusicGain, setSFXGain, resumeMusic } from '../core/audio';
 
 import { uiState } from '../core/UIState.svelte.ts';

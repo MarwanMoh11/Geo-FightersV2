@@ -276,7 +276,7 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
         mesh.position.x,
         mesh.position.z,
         radius,
-        projectile.id
+        projectile.id,
       );
       projectile.rigidBody = rigidBody;
       projectile.collider = collider;
