@@ -4,7 +4,8 @@ import { initRenderer } from './core/renderer';
 
 import { spawnPlayer } from './core/factories';
 import { getCtx, startMusic } from './core/audio';
-import { isPlaying } from './core/GameState';
+import { isPlaying, setGameState } from './core/GameState';
+import { uiState } from './core/UIState.svelte.ts';
 import { DEBUG, dlog } from './core/debug';
 
 // Systems
@@ -34,6 +35,7 @@ import { initMinimap, MinimapSystem } from './systems/MinimapSystem';
 import { DebugSystem } from './systems/DebugSystem';
 import { initParticleComputeSystem, ParticleComputeSystem } from './systems/ParticleComputeSystem';
 import { initEnemyComputeSystem, EnemyComputeSystem } from './systems/EnemyComputeSystem';
+import { initDamageNumbers, DamageNumberSystem } from './systems/DamageNumberSystem';
 
 // --- AUDIO UNLOCK & MUSIC START ---
 const unlockAudio = () => {
@@ -107,6 +109,7 @@ preloadTextures(updateLoadingProgress).then(async () => {
 
   // --- INITIAL SETUP ---
   spawnPlayer(scene);
+  initDamageNumbers();
 
   const { mount } = await import('svelte');
   const App = (await import('./ui/App.svelte')).default;
@@ -142,6 +145,18 @@ function startGameLoop(
       }
     });
   }
+
+  // Auto-pause when the tab loses focus so a run is never lost to a
+  // notification or app switch (the level-up modal already pauses, skip it)
+  const autoPause = () => {
+    if (isPlaying() && !isGamePaused && !isGameOver && !uiState.showUpgrade) {
+      setGameState('PAUSED');
+    }
+  };
+  window.addEventListener('blur', autoPause);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) autoPause();
+  });
 
   // --- GAME LOOP ---
   const clock = new THREE.Clock();
@@ -196,6 +211,7 @@ function startGameLoop(
     // 4. UI & Camera
     RenderSystem(dt);
     CameraSystem(dt, camera);
+    DamageNumberSystem(dt, camera);
     UISystem();
     MinimapSystem(); // Update minimap
     if (DEBUG) DebugSystem(scene); // Debug panel (Shift+Alt+D, requires ?debug)

@@ -161,6 +161,10 @@ export function shouldShowFps(): boolean {
   return settings.showFps;
 }
 
+export function shouldShowDamageNumbers(): boolean {
+  return settings.showDamageNumbers;
+}
+
 export function getJoystickSensitivity(): number {
   return settings.joystickSensitivity / 100;
 }

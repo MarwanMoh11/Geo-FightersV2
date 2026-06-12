@@ -132,6 +132,20 @@
           <div class="panel">
             <div class="setting-item">
               <div class="info">
+                <label for="dmgNumToggle">DAMAGE NUMBERS</label>
+              </div>
+              <button
+                id="dmgNumToggle"
+                class="toggle"
+                class:checked={settings.showDamageNumbers}
+                onclick={() => updateSetting('showDamageNumbers', !settings.showDamageNumbers)}
+                aria-label="Toggle Damage Numbers"
+              >
+                <div class="thumb"></div>
+              </button>
+            </div>
+            <div class="setting-item">
+              <div class="info">
                 <label for="sens">JOYSTICK SENSITIVITY</label>
                 <span class="val">{settings.joystickSensitivity}%</span>
               </div>

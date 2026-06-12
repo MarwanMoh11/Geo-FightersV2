@@ -52,6 +52,10 @@
           <span class="value cyan">{uiState.level}</span>
         </div>
         <div class="stat-card">
+          <span class="label">THREATS PURGED</span>
+          <span class="value cyan">{uiState.kills}</span>
+        </div>
+        <div class="stat-card">
           <span class="label">DATA RECOVERED</span>
           <span class="value pink">{uiState.score}</span>
         </div>
@@ -156,7 +160,7 @@
 
   .stats-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
     gap: 0.75rem;
   }
 
