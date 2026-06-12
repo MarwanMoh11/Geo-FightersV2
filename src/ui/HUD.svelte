@@ -78,6 +78,11 @@
       </div>
       <div class="divider"></div>
       <div class="stat-item">
+        <span class="label">KILLS</span>
+        <span class="value gold">{uiState.kills}</span>
+      </div>
+      <div class="divider"></div>
+      <div class="stat-item">
         <span class="label">LVL</span>
         <span class="value pink">{uiState.level.toString().padStart(2, '0')}</span>
       </div>
@@ -137,6 +142,9 @@
   }
   .pink {
     color: var(--color-secondary);
+  }
+  .gold {
+    color: var(--color-gold);
   }
 
   /* Damage vignette: flashes red on hit, simmers when health is low */

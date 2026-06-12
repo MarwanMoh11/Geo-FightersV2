@@ -14,6 +14,7 @@ import { scanForEvolutions, selectEvolution } from '../core/EvolutionRegistry';
 import { WEAPONS, getWeaponStatsAtLevel } from '../core/WeaponRegistry';
 import { triggerLevelUp } from './UpgradeSystem';
 import { playLevelUp } from '../core/audio';
+import { haptics } from '../core/haptics';
 import { dlog } from '../core/debug';
 
 // --- CONSTANTS ---
@@ -123,6 +124,7 @@ export function ChestSystem(dt: number, scene: THREE.Scene) {
  */
 function collectChest(chest: any, player: any, scene: THREE.Scene) {
   playLevelUp();
+  haptics.reward();
 
   // 1. EVOLUTION SCAN (only if time >= threshold)
   const candidates = scanForEvolutions(

@@ -3,13 +3,24 @@
   import { selectUpgrade, type UpgradeOption } from '../../systems/UpgradeSystem';
   import { fade, fly } from 'svelte/transition';
   import { playLevelUp } from '../../core/audio';
+  import { haptics } from '../../core/haptics';
 
   let selectedId: string | null = $state(null);
+  let focusIndex = $state(-1); // -1 until the keyboard is used (no phantom highlight on touch)
+
+  // Celebrate the modal opening (mobile buzz) and reset keyboard focus
+  $effect(() => {
+    if (uiState.showUpgrade) {
+      focusIndex = -1;
+      haptics.levelUp();
+    }
+  });
 
   function handleSelect(option: UpgradeOption) {
     if (selectedId) return; // a pick is already being committed
     selectedId = option.id;
     playLevelUp();
+    haptics.select();
 
     // Let the selection flash play before applying + resuming the game
     setTimeout(() => {
@@ -17,6 +28,38 @@
       uiState.showUpgrade = false;
       selectedId = null;
     }, 350);
+  }
+
+  // VS-style keyboard support: 1-9 quick-pick, arrows browse, Enter/Space confirm
+  function handleKeydown(e: KeyboardEvent) {
+    if (!uiState.showUpgrade || selectedId) return;
+    const choices = uiState.upgradeChoices;
+    if (choices.length === 0) return;
+
+    const digit = parseInt(e.key, 10);
+    if (digit >= 1 && digit <= choices.length) {
+      e.preventDefault();
+      handleSelect(choices[digit - 1]);
+      return;
+    }
+
+    switch (e.key) {
+      case 'ArrowRight':
+      case 'ArrowDown':
+        e.preventDefault();
+        focusIndex = (focusIndex + 1) % choices.length;
+        break;
+      case 'ArrowLeft':
+      case 'ArrowUp':
+        e.preventDefault();
+        focusIndex = (focusIndex - 1 + choices.length) % choices.length;
+        break;
+      case 'Enter':
+      case ' ':
+        e.preventDefault();
+        handleSelect(choices[focusIndex >= 0 ? focusIndex : 0]);
+        break;
+    }
   }
 
   function getRarityColor(rarity: string = 'common') {
@@ -32,6 +75,8 @@
     }
   }
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 {#if uiState.showUpgrade}
   <div id="upgrade-modal" transition:fade={{ duration: 250 }}>
@@ -50,9 +95,12 @@
             class="upgrade-card glass"
             class:selected={selectedId === option.id}
             class:dimmed={selectedId !== null && selectedId !== option.id}
+            class:key-focused={focusIndex === i && !selectedId}
             onclick={() => handleSelect(option)}
+            onmouseenter={() => (focusIndex = i)}
             style="--rarity-color: {color}; animation-delay: {i * 90}ms"
           >
+            <span class="hotkey-badge">{i + 1}</span>
             <div class="rarity-tag">{option.rarity || 'COMMON'}</div>
 
             <div class="item-icon">
@@ -73,6 +121,12 @@
             <div class="selection-glow"></div>
           </button>
         {/each}
+      </div>
+
+      <div class="key-hints" in:fade={{ duration: 400, delay: 300 }}>
+        <span><kbd>1</kbd>–<kbd>{uiState.upgradeChoices.length}</kbd> QUICK PICK</span>
+        <span><kbd>←</kbd><kbd>→</kbd> BROWSE</span>
+        <span><kbd>ENTER</kbd> CONFIRM</span>
       </div>
     </div>
   </div>
@@ -151,10 +205,19 @@
   }
 
   .upgrade-card:hover,
-  .upgrade-card:focus-visible {
+  .upgrade-card:focus-visible,
+  .upgrade-card.key-focused {
     transform: translateY(-10px) scale(1.02);
     border-color: var(--rarity-color);
     background: rgba(255, 255, 255, 0.05);
+  }
+
+  .upgrade-card.key-focused {
+    box-shadow: 0 0 24px color-mix(in srgb, var(--rarity-color) 45%, transparent);
+  }
+
+  .upgrade-card.key-focused .selection-glow {
+    opacity: 0.25;
   }
 
   .upgrade-card:focus-visible {
@@ -186,6 +249,54 @@
     }
     100% {
       background: rgba(255, 255, 255, 0.08);
+    }
+  }
+
+  .hotkey-badge {
+    position: absolute;
+    top: 0.75rem;
+    left: 0.75rem;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--color-text-dim);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 5px;
+    background: rgba(0, 0, 0, 0.35);
+  }
+
+  .key-hints {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    color: var(--color-text-dim);
+  }
+
+  .key-hints kbd {
+    display: inline-block;
+    min-width: 16px;
+    padding: 2px 5px;
+    margin: 0 2px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.35);
+    font-family: inherit;
+    font-size: 0.6rem;
+    text-align: center;
+  }
+
+  /* Touch devices: hide keyboard affordances entirely */
+  @media (pointer: coarse) {
+    .hotkey-badge,
+    .key-hints {
+      display: none;
     }
   }
 

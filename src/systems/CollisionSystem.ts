@@ -18,6 +18,8 @@ import { playExplosion, playHurt } from '../core/audio';
 import { reportDamageTaken, reportKill } from '../core/FlowStateManager';
 import { spawnChest } from './ChestSystem';
 import { uiState } from '../core/UIState.svelte.ts';
+import { spawnDamageNumber } from './DamageNumberSystem';
+import { haptics } from '../core/haptics';
 import { dlog } from '../core/debug';
 import {
   removeBody,
@@ -113,7 +115,7 @@ function handleProjectileEnemyCollision(bullet: any, enemy: any, scene: THREE.Sc
           target.hitFlashTimer = 0.2;
         } else {
           _blastDir.set(dx, 0, dz).normalize();
-          applyDamage(target, bullet.damage || 1, _blastDir.multiplyScalar(20), 10, scene);
+          applyDamage(target, bullet.damage || 1, _blastDir.multiplyScalar(20), 10, scene, 'aoe');
         }
       }
     }
@@ -145,6 +147,8 @@ function handleEnemyPlayerCollision(enemy: any, player: any, _scene: THREE.Scene
   reportDamageTaken(actualDamage);
   addTrauma(0.45);
   playHurt();
+  haptics.hit();
+  spawnDamageNumber(player.position, actualDamage, 'player');
   uiState.damageFlash++; // drives the HUD red vignette
 
   const dx = player.position.x - enemy.position.x;
@@ -172,9 +176,11 @@ function applyDamage(
   vel: THREE.Vector3,
   knockback: number,
   scene: THREE.Scene,
+  variant: 'enemy' | 'aoe' = 'enemy',
 ) {
   if (!enemy.health) return;
   enemy.health.current -= dmg;
+  spawnDamageNumber(enemy.position, dmg, variant);
 
   // Juice
   enemy.hitFlashTimer = 0.1;
@@ -186,6 +192,7 @@ function applyDamage(
   // Death
   if (enemy.health.current <= 0) {
     reportKill();
+    uiState.kills++;
     spawnExplosionFX(enemy.position, scene);
     spawnXP(scene, enemy.position.x, enemy.position.z, enemy.xpValue || 10);
 

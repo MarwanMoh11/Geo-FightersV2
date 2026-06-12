@@ -1199,3 +1199,56 @@ select option {
 }
 
 @import './components/debug.css';
+
+/* --- FLOATING DAMAGE NUMBERS (VS-style) --- */
+#damage-number-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 60;
+  overflow: hidden;
+}
+
+.damage-number {
+  position: absolute;
+  top: 0;
+  left: 0;
+  font-family: var(--font-heading);
+  font-weight: 900;
+  font-size: 1.05rem;
+  color: #ffffff;
+  -webkit-text-stroke: 3px rgba(0, 0, 0, 0.55);
+  paint-order: stroke fill;
+  text-shadow: 0 0 8px rgba(0, 229, 255, 0.35);
+  will-change: transform, opacity;
+  white-space: nowrap;
+}
+
+.damage-number.big {
+  font-size: 1.5rem;
+  color: var(--color-gold);
+  text-shadow: 0 0 12px rgba(255, 225, 77, 0.6);
+}
+
+.damage-number.aoe {
+  color: var(--color-accent);
+  text-shadow: 0 0 10px rgba(0, 255, 136, 0.55);
+}
+
+.damage-number.player {
+  font-size: 1.4rem;
+  color: var(--color-secondary);
+  text-shadow: 0 0 12px rgba(255, 46, 136, 0.7);
+}
+
+@media (max-width: 600px) {
+  .damage-number {
+    font-size: 0.9rem;
+  }
+  .damage-number.big {
+    font-size: 1.2rem;
+  }
+  .damage-number.player {
+    font-size: 1.15rem;
+  }
+}

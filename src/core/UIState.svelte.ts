@@ -8,6 +8,7 @@ export const uiState = $state({
   xpMax: 100,
   level: 1,
   score: 0,
+  kills: 0,
 
   // Inventory
   weaponSlots: [] as WeaponSlot[],
