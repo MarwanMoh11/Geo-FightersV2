@@ -137,6 +137,11 @@ function handleEnemyPlayerCollision(enemy: any, player: any, _scene: THREE.Scene
   // I-FRAMES: ignore contact while the post-hit window is active
   if (player.invulnTimer && player.invulnTimer > 0) return;
 
+  // INVULNERABILITY: ignore contact while player is in a menu (paused/upgrading)
+  if (player.isUpgrading || (player.isLocalPlayer && (uiState.showUpgrade || uiState.gameState === 'PAUSED'))) {
+    return;
+  }
+
   const baseDamage = 5;
   const armor = player.stats?.armor || 0;
   const actualDamage = Math.max(1, baseDamage - armor);
@@ -165,7 +170,12 @@ function handleEnemyPlayerCollision(enemy: any, player: any, _scene: THREE.Scene
   enemy.stunTimer = 0.5;
 
   if (player.health.current <= 0) {
-    triggerGameOver();
+    // Cooperative multiplayer check: only game over if ALL players are dead
+    const allPlayers = Array.from(world.with('isPlayer', 'health'));
+    const anyAlive = allPlayers.some((p: any) => p.health.current > 0);
+    if (!anyAlive) {
+      triggerGameOver();
+    }
   }
 }
 

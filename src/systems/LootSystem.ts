@@ -35,7 +35,7 @@ let collectStreak = 0;
 let lastCollectTime = -Infinity;
 
 export function LootSystem(dt: number, scene: THREE.Scene) {
-  const player = world.with('isPlayer', 'position', 'xp', 'xpMax', 'score', 'level', 'stats').first;
+  const player = world.with('isLocalPlayer', 'position', 'xp', 'xpMax', 'score', 'level', 'stats').first;
   if (!player) return;
 
   const px = player.position.x;

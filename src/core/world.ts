@@ -134,6 +134,7 @@ export type Entity = {
   // Rapier physics body (Phase 2)
   rigidBody?: RAPIER.RigidBody;
   collider?: RAPIER.Collider;
+  isUpgrading?: boolean;
 };
 
 function createECS() {
