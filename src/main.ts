@@ -103,7 +103,6 @@ preloadTextures(updateLoadingProgress).then(async () => {
 
   // --- LEVEL SETUP ---
   initLevel(scene); // Spawn ground, obstacles, neon lighting + physics colliders
-  initMinimap(); // Initialize minimap canvas
 
   // --- COMPUTE SYSTEMS SETUP (WebGPU) ---
   initParticleComputeSystem();
@@ -116,6 +115,7 @@ preloadTextures(updateLoadingProgress).then(async () => {
   const { mount } = await import('svelte');
   const App = (await import('./ui/App.svelte')).default;
   mount(App, { target: document.getElementById('app')! });
+  initMinimap(); // Initialize minimap canvas (now that Svelte has rendered it)
 
   hideLoadingScreen();
 

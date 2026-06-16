@@ -1,7 +1,7 @@
 import { world } from '../core/world';
 import * as THREE from 'three';
 
-const BASE_PLAYER_SPEED = 10;
+const BASE_PLAYER_SPEED = 5.5;
 const KNOCKBACK_DECAY = 7.0; // higher = recovers control faster
 
 const _inputVector = new THREE.Vector3();

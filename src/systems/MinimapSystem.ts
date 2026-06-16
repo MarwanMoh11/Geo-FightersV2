@@ -116,20 +116,21 @@ export function MinimapSystem(): void {
     }
   }
 
-  // Draw player (cyan triangle pointing in movement direction)
-  const player = world.with('isPlayer', 'position').first;
-  if (player) {
-    const x = worldToMapX(player.position.x, centerX);
-    const y = worldToMapZ(player.position.z, centerY);
+  // Draw players (local in cyan, remote teammates in magenta)
+  for (const p of world.with('isPlayer', 'position')) {
+    const x = worldToMapX(p.position.x, centerX);
+    const y = worldToMapZ(p.position.z, centerY);
 
-    // Player triangle
-    ctx.fillStyle = COLORS.player;
+    const isLocal = p.isLocalPlayer;
+    const color = isLocal ? COLORS.player : '#ff00ff';
+
+    ctx.fillStyle = color;
     ctx.beginPath();
     ctx.arc(x, y, 4, 0, Math.PI * 2);
     ctx.fill();
 
     // Outer glow ring
-    ctx.strokeStyle = COLORS.player;
+    ctx.strokeStyle = color;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.arc(x, y, 6, 0, Math.PI * 2);
