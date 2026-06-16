@@ -31,7 +31,9 @@ const DESPAWN_RADIUS_SQ = 36 * 36;
 const MAX_SEPARATION_CHECKS = 10;
 
 export function EnemySystem(dt: number, scene: THREE.Scene) {
-  const players = Array.from(world.with('isPlayer', 'position'));
+  const players = Array.from(world.with('isPlayer', 'position')).filter(
+    (p: any) => !p.health || p.health.current > 0
+  );
   if (players.length === 0) return;
 
   // Convert to array once per frame

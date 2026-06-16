@@ -35,57 +35,85 @@ let collectStreak = 0;
 let lastCollectTime = -Infinity;
 
 export function LootSystem(dt: number, scene: THREE.Scene) {
-  const player = world.with('isLocalPlayer', 'position', 'xp', 'xpMax', 'score', 'level', 'stats').first;
-  if (!player) return;
+  // Find all alive players
+  const players = Array.from(world.with('isPlayer', 'position', 'xp', 'xpMax', 'score', 'level', 'stats')).filter(
+    (p: any) => !p.health || p.health.current > 0
+  );
+  if (players.length === 0) return;
 
-  const px = player.position.x;
-  const pz = player.position.z;
-
-  // BANK DELIVERY - Spawn large shard when buffer exceeds threshold (500+ XP)
-  if (shouldDeliverBankedXP()) {
-    const bankedAmount = withdrawAllXP();
-    // Spawn near player with slight offset
-    const offsetX = (Math.random() - 0.5) * 4;
-    const offsetZ = (Math.random() - 0.5) * 4;
-    spawnXP(scene, px + offsetX, pz + offsetZ, bankedAmount);
-    dlog(`[XP BANK] Delivered ${bankedAmount} XP`);
+  // We still need the local player for bank delivery (only local player handles its own bank spawn)
+  const localPlayer = world.with('isLocalPlayer', 'position').first;
+  if (localPlayer) {
+    const px = localPlayer.position.x;
+    const pz = localPlayer.position.z;
+    if (shouldDeliverBankedXP()) {
+      const bankedAmount = withdrawAllXP();
+      const offsetX = (Math.random() - 0.5) * 4;
+      const offsetZ = (Math.random() - 0.5) * 4;
+      spawnXP(scene, px + offsetX, pz + offsetZ, bankedAmount);
+      dlog(`[XP BANK] Delivered ${bankedAmount} XP`);
+    }
   }
 
-  // Apply magnet stat multiplier (default 1.0)
-  const magnetMult = player.stats?.magnet || 1.0;
-  const effectiveMagnetRadiusSq = MAGNET_RADIUS_SQ * magnetMult * magnetMult;
-
   for (const xp of world.with('isXP', 'position', 'velocity', 'xpValue')) {
-    // SQUARED DISTANCE (No sqrt)
+    // Find closest player to this XP shard
+    let closestPlayer: any = null;
+    let minDistanceSq = Infinity;
+
+    for (const player of players) {
+      const dx = player.position.x - xp.position.x;
+      const dz = player.position.z - xp.position.z;
+      const distSq = dx * dx + dz * dz;
+      if (distSq < minDistanceSq) {
+        minDistanceSq = distSq;
+        closestPlayer = player;
+      }
+    }
+
+    if (!closestPlayer) continue;
+
+    const px = closestPlayer.position.x;
+    const pz = closestPlayer.position.z;
     const dx = px - xp.position.x;
     const dz = pz - xp.position.z;
-    const distSq = dx * dx + dz * dz;
+    const distSq = minDistanceSq;
 
-    // A. DESPAWN CHECK - Bank XP and remove shards too far from player
+    // A. DESPAWN CHECK - Bank XP and remove shards too far from closest player
     if (distSq > XP_DESPAWN_RADIUS_SQ) {
-      bankXP(xp.xpValue || 0);
+      if (closestPlayer.isLocalPlayer) {
+        bankXP(xp.xpValue || 0);
+      }
       despawn(xp, scene);
       continue;
     }
 
     // B. COLLECTION (Early check)
     if (distSq < COLLECT_RADIUS_SQ) {
-      if (xp.xpValue && player.xp !== undefined && player.score !== undefined) {
-        player.xp += xp.xpValue;
-        player.score += 1;
+      if (xp.xpValue && closestPlayer.xp !== undefined && closestPlayer.score !== undefined) {
+        closestPlayer.xp += xp.xpValue;
+        closestPlayer.score += 1;
 
-        // Streak pickups climb in pitch, reset after a quiet second
-        const now = performance.now() / 1000;
-        collectStreak = now - lastCollectTime < STREAK_WINDOW ? collectStreak + 1 : 0;
-        lastCollectTime = now;
-        playCollect(1 + Math.min(collectStreak, 12) * 0.05);
+        if (closestPlayer.isLocalPlayer) {
+          // Streak pickups climb in pitch, reset after a quiet second
+          const now = performance.now() / 1000;
+          collectStreak = now - lastCollectTime < STREAK_WINDOW ? collectStreak + 1 : 0;
+          lastCollectTime = now;
+          playCollect(1 + Math.min(collectStreak, 12) * 0.05);
 
-        if (player.xp >= (player.xpMax || 100)) {
-          player.xp = 0;
-          player.level = (player.level || 1) + 1;
-          player.xpMax = Math.floor((player.xpMax || 100) * 1.2);
-          playLevelUp();
-          triggerLevelUp();
+          if (closestPlayer.xp >= (closestPlayer.xpMax || 100)) {
+            closestPlayer.xp = 0;
+            closestPlayer.level = (closestPlayer.level || 1) + 1;
+            closestPlayer.xpMax = Math.floor((closestPlayer.xpMax || 100) * 1.2);
+            playLevelUp();
+            triggerLevelUp();
+          }
+        } else {
+          // If a remote player collected it, check if they level up (Host-side only)
+          if (closestPlayer.xp >= (closestPlayer.xpMax || 100)) {
+            closestPlayer.xp = 0;
+            closestPlayer.level = (closestPlayer.level || 1) + 1;
+            closestPlayer.xpMax = Math.floor((closestPlayer.xpMax || 100) * 1.2);
+          }
         }
       }
       despawn(xp, scene);
@@ -93,13 +121,15 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
     }
 
     // C. MAGNETISM (Only within radius - distance band optimization)
+    const magnetMult = closestPlayer.stats?.magnet || 1.0;
+    const effectiveMagnetRadiusSq = MAGNET_RADIUS_SQ * magnetMult * magnetMult;
+
     if (distSq < effectiveMagnetRadiusSq) {
       const invDist = 1.0 / Math.sqrt(distSq);
       const nx = dx * invDist;
       const nz = dz * invDist;
 
-      // Ease the pull in with proximity (smoothstep) so shards arc toward
-      // the player instead of jerking the instant they cross the radius
+      // Ease the pull in with proximity (smoothstep)
       const closeness = 1 - distSq / effectiveMagnetRadiusSq; // 0 at edge, 1 at player
       const pull = closeness * closeness * (3 - 2 * closeness); // smoothstep
       const force = MAGNET_FORCE * (0.25 + 0.75 * pull);
