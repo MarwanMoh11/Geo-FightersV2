@@ -51,9 +51,11 @@ let accumulatedBudget = 0; // Budget builds up when at cap
 
 // --- MAIN SYSTEM ---
 export function TimelineSpawnerSystem(dt: number, scene: THREE.Scene): void {
-  // 1. Find Player
-  const player = world.with('isPlayer', 'position').first;
-  if (!player) return;
+  // 1. Find Player (Select a random player in multiplayer)
+  const players = Array.from(world.with('isPlayer', 'position'));
+  if (players.length === 0) return;
+  const targetPlayer = players[Math.floor(Math.random() * players.length)];
+  const player = targetPlayer;
 
   // 2. Track game time
   gameTime += dt;

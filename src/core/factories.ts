@@ -46,10 +46,15 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   // Mini-bosses
   [EnemyType.HYDRA]: { hp: 800, speed: 0.4, size: 6.0, color: 0xffffff, xp: 150 },
   [EnemyType.OVERSEER]: { hp: 2000, speed: 0.25, size: 8.0, color: 0xffffff, xp: 300 },
-};
-
-export function spawnPlayer(scene: THREE.Scene) {
+};export function spawnPlayer(
+  scene: THREE.Scene,
+  isLocal: boolean = true,
+  connectionId: string = 'local',
+  startX: number = 0,
+  startZ: number = 0,
+) {
   const playerGroup = new THREE.Group();
+  playerGroup.position.set(startX, 0, startZ);
   scene.add(playerGroup);
 
   const textureRight = loadTexture('/sprites/player/player_robot.png');
@@ -108,7 +113,9 @@ export function spawnPlayer(scene: THREE.Scene) {
 
   const player = world.add({
     isPlayer: true,
-    position: new THREE.Vector3(0, 0, 0),
+    isLocalPlayer: isLocal,
+    connectionId: connectionId,
+    position: new THREE.Vector3(startX, 0.5, startZ),
     velocity: new THREE.Vector3(0, 0, 0),
     input: { x: 0, y: 0, isShooting: false },
     aimTarget: new THREE.Vector3(),
@@ -132,7 +139,7 @@ export function spawnPlayer(scene: THREE.Scene) {
 
   // 1b. CREATE RAPIER RIGID BODY for player
   if (isRapierInitialized() && player.id !== undefined) {
-    const { rigidBody, collider } = createDynamicBody(0, 0, PLAYER_RADIUS, player.id);
+    const { rigidBody, collider } = createDynamicBody(startX, startZ, PLAYER_RADIUS, player.id);
     player.rigidBody = rigidBody;
     player.collider = collider;
   }
@@ -317,6 +324,7 @@ export function spawnEnemy(
     enemy.rigidBody = rigidBody;
     enemy.collider = collider;
   }
+  return enemy;
 }
 
 export function spawnXP(scene: THREE.Scene, x: number, z: number, value: number) {
@@ -342,7 +350,7 @@ export function spawnXP(scene: THREE.Scene, x: number, z: number, value: number)
   const force = 1.5;
   const velocity = new THREE.Vector3(Math.cos(angle) * force, 3.0, Math.sin(angle) * force);
 
-  world.add({
+  return world.add({
     isXP: true,
     position: mesh.position,
     velocity: velocity,

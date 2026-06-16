@@ -33,6 +33,14 @@ export const uiState = $state({
   activeSettingsTab: 'audio' as 'audio' | 'display' | 'gameplay',
   upgradeChoices: [] as UpgradeOption[],
 
+  // Multiplayer
+  isMultiplayer: false,
+  isHost: false,
+  roomCode: '',
+  networkStatus: 'disconnected' as 'disconnected' | 'connecting' | 'connected' | 'waiting_for_players',
+  peerId: '',
+  remotePlayersCount: 0,
+
   // Settings
   fps: 60,
   showFps: false,

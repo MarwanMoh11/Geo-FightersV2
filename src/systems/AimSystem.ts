@@ -3,7 +3,7 @@ import * as THREE from 'three';
 
 export function AimSystem() {
   // 1. Get the Player
-  const player = world.with('isPlayer', 'position').first;
+  const player = world.with('isLocalPlayer', 'position').first;
   if (!player) return;
 
   // 2. Find Closest Enemy

@@ -31,11 +31,8 @@ const DESPAWN_RADIUS_SQ = 36 * 36;
 const MAX_SEPARATION_CHECKS = 10;
 
 export function EnemySystem(dt: number, scene: THREE.Scene) {
-  const player = world.with('isPlayer', 'position').first;
-  if (!player) return;
-
-  const px = player.position.x;
-  const pz = player.position.z;
+  const players = Array.from(world.with('isPlayer', 'position'));
+  if (players.length === 0) return;
 
   // Convert to array once per frame
   const enemies = Array.from(world.with('isEnemy', 'position', 'velocity', 'health'));
@@ -55,9 +52,21 @@ export function EnemySystem(dt: number, scene: THREE.Scene) {
       enemy.velocity.x *= STUN_FRICTION;
       enemy.velocity.z *= STUN_FRICTION;
     } else {
-      // Determine target based on confusion state
-      let targetX = px;
-      let targetZ = pz;
+      // Find closest player for AI targeting
+      let closestPlayer = players[0];
+      let minPDistSq = Infinity;
+      for (const p of players) {
+        const dx = p.position.x - enemy.position.x;
+        const dz = p.position.z - enemy.position.z;
+        const distSq = dx * dx + dz * dz;
+        if (distSq < minPDistSq) {
+          minPDistSq = distSq;
+          closestPlayer = p;
+        }
+      }
+
+      let targetX = closestPlayer.position.x;
+      let targetZ = closestPlayer.position.z;
 
       // CONFUSED: Target nearest non-confused enemy instead of player
       if (enemy.confusedTimer && enemy.confusedTimer > 0) {
@@ -153,12 +162,19 @@ export function EnemySystem(dt: number, scene: THREE.Scene) {
     }
 
     // 6. DESPAWN (Screen-bound entity recycling)
-    // Remove enemies too far from player to maintain performance
-    const distX = enemy.position.x - px;
-    const distZ = enemy.position.z - pz;
-    const distSq = distX * distX + distZ * distZ;
+    // Remove enemies too far from ALL players to maintain performance
+    let closeToAnyPlayer = false;
+    for (const p of players) {
+      const distX = enemy.position.x - p.position.x;
+      const distZ = enemy.position.z - p.position.z;
+      const distSq = distX * distX + distZ * distZ;
+      if (distSq <= DESPAWN_RADIUS_SQ) {
+        closeToAnyPlayer = true;
+        break;
+      }
+    }
 
-    if (distSq > DESPAWN_RADIUS_SQ) {
+    if (!closeToAnyPlayer) {
       // Remove from scene
       if (enemy.transform) {
         scene.remove(enemy.transform);

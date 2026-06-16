@@ -5,6 +5,9 @@ import { playShoot } from '../core/audio';
 import { getDefaultStats, getEffectiveDamage, getEffectiveAmount } from '../core/PlayerStats';
 import { spawnOrbitalProjectile } from './OrbitalSystem';
 import { createKinematicBody, isRapierInitialized } from '../core/RapierWorld';
+import { uiState } from '../core/UIState.svelte.ts';
+import { broadcastShoot } from '../core/network';
+import { WEAPONS, getWeaponStatsAtLevel } from '../core/WeaponRegistry';
 
 // ... (muzzleGeo/boltGeo etc unchanged)
 const muzzleGeo = new THREE.SphereGeometry(0.4, 8, 8);
@@ -64,8 +67,16 @@ export function WeaponSystem(dt: number, scene: THREE.Scene) {
   }
 
   // 2. PLAYER WEAPONS
-  const player = world.with('isPlayer', 'position', 'aimTarget', 'input', 'modifiers').first;
-  if (player) {
+  const players = Array.from(world.with('isPlayer', 'position', 'aimTarget', 'input', 'modifiers'));
+  for (const player of players) {
+    const isLocal = player.isLocalPlayer;
+    const isHost = uiState.isHost;
+
+    // In multiplayer:
+    // - Clients only run firing logic locally for themselves.
+    // - Host runs firing logic for ALL players.
+    if (!isLocal && !isHost) continue;
+
     for (const entity of world.with('weapon', 'ownerId')) {
       if (entity.ownerId !== player.id) continue;
       if (!entity.weapon) continue;
@@ -83,6 +94,17 @@ export function WeaponSystem(dt: number, scene: THREE.Scene) {
         fireWeapon(entity, player, scene);
         const mod = player.modifiers?.fireRateMult || 1.0;
         entity.weapon.cooldownTimer = entity.weapon.fireRate * mod;
+
+        // If local player in multiplayer, broadcast shoot event to other clients
+        if (isLocal && uiState.isMultiplayer && player.aimTarget) {
+          const dir = new THREE.Vector3().subVectors(player.aimTarget, player.position).normalize();
+          if (dir.lengthSq() === 0) dir.set(0, 0, 1);
+          broadcastShoot({
+            weaponId: entity.weaponId || '',
+            ownerId: player.id || 0,
+            dir: { x: dir.x, z: dir.z },
+          });
+        }
       }
     }
   }
@@ -269,8 +291,9 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
       },
     });
 
-    // Add Rapier rigid body for collision
-    if (isRapierInitialized() && projectile.id !== undefined) {
+    // Add Rapier rigid body for collision (skip on client-side visual projectiles)
+    const isMultiplayerClient = uiState.isMultiplayer && !uiState.isHost;
+    if (isRapierInitialized() && projectile.id !== undefined && !isMultiplayerClient) {
       const radius = weaponStats.bulletWidth ? weaponStats.bulletWidth * 0.6 : PROJECTILE_RADIUS;
       const { rigidBody, collider } = createKinematicBody(
         mesh.position.x,
@@ -283,3 +306,124 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
     }
   }
 }
+
+export function fireWeaponRemote(
+  scene: THREE.Scene,
+  owner: any,
+  weaponId: string,
+  dirVec: { x: number; z: number }
+) {
+  const stats = WEAPONS[weaponId];
+  if (!stats) return;
+  const tierStats = getWeaponStatsAtLevel(weaponId, 1)!;
+
+  const mockWeapon = {
+    weapon: {
+      cooldownTimer: 0,
+      fireRate: tierStats.cooldown,
+      damage: tierStats.damage,
+      bulletSpeed: stats.baseSpeed,
+      bulletColor: stats.color,
+      bulletLifetime: stats.baseLifetime,
+      category: stats.category,
+      bulletWidth: stats.bulletWidth,
+      bulletLength: stats.bulletLength,
+      visualStyle: stats.visualStyle,
+      bulletCount: tierStats.projectiles,
+      bulletSpread: stats.baseSpread,
+      knockback: stats.baseKnockback,
+      bulletPierce: tierStats.pierce,
+      bulletExplodeRadius: stats.explodeRadius,
+    }
+  };
+
+  const dir = new THREE.Vector3(dirVec.x, 0, dirVec.z).normalize();
+  if (dir.lengthSq() === 0) dir.set(0, 0, 1);
+
+  _shootDir.copy(dir);
+
+  const isHeavy = mockWeapon.weapon.bulletCount > 1 || mockWeapon.weapon.knockback > 15;
+  addTrauma(isHeavy ? 0.25 : 0.05);
+  playShoot();
+
+  const flashMesh = new THREE.Mesh(muzzleGeo, muzzleMat.clone());
+  (flashMesh.material as THREE.MeshBasicMaterial).color.setHex(mockWeapon.weapon.bulletColor);
+  _posVec.copy(dir).multiplyScalar(0.8).add(owner.position);
+  flashMesh.position.copy(_posVec);
+  scene.add(flashMesh);
+  
+  world.add({
+    isParticle: true,
+    position: flashMesh.position,
+    velocity: new THREE.Vector3(),
+    transform: flashMesh,
+    lifeTimer: 0.08,
+    maxLife: 0.08,
+  });
+
+  const count = mockWeapon.weapon.bulletCount || 1;
+  const spread = mockWeapon.weapon.bulletSpread || 0;
+  const style = mockWeapon.weapon.visualStyle || 'BOLT';
+  const material = getBulletMaterial(mockWeapon.weapon.bulletColor);
+
+  for (let i = 0; i < count; i++) {
+    const pDir = dir.clone();
+    if (count > 1 || spread > 0) {
+      const angleDeg = (Math.random() - 0.5) * spread;
+      pDir.applyAxisAngle(_axisY, THREE.MathUtils.degToRad(angleDeg));
+    }
+
+    let mesh: THREE.Object3D;
+    let spin = 0;
+
+    if (style === 'ORB') {
+      const group = new THREE.Group();
+      const w = mockWeapon.weapon.bulletWidth || 0.5;
+      const core = new THREE.Mesh(orbGeo, material);
+      core.scale.setScalar(w);
+      group.add(core);
+      const shell = new THREE.Mesh(orbGeo, getWireframeMaterial(mockWeapon.weapon.bulletColor));
+      shell.scale.setScalar(w * 1.5);
+      shell.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+      group.add(shell);
+      mesh = group;
+      spin = 5.0;
+    } else if (style === 'SHARD') {
+      mesh = new THREE.Mesh(shardGeo, material);
+      const w = mockWeapon.weapon.bulletWidth || 0.3;
+      mesh.scale.setScalar(w);
+      mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+    } else {
+      mesh = new THREE.Mesh(boltGeo, material);
+      const w = mockWeapon.weapon.bulletWidth || 0.2;
+      const l = mockWeapon.weapon.bulletLength || 1.0;
+      mesh.scale.set(w, w, l);
+      mesh.quaternion.setFromUnitVectors(_axisZ, pDir);
+    }
+
+    _posVec.copy(pDir).multiplyScalar(0.6).add(owner.position);
+    mesh.position.copy(_posVec);
+    mesh.castShadow = true;
+    scene.add(mesh);
+
+    const velocity = pDir.multiplyScalar(mockWeapon.weapon.bulletSpeed);
+
+    world.add({
+      isProjectile: true,
+      position: mesh.position,
+      velocity: velocity,
+      lifeTimer: 0,
+      maxLife: mockWeapon.weapon.bulletLifetime,
+      transform: mesh,
+      damage: 0,
+      projectile: {
+        pierce: 1,
+        explodeRadius: mockWeapon.weapon.bulletExplodeRadius || 0,
+        knockback: mockWeapon.weapon.knockback || 5,
+        hitList: [],
+        spinSpeed: spin,
+      },
+    });
+  }
+}
+

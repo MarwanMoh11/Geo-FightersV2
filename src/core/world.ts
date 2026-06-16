@@ -21,6 +21,8 @@ export type Entity = {
 
   // flags
   isPlayer?: boolean;
+  isLocalPlayer?: boolean;
+  connectionId?: string;
   isEnemy?: boolean;
   isProjectile?: boolean;
   isParticle?: boolean;
