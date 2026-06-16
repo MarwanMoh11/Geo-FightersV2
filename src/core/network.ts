@@ -16,6 +16,9 @@ export const remotePlayers = new Map<string, any>();
 
 // Helper to determine socket URL
 const getSocketUrl = (): string => {
+  if (uiState.customServerUrl) {
+    return uiState.customServerUrl;
+  }
   const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
   if (isLocal) {
     return 'http://localhost:3001';

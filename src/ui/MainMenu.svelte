@@ -86,6 +86,17 @@
         <button class="action cancel-btn" onclick={handleCancelMp}>
           <span class="btn-text">RETURN</span>
         </button>
+
+        <div class="server-config-container">
+          <span class="server-config-label">SIGNALING BEACON:</span>
+          <input
+            type="text"
+            placeholder="AUTO (e.g. http://192.168.1.15:3001)"
+            class="server-input"
+            bind:value={uiState.customServerUrl}
+            oninput={() => localStorage.setItem('geo_server_url', uiState.customServerUrl)}
+          />
+        </div>
       {:else}
         <!-- Connection Status Screen -->
         <div class="status-panel">
@@ -395,5 +406,43 @@
     to {
       transform: rotate(360deg);
     }
+  }
+
+  .server-config-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    width: min(82vw, 320px);
+    margin-top: 0.5rem;
+  }
+
+  .server-config-label {
+    font-family: var(--font-mono);
+    font-size: 0.55rem;
+    color: var(--color-text-dim);
+    letter-spacing: 0.1em;
+    text-align: left;
+    padding-left: 0.2rem;
+  }
+
+  .server-input {
+    background: rgba(8, 12, 24, 0.4);
+    border: 1px dashed rgba(0, 229, 255, 0.3);
+    border-radius: 8px;
+    padding: 0.5rem 0.8rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--color-text-main);
+    outline: none;
+    transition: all var(--transition-smooth);
+    box-sizing: border-box;
+    text-align: center;
+  }
+
+  .server-input:focus {
+    border-style: solid;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 10px rgba(0, 229, 255, 0.15);
+    background: rgba(8, 12, 24, 0.7);
   }
 </style>
