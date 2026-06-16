@@ -40,6 +40,7 @@ export const uiState = $state({
   networkStatus: 'disconnected' as 'disconnected' | 'connecting' | 'connected' | 'waiting_for_players',
   peerId: '',
   remotePlayersCount: 0,
+  customServerUrl: typeof window !== 'undefined' ? localStorage.getItem('geo_server_url') || '' : '',
 
   // Settings
   fps: 60,
