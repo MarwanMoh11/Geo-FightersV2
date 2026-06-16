@@ -32,7 +32,8 @@
     z-index: 100;
   }
 
-  .game-ui :global(button) {
+  .game-ui :global(button),
+  .game-ui :global(input) {
     pointer-events: auto;
   }
 </style>

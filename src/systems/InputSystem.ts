@@ -67,7 +67,7 @@ export function resetVirtualJoystick() {
 
 // --- MAIN SYSTEM LOOP ---
 export function InputSystem() {
-  for (const entity of world.with('input')) {
+  for (const entity of world.with('input', 'isLocalPlayer')) {
     if (!entity.input) continue;
 
     // Direct assignment from inputState (updated by keyboard or joystick)

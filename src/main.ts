@@ -1,6 +1,7 @@
 import './style.css';
 import * as THREE from 'three';
 import { initRenderer } from './core/renderer';
+import { setNetworkScene, sendClientUpdate, sendHostUpdate } from './core/network';
 
 import { spawnPlayer } from './core/factories';
 import { getCtx, startMusic } from './core/audio';
@@ -81,6 +82,7 @@ preloadTextures(updateLoadingProgress).then(async () => {
   if (loadingText) loadingText.textContent = 'INITIALIZING RENDERER';
 
   const { scene, camera, renderer } = await initRenderer();
+  setNetworkScene(scene);
 
   // Renderer backend indicator (debug builds only)
   if (DEBUG) {
@@ -146,8 +148,8 @@ function startGameLoop(
     });
   }
 
-  // Auto-pause when the tab loses focus so a run is never lost to a
-  // notification or app switch (the level-up modal already pauses, skip it)
+  // Auto-pause temporarily disabled for multiplayer parallel tab testing
+  /*
   const autoPause = () => {
     if (isPlaying() && !isGamePaused && !isGameOver && !uiState.showUpgrade) {
       setGameState('PAUSED');
@@ -157,11 +159,14 @@ function startGameLoop(
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) autoPause();
   });
+  */
 
   // --- GAME LOOP ---
   const clock = new THREE.Clock();
   // Clamp dt so a backgrounded tab doesn't cause physics to tunnel on return
   const MAX_DT = 1 / 20;
+  let netSyncTimer = 0;
+  const NET_SYNC_INTERVAL = 1 / 30; // 30Hz throttled network sync
 
   function animate() {
     requestAnimationFrame(animate);
@@ -180,16 +185,25 @@ function startGameLoop(
       return;
     }
 
+    const isMultiplayer = uiState.isMultiplayer;
+    const isHost = uiState.isHost;
+
     // 1. Logic
     InputSystem();
     AimSystem();
     PlayerControlSystem(dt);
-    EnemySystem(dt, scene);
-    TimelineSpawnerSystem(dt, scene);
+
+    if (!isMultiplayer || isHost) {
+      EnemySystem(dt, scene);
+      TimelineSpawnerSystem(dt, scene);
+    }
 
     // 2. Combat
     WeaponSystem(dt, scene);
-    CollisionSystem(scene);
+
+    if (!isMultiplayer || isHost) {
+      CollisionSystem(scene);
+    }
 
     // 3. Physics/Visuals
     PhysicsSystem(dt);
@@ -205,8 +219,23 @@ function startGameLoop(
     PassiveEffectsSystem(dt); // Apply health regen, etc.
     OrbitalSystem(dt); // Update orbital weapon projectiles
 
-    ChestSystem(dt, scene);
-    FinaleBossSystem(dt, scene);
+    if (!isMultiplayer || isHost) {
+      ChestSystem(dt, scene);
+      FinaleBossSystem(dt, scene);
+    }
+
+    // Sync network states (throttled to 30Hz to prevent packet flooding)
+    if (isMultiplayer) {
+      netSyncTimer += dt;
+      if (netSyncTimer >= NET_SYNC_INTERVAL) {
+        netSyncTimer = 0;
+        if (isHost) {
+          sendHostUpdate();
+        } else {
+          sendClientUpdate();
+        }
+      }
+    }
 
     // 4. UI & Camera
     RenderSystem(dt);

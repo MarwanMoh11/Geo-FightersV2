@@ -22,7 +22,7 @@ let focusInitialized = false;
 let shakeTime = 0;
 
 export function CameraSystem(dt: number, camera: THREE.Camera) {
-  const player = world.with('isPlayer', 'transform').first;
+  const player = world.with('isLocalPlayer', 'transform').first;
   if (!player || !player.transform) return;
 
   // 1. Decay Trauma

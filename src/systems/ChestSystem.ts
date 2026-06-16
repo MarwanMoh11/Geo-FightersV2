@@ -63,7 +63,7 @@ export function spawnChest(
   mesh.castShadow = true;
   scene.add(mesh);
 
-  world.add({
+  return world.add({
     isChest: true,
     chestRarity: rarity,
     position: mesh.position,
