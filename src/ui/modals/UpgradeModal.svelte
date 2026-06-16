@@ -25,7 +25,6 @@
     // Let the selection flash play before applying + resuming the game
     setTimeout(() => {
       selectUpgrade(option);
-      uiState.showUpgrade = false;
       selectedId = null;
     }, 350);
   }

@@ -55,11 +55,19 @@ export interface UpgradeOption {
 // const modal = document.getElementById('upgrade-modal');
 // const container = document.getElementById('cards-container');
 export let isGamePaused = false;
+let pendingUpgradesCount = 0;
 
 // --- PUBLIC API ---
 export function triggerLevelUp() {
   const player = world.with('isLocalPlayer', 'weaponSlots', 'passiveSlots', 'stats').first;
   if (!player) return;
+
+  // If the upgrade screen is already showing, queue this level-up instead of overwriting
+  if (uiState.showUpgrade) {
+    pendingUpgradesCount++;
+    dlog(`[Upgrade] Level up queued. Pending upgrades: ${pendingUpgradesCount}`);
+    return;
+  }
 
   const options = generateUpgradePool(player);
 
@@ -220,7 +228,22 @@ export function selectUpgrade(option: UpgradeOption) {
   // Recalculate stats from passives
   recalculateStats(player);
 
-  isGamePaused = false;
+  if (pendingUpgradesCount > 0) {
+    pendingUpgradesCount--;
+    dlog(`[Upgrade] Opening next queued level up. Remaining: ${pendingUpgradesCount}`);
+    const options = generateUpgradePool(player);
+    // Auto-pick if only Health is available
+    if (options.length === 1 && options[0].type === 'health') {
+      selectUpgrade(options[0]);
+      return;
+    }
+    const choices = selectWeightedChoices(options, UPGRADE_CHOICES);
+    uiState.upgradeChoices = choices;
+    uiState.showUpgrade = true;
+  } else {
+    isGamePaused = false;
+    uiState.showUpgrade = false;
+  }
 }
 
 // --- WEAPON OPERATIONS ---
