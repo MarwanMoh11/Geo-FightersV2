@@ -9,8 +9,8 @@ RUN npm install --omit=dev
 # Copy the server source code
 COPY server.js ./
 
-# Hugging Face Spaces and other container platforms set a custom PORT environment variable (usually 7860 or 8080)
-# Our server.js automatically listens on process.env.PORT, falling back to 3001 if not set.
-EXPOSE 3000
+# Set port to 7860 for Hugging Face Spaces routing
+ENV PORT=7860
+EXPOSE 7860
 
 CMD ["node", "server.js"]
