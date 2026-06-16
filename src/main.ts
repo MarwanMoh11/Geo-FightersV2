@@ -5,7 +5,7 @@ import { setNetworkScene, sendClientUpdate, sendHostUpdate } from './core/networ
 
 import { spawnPlayer } from './core/factories';
 import { getCtx, startMusic } from './core/audio';
-import { isPlaying, setGameState } from './core/GameState';
+import { isPlaying } from './core/GameState';
 import { uiState } from './core/UIState.svelte.ts';
 import { DEBUG, dlog } from './core/debug';
 
