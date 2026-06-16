@@ -1,4 +1,5 @@
 import { world } from '../core/world';
+import { uiState } from '../core/UIState.svelte.ts';
 
 // --- STATE ---
 export const inputState = {
@@ -67,8 +68,19 @@ export function resetVirtualJoystick() {
 
 // --- MAIN SYSTEM LOOP ---
 export function InputSystem() {
+  const isLocalPausedOrUpgrading = uiState.gameState === 'PAUSED' || uiState.showUpgrade;
+
   for (const entity of world.with('input', 'isLocalPlayer')) {
     if (!entity.input) continue;
+
+    const isDead = entity.health && entity.health.current <= 0;
+
+    if (isLocalPausedOrUpgrading || isDead) {
+      entity.input.x = 0;
+      entity.input.y = 0;
+      entity.input.isShooting = false;
+      continue;
+    }
 
     // Direct assignment from inputState (updated by keyboard or joystick)
     // Priority: If virtual joystick is being moved (non-zero), use that.

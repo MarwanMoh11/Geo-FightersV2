@@ -225,6 +225,10 @@ function setupSocketListeners() {
       }
       player.level = state.level;
       player.score = state.score;
+      player.isUpgrading = state.isUpgrading;
+      if (state.stats) {
+        player.stats = state.stats;
+      }
       
       // Update inventory weapon slots
       if (state.weaponSlots) {
@@ -496,6 +500,8 @@ export function sendClientUpdate() {
         level: localPlayer.level || 1,
         score: localPlayer.score || 0,
         weaponSlots: localPlayer.weaponSlots || [],
+        isUpgrading: uiState.showUpgrade || uiState.gameState === 'PAUSED',
+        stats: localPlayer.stats,
       },
     });
   }

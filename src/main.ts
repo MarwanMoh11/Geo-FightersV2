@@ -176,16 +176,21 @@ function startGameLoop(
     // Update FPS counter
     updateFPS(performance.now());
 
+    const isMultiplayer = uiState.isMultiplayer;
+
     // Check if game should run (not in menu, not paused by upgrade modal, not game over)
-    const shouldRunGame = isPlaying() && !isGamePaused && !isGameOver;
+    let shouldRunGame = false;
+    if (isMultiplayer) {
+      shouldRunGame = (uiState.gameState === 'PLAYING' || uiState.gameState === 'PAUSED') && !isGameOver;
+    } else {
+      shouldRunGame = isPlaying() && !isGamePaused && !isGameOver;
+    }
 
     if (!shouldRunGame) {
       // Still render the scene even when paused
       renderer.render(scene, camera);
       return;
     }
-
-    const isMultiplayer = uiState.isMultiplayer;
     const isHost = uiState.isHost;
 
     // 1. Logic

@@ -58,7 +58,7 @@ export let isGamePaused = false;
 
 // --- PUBLIC API ---
 export function triggerLevelUp() {
-  const player = world.with('isPlayer', 'weaponSlots', 'passiveSlots', 'stats').first;
+  const player = world.with('isLocalPlayer', 'weaponSlots', 'passiveSlots', 'stats').first;
   if (!player) return;
 
   const options = generateUpgradePool(player);
@@ -196,7 +196,7 @@ function selectWeightedChoices(pool: UpgradeOption[], count: number): UpgradeOpt
 
 // --- UPGRADE APPLICATION ---
 export function selectUpgrade(option: UpgradeOption) {
-  const player = world.with('isPlayer', 'weaponSlots', 'passiveSlots', 'stats').first;
+  const player = world.with('isLocalPlayer', 'weaponSlots', 'passiveSlots', 'stats').first;
   if (!player) return;
 
   switch (option.type) {

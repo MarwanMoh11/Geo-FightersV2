@@ -1,5 +1,6 @@
 import { world } from '../core/world';
 import type * as THREE from 'three';
+import { uiState } from '../core/UIState.svelte.ts';
 
 let time = 0;
 
@@ -50,10 +51,34 @@ export function RenderSystem(dt: number) {
         }
       }
 
-      // 3b. INVULNERABILITY BLINK (player i-frames)
+      // 3b. INVULNERABILITY BLINK & UPGRADE GLOW & DEATH (player i-frames / menus / deactivated look)
       if (entity.isPlayer) {
-        const invulnerable = (entity.invulnTimer ?? 0) > 0;
-        const blinkOpacity = invulnerable ? (Math.sin(time * 30) > 0 ? 0.35 : 0.9) : 1.0;
+        const isDead = entity.health && entity.health.current <= 0;
+        const isUpgrading = entity.isUpgrading || (entity.isLocalPlayer && (uiState.showUpgrade || uiState.gameState === 'PAUSED'));
+        const invulnerable = (entity.invulnTimer ?? 0) > 0 || isUpgrading || isDead;
+        
+        let blinkOpacity = 1.0;
+        if (isDead) {
+          // Deactivated/spectator look (dark grey and semi-transparent)
+          blinkOpacity = 0.35;
+          entity.spriteRight.material.color.setHex(0x555555);
+          entity.spriteLeft.material.color.setHex(0x555555);
+        } else if (isUpgrading) {
+          // Slow pulsing cyan glow
+          const pulse = 0.5 + 0.3 * Math.sin(time * 6);
+          blinkOpacity = pulse;
+          entity.spriteRight.material.color.setHex(0x00e5ff);
+          entity.spriteLeft.material.color.setHex(0x00e5ff);
+        } else if (invulnerable) {
+          blinkOpacity = Math.sin(time * 30) > 0 ? 0.35 : 0.9;
+          entity.spriteRight.material.color.setHex(0xffffff);
+          entity.spriteLeft.material.color.setHex(0xffffff);
+        } else if (entity.hitFlashTimer === undefined || entity.hitFlashTimer <= 0) {
+          // Reset to default white (if not hit flashing)
+          entity.spriteRight.material.color.setHex(0xffffff);
+          entity.spriteLeft.material.color.setHex(0xffffff);
+        }
+        
         entity.spriteRight.material.opacity = blinkOpacity;
         entity.spriteLeft.material.opacity = blinkOpacity;
       }
