@@ -5,6 +5,7 @@ import { getDefaultStats } from './PlayerStats';
 import { WEAPONS, getWeaponStatsAtLevel } from './WeaponRegistry';
 import { getTierForValue, bankXP, MAX_ACTIVE_XP } from './XPManager';
 import { createDynamicBody, isRapierInitialized } from './RapierWorld';
+import { uiState } from './UIState.svelte';
 
 // Player/enemy collision radii
 const PLAYER_RADIUS = 0.8;
@@ -137,8 +138,8 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
     stats: getDefaultStats(),
   });
 
-  // 1b. CREATE RAPIER RIGID BODY for player
-  if (isRapierInitialized() && player.id !== undefined) {
+  // 1b. CREATE RAPIER RIGID BODY for player (only if local player)
+  if (isLocal && isRapierInitialized() && player.id !== undefined) {
     const { rigidBody, collider } = createDynamicBody(startX, startZ, PLAYER_RADIUS, player.id);
     player.rigidBody = rigidBody;
     player.collider = collider;
@@ -316,8 +317,9 @@ export function spawnEnemy(
     baseColor: stats.color,
   });
 
-  // Create Rapier rigid body for enemy
-  if (isRapierInitialized() && enemy.id !== undefined) {
+  // Create Rapier rigid body for enemy (only in single-player or on the Host)
+  const isHostOrSingle = !uiState.isMultiplayer || uiState.isHost;
+  if (isHostOrSingle && isRapierInitialized() && enemy.id !== undefined) {
     // Use enemy size to determine radius (scaled down for gameplay)
     const radius = Math.max(ENEMY_RADIUS, stats.size * 0.3);
     const { rigidBody, collider } = createDynamicBody(x, z, radius, enemy.id);

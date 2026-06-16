@@ -7,6 +7,8 @@ import { spawnPlayer, spawnEnemy, spawnXP } from './factories';
 import { spawnChest } from '../systems/ChestSystem';
 import { removeBody } from './RapierWorld';
 import { WEAPONS, getWeaponStatsAtLevel } from './WeaponRegistry';
+import { playLevelUp } from './audio';
+import { triggerLevelUp } from '../systems/UpgradeSystem';
 
 let socket: Socket | null = null;
 let activeScene: THREE.Scene | null = null;
@@ -253,10 +255,20 @@ function setupSocketListeners() {
 
       if (pConnId === socket?.id) {
         // This is the local player on the client: update health/XP from Host authoritative state
-        const local = world.with('isLocalPlayer', 'health').first;
-        if (local && local.health) {
-          local.health.current = pHealth.current;
-          local.health.max = pHealth.max;
+        const local = world.with('isLocalPlayer', 'health', 'level').first;
+        if (local) {
+          if (local.health) {
+            local.health.current = pHealth.current;
+            local.health.max = pHealth.max;
+          }
+          if (pLevel > (local.level || 1)) {
+            // Host determined this client leveled up! Trigger local Svelte upgrade modal.
+            local.level = pLevel;
+            local.xp = 0;
+            local.xpMax = Math.floor((local.xpMax || 100) * 1.2);
+            playLevelUp();
+            triggerLevelUp();
+          }
         }
         return;
       }
