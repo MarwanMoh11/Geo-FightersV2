@@ -47,7 +47,7 @@
     <div class="damage-vignette" class:low={lowHealth} class:flash={uiState.damageFlash > 0}></div>
   {/key}
 
-  <!-- Top Bar: Timer and Boss Health -->
+  <!-- Top Center: Boss Health -->
   <div class="top-center">
     {#if uiState.bossHealth.active}
       <div class="boss-health glass" transition:fly={{ y: -24, duration: 400 }}>
@@ -60,10 +60,16 @@
         </div>
       </div>
     {/if}
+  </div>
 
-    <div class="timer-container glass">
-      <span class="timer-text">{timerText}</span>
-    </div>
+  <!-- Top Left: Minimap (Radar) and Timer -->
+  <div id="minimap-container" class="glass">
+    <canvas id="minimap-canvas" width="150" height="150"></canvas>
+    <div id="minimap-label">RADAR</div>
+  </div>
+
+  <div class="timer-container glass top-left-timer">
+    <span class="timer-text">{timerText}</span>
   </div>
 
   <!-- Top Right: Score and Levels -->
@@ -202,6 +208,17 @@
   .timer-container {
     padding: 0.5rem 1.5rem;
     border-radius: 99px;
+  }
+
+  .top-left-timer {
+    position: absolute;
+    top: 1.5rem;
+    left: 195px; /* offset next to minimap */
+  }
+
+  :global(body.inverted-controls) .top-left-timer {
+    left: auto;
+    right: 195px;
   }
 
   .timer-text {
@@ -458,6 +475,16 @@
 
     .timer-text {
       font-size: 1.25rem;
+    }
+
+    .top-left-timer {
+      top: 10px;
+      left: 125px; /* offset next to mobile minimap */
+    }
+
+    :global(body.inverted-controls) .top-left-timer {
+      left: auto;
+      right: 125px;
     }
   }
 </style>

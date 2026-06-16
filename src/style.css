@@ -219,7 +219,8 @@ html {
 /* --- MINIMAP --- */
 #minimap-container {
   position: fixed;
-  bottom: 30px;
+  top: 15px;
+  bottom: auto;
   right: auto;
   left: 15px;
   /* Default: Left side */
@@ -264,7 +265,9 @@ body.inverted-controls #minimap-container {
   #minimap-container {
     width: 100px;
     height: 115px;
-    bottom: 80px;
+    top: 10px;
+    bottom: auto;
+    left: 10px;
   }
 
   #minimap-canvas {

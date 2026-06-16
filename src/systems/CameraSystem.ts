@@ -11,8 +11,8 @@ export function addTrauma(amount: number) {
 
 // Camera rig: fixed top-down offset, smoothed focus point with velocity
 // lookahead so the view leads slightly into the direction of travel.
-const CAMERA_HEIGHT = 40;
-const CAMERA_DISTANCE = 15;
+const BASE_CAMERA_HEIGHT = 40;
+const BASE_CAMERA_DISTANCE = 15;
 const LOOKAHEAD = 0.35; // seconds of velocity to lead by
 const FOLLOW_DAMPING = 6.0; // higher = tighter follow
 
@@ -24,6 +24,10 @@ let shakeTime = 0;
 export function CameraSystem(dt: number, camera: THREE.Camera) {
   const player = world.with('isLocalPlayer', 'transform').first;
   if (!player || !player.transform) return;
+
+  const isMobile = typeof window !== 'undefined' && (window.innerWidth < 768 || ('ontouchstart' in window) || navigator.maxTouchPoints > 0);
+  const cameraHeight = isMobile ? 65 : BASE_CAMERA_HEIGHT;
+  const cameraDistance = isMobile ? 26 : BASE_CAMERA_DISTANCE;
 
   // 1. Decay Trauma
   if (cameraTrauma > 0) {
@@ -58,8 +62,8 @@ export function CameraSystem(dt: number, camera: THREE.Camera) {
   }
 
   camera.position.x = _focus.x + offsetX;
-  camera.position.y = CAMERA_HEIGHT;
-  camera.position.z = _focus.z + CAMERA_DISTANCE + offsetZ;
+  camera.position.y = cameraHeight;
+  camera.position.z = _focus.z + cameraDistance + offsetZ;
 
   // 4. Look at the focus point (plus shake) to keep the view centered
   camera.lookAt(_focus.x + offsetX, 0, _focus.z + offsetZ);
