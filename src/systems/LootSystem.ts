@@ -36,9 +36,9 @@ let lastCollectTime = -Infinity;
 
 export function LootSystem(dt: number, scene: THREE.Scene) {
   // Find all alive players
-  const players = Array.from(world.with('isPlayer', 'position', 'xp', 'xpMax', 'score', 'level', 'stats')).filter(
-    (p: any) => !p.health || p.health.current > 0
-  );
+  const players = Array.from(
+    world.with('isPlayer', 'position', 'xp', 'xpMax', 'score', 'level', 'stats'),
+  ).filter((p: any) => !p.health || p.health.current > 0);
   if (players.length === 0) return;
 
   // We still need the local player for bank delivery (only local player handles its own bank spawn)

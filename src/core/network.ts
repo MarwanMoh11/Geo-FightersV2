@@ -21,13 +21,16 @@ const getSocketUrl = (): string => {
   if (uiState.customServerUrl) {
     return uiState.customServerUrl;
   }
-  const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const isLocal =
+    window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
   if (isLocal) {
     return 'http://localhost:3001';
   }
   const envUrl = import.meta.env.VITE_SIGNALING_SERVER_URL;
   if (!envUrl) {
-    console.warn('[Network] VITE_SIGNALING_SERVER_URL is not set. Falling back to relative origin replace.');
+    console.warn(
+      '[Network] VITE_SIGNALING_SERVER_URL is not set. Falling back to relative origin replace.',
+    );
   }
   return (envUrl as string) || window.location.origin.replace('5173', '3001');
 };
@@ -47,7 +50,7 @@ export function getSocket(): Socket | null {
 // 1. Host Creates Room
 export function hostRoom() {
   uiState.networkStatus = 'connecting';
-  
+
   if (!socket) {
     socket = io(getSocketUrl());
     setupSocketListeners();
@@ -74,12 +77,12 @@ export function disconnectNetwork() {
     socket.disconnect();
     socket = null;
   }
-  
+
   // Clean up remote player avatars
   for (const connId of remotePlayers.keys()) {
     removeRemotePlayer(connId);
   }
-  
+
   uiState.isMultiplayer = false;
   uiState.isHost = false;
   uiState.roomCode = '';
@@ -97,7 +100,7 @@ function removeRemotePlayer(connId: string) {
       removeBody(player.rigidBody);
     }
     world.remove(player);
-    
+
     // Also remove their weapons
     for (const w of world.with('isWeapon', 'ownerId')) {
       if (w.ownerId === player.id) {
@@ -122,7 +125,7 @@ function setupSocketListeners() {
     uiState.roomCode = roomCode;
     uiState.networkStatus = 'waiting_for_players';
     console.log(`[Network] Room created: ${roomCode} (Hosting)`);
-    
+
     // Set local player connection ID to socket ID
     const local = world.with('isLocalPlayer').first;
     if (local && socket) {
@@ -136,13 +139,13 @@ function setupSocketListeners() {
     uiState.roomCode = roomCode;
     uiState.networkStatus = 'connected';
     console.log(`[Network] Joined room: ${roomCode} (Client)`);
-    
+
     // Set local player connection ID to socket ID
     const local = world.with('isLocalPlayer').first;
     if (local && socket) {
       local.connectionId = socket.id;
     }
-    
+
     // Start game for client
     setGameState('PLAYING');
   });
@@ -163,14 +166,14 @@ function setupSocketListeners() {
       spawnPlayer(activeScene, false, playerId, offsetPos, offsetPos);
       // Wait, spawnPlayer returns nothing, but it adds it to world. Let's find it.
       const playerEntity = Array.from(world.with('isPlayer')).find(
-        (e: any) => e.connectionId === playerId
+        (e: any) => e.connectionId === playerId,
       );
       if (playerEntity) {
         remotePlayers.set(playerId, playerEntity);
         uiState.remotePlayersCount = remotePlayers.size;
       }
     }
-    
+
     // Start game for host
     setGameState('PLAYING');
   });
@@ -231,7 +234,7 @@ function setupSocketListeners() {
       if (state.stats) {
         player.stats = state.stats;
       }
-      
+
       // Update inventory weapon slots
       if (state.weaponSlots) {
         player.weaponSlots = state.weaponSlots;
@@ -327,7 +330,7 @@ function setupSocketListeners() {
           enemy.id = eId;
         }
       }
-      
+
       if (enemy) {
         enemy.position.set(ePos.x, 0.5, ePos.z);
         if (enemy.transform) {
@@ -339,7 +342,7 @@ function setupSocketListeners() {
         }
         enemy.facingRight = eFacingRight;
         enemy.hitFlashTimer = eHitFlashTimer;
-        
+
         // Remove from tracking map so we know it was handled
         enemyMap.delete(eId);
       }
@@ -424,17 +427,17 @@ function setupSocketListeners() {
   // Remote shoots visual projectile
   socket.on('remote-shoot', (pData) => {
     if (!activeScene) return;
-    
+
     // Play sound and spawn visual projectile for remote player
     // Call fireWeapon directly on client side for remote player representation
     const remoteEntity = Array.from(world.with('isPlayer')).find(
-      (e: any) => e.connectionId === pData.connectionId || e.id === pData.ownerId
+      (e: any) => e.connectionId === pData.connectionId || e.id === pData.ownerId,
     );
-    
+
     if (remoteEntity) {
       // Find remote player's weapon entity matching the projectile weapon ID
       let weapon = Array.from(world.with('isWeapon', 'ownerId')).find(
-        (w: any) => w.ownerId === remoteEntity.id && w.weaponId === pData.weaponId
+        (w: any) => w.ownerId === remoteEntity.id && w.weaponId === pData.weaponId,
       );
 
       // If remote player's weapon slot is not created yet, spawn a mock weapon entity
@@ -463,15 +466,15 @@ function setupSocketListeners() {
             knockback: stats.baseKnockback,
             bulletPierce: tierStats.pierce,
             bulletExplodeRadius: stats.explodeRadius,
-          }
+          },
         });
       }
 
       // Temporarily set remote player's aim target to match the direction of travel
       if (!remoteEntity.aimTarget) remoteEntity.aimTarget = new THREE.Vector3();
-      remoteEntity.aimTarget.copy(remoteEntity.position).add(
-        new THREE.Vector3(pData.dir.x, 0, pData.dir.z).normalize().multiplyScalar(10)
-      );
+      remoteEntity.aimTarget
+        .copy(remoteEntity.position)
+        .add(new THREE.Vector3(pData.dir.x, 0, pData.dir.z).normalize().multiplyScalar(10));
 
       // Run local visual firing for remote player
       // Import dynamically to avoid circular references
@@ -498,17 +501,42 @@ function setupSocketListeners() {
 export function sendClientUpdate() {
   if (!socket || socket.disconnected || uiState.isHost) return;
 
-  const localPlayer = world.with('isLocalPlayer', 'position', 'velocity', 'aimTarget', 'input', 'health', 'level', 'score').first;
+  const localPlayer = world.with(
+    'isLocalPlayer',
+    'position',
+    'velocity',
+    'aimTarget',
+    'input',
+    'health',
+    'level',
+    'score',
+  ).first;
   if (localPlayer) {
     socket.emit('client-update', {
       roomCode: uiState.roomCode,
       state: {
-        position: { x: Math.round(localPlayer.position.x * 10) / 10, z: Math.round(localPlayer.position.z * 10) / 10 },
-        velocity: { x: Math.round(localPlayer.velocity.x * 10) / 10, z: Math.round(localPlayer.velocity.z * 10) / 10 },
-        aimTarget: { x: Math.round((localPlayer.aimTarget?.x || 0) * 10) / 10, z: Math.round((localPlayer.aimTarget?.z || 0) * 10) / 10 },
-        input: { x: localPlayer.input?.x || 0, y: localPlayer.input?.y || 0, isShooting: localPlayer.input?.isShooting || false },
+        position: {
+          x: Math.round(localPlayer.position.x * 10) / 10,
+          z: Math.round(localPlayer.position.z * 10) / 10,
+        },
+        velocity: {
+          x: Math.round(localPlayer.velocity.x * 10) / 10,
+          z: Math.round(localPlayer.velocity.z * 10) / 10,
+        },
+        aimTarget: {
+          x: Math.round((localPlayer.aimTarget?.x || 0) * 10) / 10,
+          z: Math.round((localPlayer.aimTarget?.z || 0) * 10) / 10,
+        },
+        input: {
+          x: localPlayer.input?.x || 0,
+          y: localPlayer.input?.y || 0,
+          isShooting: localPlayer.input?.isShooting || false,
+        },
         facingRight: localPlayer.facingRight,
-        health: { current: localPlayer.health?.current || 100, max: localPlayer.health?.max || 100 },
+        health: {
+          current: localPlayer.health?.current || 100,
+          max: localPlayer.health?.max || 100,
+        },
         level: localPlayer.level || 1,
         score: localPlayer.score || 0,
         weaponSlots: localPlayer.weaponSlots || [],
@@ -524,7 +552,9 @@ export function sendHostUpdate() {
   if (!socket || socket.disconnected || !uiState.isHost) return;
 
   // Gather players info
-  const players = Array.from(world.with('isPlayer', 'position', 'velocity', 'facingRight', 'health', 'level', 'score')).map((p: any) => ({
+  const players = Array.from(
+    world.with('isPlayer', 'position', 'velocity', 'facingRight', 'health', 'level', 'score'),
+  ).map((p: any) => ({
     c: p.connectionId,
     p: [Math.round(p.position.x * 10) / 10, Math.round(p.position.z * 10) / 10],
     v: [Math.round(p.velocity.x * 10) / 10, Math.round(p.velocity.z * 10) / 10],
@@ -536,14 +566,16 @@ export function sendHostUpdate() {
   }));
 
   // Gather active enemies
-  const enemies = Array.from(world.with('isEnemy', 'position', 'health', 'facingRight')).map((e: any) => ({
-    i: e.id,
-    t: e.enemyType,
-    p: [Math.round(e.position.x * 10) / 10, Math.round(e.position.z * 10) / 10],
-    h: Math.round(e.health?.current || 0),
-    f: e.facingRight ? 1 : 0,
-    fl: e.hitFlashTimer > 0 ? 1 : 0,
-  }));
+  const enemies = Array.from(world.with('isEnemy', 'position', 'health', 'facingRight')).map(
+    (e: any) => ({
+      i: e.id,
+      t: e.enemyType,
+      p: [Math.round(e.position.x * 10) / 10, Math.round(e.position.z * 10) / 10],
+      h: Math.round(e.health?.current || 0),
+      f: e.facingRight ? 1 : 0,
+      fl: e.hitFlashTimer > 0 ? 1 : 0,
+    }),
+  );
 
   // Gather active XP gems
   const xp = Array.from(world.with('isXP', 'position')).map((x: any) => ({
@@ -573,7 +605,11 @@ export function sendHostUpdate() {
 }
 
 // 6. Broadcast Shoot Event
-export function broadcastShoot(projectileData: { weaponId: string; ownerId: number; dir: { x: number; z: number } }) {
+export function broadcastShoot(projectileData: {
+  weaponId: string;
+  ownerId: number;
+  dir: { x: number; z: number };
+}) {
   if (!socket || socket.disconnected) return;
   socket.emit('shoot-event', {
     roomCode: uiState.roomCode,

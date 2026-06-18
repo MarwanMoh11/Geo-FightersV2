@@ -122,7 +122,7 @@
   .mobile-controls-layer {
     position: fixed;
     inset: 0;
-    z-index: 100;
+    z-index: 80;
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.3s ease;
@@ -130,15 +130,15 @@
 
   .mobile-controls-layer.active {
     opacity: 1;
-    pointer-events: auto;
   }
 
   .joystick-zone {
     position: absolute;
     left: 0;
-    top: 0;
-    width: 60%;
-    height: 100%;
+    bottom: 0;
+    top: auto;
+    width: 50%;
+    height: 75%;
     pointer-events: auto;
   }
 
@@ -188,6 +188,7 @@
     right: 2rem;
     display: flex;
     gap: 1rem;
+    pointer-events: auto;
   }
 
   .action-btn {

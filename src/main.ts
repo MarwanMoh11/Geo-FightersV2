@@ -181,7 +181,8 @@ function startGameLoop(
     // Check if game should run (not in menu, not paused by upgrade modal, not game over)
     let shouldRunGame = false;
     if (isMultiplayer) {
-      shouldRunGame = (uiState.gameState === 'PLAYING' || uiState.gameState === 'PAUSED') && !isGameOver;
+      shouldRunGame =
+        (uiState.gameState === 'PLAYING' || uiState.gameState === 'PAUSED') && !isGameOver;
     } else {
       shouldRunGame = isPlaying() && !isGamePaused && !isGameOver;
     }

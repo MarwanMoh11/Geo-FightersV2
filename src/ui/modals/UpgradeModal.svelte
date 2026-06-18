@@ -141,6 +141,7 @@
     align-items: center;
     background: rgba(4, 4, 16, 0.8);
     backdrop-filter: blur(10px);
+    pointer-events: auto;
   }
 
   .modal-overlay {

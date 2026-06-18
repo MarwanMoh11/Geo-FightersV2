@@ -25,6 +25,7 @@ export type Entity = {
   connectionId?: string;
   isEnemy?: boolean;
   isProjectile?: boolean;
+  isEnemyProjectile?: boolean;
   isParticle?: boolean;
   isXP?: boolean;
   isWeapon?: boolean;
@@ -130,6 +131,12 @@ export type Entity = {
   spinZ?: number;
   // Expanding ring FX: target scale multiplier reached at end of life
   ringGrow?: number;
+
+  // Boss Shockwave Logic
+  isBossShockwave?: boolean;
+  shockwaveRadius?: number;
+  shockwaveMaxRadius?: number;
+  shockwaveDamageDealt?: boolean;
 
   // Rapier physics body (Phase 2)
   rigidBody?: RAPIER.RigidBody;

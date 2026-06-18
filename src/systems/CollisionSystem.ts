@@ -12,6 +12,8 @@
 import { world } from '../core/world';
 import * as THREE from 'three';
 import { addTrauma } from './CameraSystem';
+import { WEAPONS } from '../core/WeaponRegistry';
+import { getGlowMaterial } from '../core/projectileVisuals';
 import { spawnXP } from '../core/factories';
 import { triggerGameOver } from './GameManager';
 import { playExplosion, playHurt } from '../core/audio';
@@ -57,7 +59,13 @@ function processCollision(h1: number, h2: number, scene: THREE.Scene) {
   if (!e1 || !e2) return;
 
   // Determine roles
-  const projectile = e1.isProjectile ? e1 : e2.isProjectile ? e2 : null;
+  const projectile =
+    e1.isProjectile && !e1.isEnemyProjectile
+      ? e1
+      : e2.isProjectile && !e2.isEnemyProjectile
+        ? e2
+        : null;
+  const enemyProjectile = e1.isEnemyProjectile ? e1 : e2.isEnemyProjectile ? e2 : null;
   const enemy = e1.isEnemy ? e1 : e2.isEnemy ? e2 : null;
   const player = e1.isPlayer ? e1 : e2.isPlayer ? e2 : null;
 
@@ -69,6 +77,11 @@ function processCollision(h1: number, h2: number, scene: THREE.Scene) {
   // B. ENEMY VS PLAYER
   if (enemy && player) {
     handleEnemyPlayerCollision(enemy, player, scene);
+  }
+
+  // C. ENEMY PROJECTILE VS PLAYER
+  if (enemyProjectile && player) {
+    handleEnemyProjectilePlayerCollision(enemyProjectile, player, scene);
   }
 }
 
@@ -85,7 +98,13 @@ function handleProjectileEnemyCollision(bullet: any, enemy: any, scene: THREE.Sc
     bullet.velocity || new THREE.Vector3(0, 0, 0),
     bullet.projectile.knockback,
     scene,
+    'enemy',
+    bullet.weaponId,
+    bullet.weapon?.bulletColor,
   );
+
+  // Spark FX on impact
+  spawnImpactFX(bullet.position, scene, bullet.weaponId, bullet.weapon?.bulletColor, 2);
 
   // 2. REGISTER HIT
   bullet.projectile.hitList.push(enemy.id!);
@@ -115,7 +134,16 @@ function handleProjectileEnemyCollision(bullet: any, enemy: any, scene: THREE.Sc
           target.hitFlashTimer = 0.2;
         } else {
           _blastDir.set(dx, 0, dz).normalize();
-          applyDamage(target, bullet.damage || 1, _blastDir.multiplyScalar(20), 10, scene, 'aoe');
+          applyDamage(
+            target,
+            bullet.damage || 1,
+            _blastDir.multiplyScalar(20),
+            10,
+            scene,
+            'aoe',
+            bullet.weaponId,
+            bullet.weapon?.bulletColor,
+          );
         }
       }
     }
@@ -138,7 +166,10 @@ function handleEnemyPlayerCollision(enemy: any, player: any, _scene: THREE.Scene
   if (player.invulnTimer && player.invulnTimer > 0) return;
 
   // INVULNERABILITY: ignore contact while player is in a menu (paused/upgrading)
-  if (player.isUpgrading || (player.isLocalPlayer && (uiState.showUpgrade || uiState.gameState === 'PAUSED'))) {
+  if (
+    player.isUpgrading ||
+    (player.isLocalPlayer && (uiState.showUpgrade || uiState.gameState === 'PAUSED'))
+  ) {
     return;
   }
 
@@ -179,6 +210,53 @@ function handleEnemyPlayerCollision(enemy: any, player: any, _scene: THREE.Scene
   }
 }
 
+function handleEnemyProjectilePlayerCollision(bullet: any, player: any, scene: THREE.Scene) {
+  if (!player.health || player.health.current <= 0) return;
+
+  // I-FRAMES: ignore contact while the post-hit window is active
+  if (player.invulnTimer && player.invulnTimer > 0) return;
+
+  // INVULNERABILITY: ignore contact while player is in a menu (paused/upgrading)
+  if (
+    player.isUpgrading ||
+    (player.isLocalPlayer && (uiState.showUpgrade || uiState.gameState === 'PAUSED'))
+  ) {
+    return;
+  }
+
+  const baseDamage = bullet.damage || 8;
+  const armor = player.stats?.armor || 0;
+  const actualDamage = Math.max(1, baseDamage - armor);
+
+  player.health.current -= actualDamage;
+  player.invulnTimer = PLAYER_IFRAME_DURATION;
+  player.hitFlashTimer = 0.15;
+  reportDamageTaken(actualDamage);
+  addTrauma(0.35);
+  playHurt();
+  haptics.hit();
+  spawnDamageNumber(player.position, actualDamage, 'player');
+  uiState.damageFlash++; // drives the HUD red vignette
+
+  // Knock the player back slightly based on bullet velocity
+  if (bullet.velocity) {
+    if (!player.knockback) player.knockback = new THREE.Vector3();
+    _tempVec.copy(bullet.velocity).normalize().multiplyScalar(6);
+    player.knockback.add(_tempVec);
+  }
+
+  // Clear projectile
+  despawn(bullet, scene);
+
+  if (player.health.current <= 0) {
+    const allPlayers = Array.from(world.with('isPlayer', 'health'));
+    const anyAlive = allPlayers.some((p: any) => p.health.current > 0);
+    if (!anyAlive) {
+      triggerGameOver();
+    }
+  }
+}
+
 // --- HELPER: Damage Application (with array mutation awareness) ---
 function applyDamage(
   enemy: any,
@@ -187,8 +265,20 @@ function applyDamage(
   knockback: number,
   scene: THREE.Scene,
   variant: 'enemy' | 'aoe' = 'enemy',
+  weaponId?: string,
+  bulletColor?: number,
 ) {
   if (!enemy.health) return;
+
+  if (enemy.isBoss) {
+    // Boss takes damage and its health bar decreases, but it is unkillable
+    // (health clamped to minimum of 1) and immune to knockback/stun.
+    enemy.health.current = Math.max(1, enemy.health.current - dmg);
+    spawnDamageNumber(enemy.position, dmg, variant);
+    enemy.hitFlashTimer = 0.1;
+    return;
+  }
+
   enemy.health.current -= dmg;
   spawnDamageNumber(enemy.position, dmg, variant);
 
@@ -203,7 +293,7 @@ function applyDamage(
   if (enemy.health.current <= 0) {
     reportKill();
     uiState.kills++;
-    spawnExplosionFX(enemy.position, scene);
+    spawnImpactFX(enemy.position, scene, weaponId, bulletColor, 6);
     spawnXP(scene, enemy.position.x, enemy.position.z, enemy.xpValue || 10);
 
     // === CHEST DROPS BY ENEMY TYPE ===
@@ -247,33 +337,52 @@ function applyDamage(
 
 // --- FX (Shared geometry) ---
 const explosionGeo = new THREE.BoxGeometry(0.12, 0.12, 0.12);
-const explosionMat = new THREE.MeshBasicMaterial({ color: 0xff0055 });
 
-// Pre-allocate particle velocity vectors
-const _particleVels: THREE.Vector3[] = [];
-for (let i = 0; i < 5; i++) {
-  _particleVels.push(new THREE.Vector3());
-}
+function spawnImpactFX(
+  pos: THREE.Vector3,
+  scene: THREE.Scene,
+  weaponId?: string,
+  color?: number,
+  count: number = 5,
+) {
+  const finalColor = color ?? (weaponId ? WEAPONS[weaponId]?.color : 0xff0055) ?? 0xff0055;
+  const mat = getGlowMaterial(finalColor);
 
-function spawnExplosionFX(pos: THREE.Vector3, scene: THREE.Scene) {
-  const particleCount = 5;
-  for (let i = 0; i < particleCount; i++) {
-    // Reuse pre-allocated vector
-    _particleVels[i].set(
-      (Math.random() - 0.5) * 15,
-      Math.random() * 8 + 2,
-      (Math.random() - 0.5) * 15,
-    );
-    const mesh = new THREE.Mesh(explosionGeo, explosionMat);
+  for (let i = 0; i < count; i++) {
+    // Determine scale & shape based on weapon
+    let particleScale = 1.0;
+    if (weaponId === 'monowire_lash' || weaponId === 'nanofiber_guillotine') {
+      particleScale = 1.4;
+    } else if (weaponId === 'smart_rail_needles' || weaponId === 'magnetic_railstorm') {
+      particleScale = 0.55;
+    } else if (weaponId === 'cryo_foam_disperser' || weaponId === 'thermal_collapse') {
+      particleScale = 1.35;
+    }
+
+    const mesh = new THREE.Mesh(explosionGeo, mat);
     mesh.position.copy(pos);
+
+    if (weaponId === 'monowire_lash' || weaponId === 'nanofiber_guillotine') {
+      mesh.scale.set(0.03 * particleScale, 0.03 * particleScale, 0.3 * particleScale);
+    } else {
+      mesh.scale.setScalar(particleScale);
+    }
+
     scene.add(mesh);
+
+    const vel = new THREE.Vector3(
+      (Math.random() - 0.5) * (weaponId ? 18 : 15),
+      Math.random() * 8 + 2,
+      (Math.random() - 0.5) * (weaponId ? 18 : 15),
+    );
+
     world.add({
       isParticle: true,
       position: mesh.position,
-      velocity: _particleVels[i].clone(), // Must clone for entity
+      velocity: vel,
       transform: mesh,
       lifeTimer: 0,
-      maxLife: 0.3 + Math.random() * 0.15,
+      maxLife: 0.22 + Math.random() * 0.15,
       // Randomized tumble so each shard spins differently
       spinX: (Math.random() - 0.5) * 20,
       spinZ: (Math.random() - 0.5) * 14,

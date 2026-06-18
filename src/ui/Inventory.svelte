@@ -189,9 +189,10 @@
   @media (max-width: 600px) {
     #inventory-layer {
       top: auto;
-      bottom: 2rem;
-      left: 1rem;
-      right: 1rem;
+      bottom: 20px;
+      left: 50%;
+      right: auto;
+      transform: translateX(-50%);
     }
 
     .slots {

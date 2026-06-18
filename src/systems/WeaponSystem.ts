@@ -8,62 +8,22 @@ import { createKinematicBody, isRapierInitialized } from '../core/RapierWorld';
 import { uiState } from '../core/UIState.svelte.ts';
 import { broadcastShoot } from '../core/network';
 import { WEAPONS, getWeaponStatsAtLevel } from '../core/WeaponRegistry';
+import { createCustomProjectileMesh, updateProjectileVisual } from '../core/projectileVisuals';
 
-// ... (muzzleGeo/boltGeo etc unchanged)
 const muzzleGeo = new THREE.SphereGeometry(0.4, 8, 8);
 const muzzleMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 });
 
-const boltGeo = new THREE.CylinderGeometry(0.5, 0.5, 1, 6);
-boltGeo.rotateX(Math.PI / 2);
-
-const shardGeo = new THREE.TetrahedronGeometry(0.5);
-const orbGeo = new THREE.IcosahedronGeometry(0.5, 1);
-
 const PROJECTILE_RADIUS = 0.3;
-// ... (materials cache remains)
-const bulletMatCache = new Map<number, THREE.MeshStandardMaterial>();
-const wireframeCache = new Map<number, THREE.MeshBasicMaterial>();
-
-function getBulletMaterial(color: number) {
-  if (!bulletMatCache.has(color)) {
-    const mat = new THREE.MeshStandardMaterial({
-      color: color,
-      emissive: color,
-      emissiveIntensity: 2.0,
-      roughness: 0.0,
-      metalness: 0.0,
-    });
-    bulletMatCache.set(color, mat);
-  }
-  return bulletMatCache.get(color)!;
-}
-
-function getWireframeMaterial(color: number) {
-  if (!wireframeCache.has(color)) {
-    const mat = new THREE.MeshBasicMaterial({
-      color: color,
-      wireframe: true,
-      transparent: true,
-      opacity: 0.5,
-    });
-    wireframeCache.set(color, mat);
-  }
-  return wireframeCache.get(color)!;
-}
 
 // 3. Reusable Math Objects (No "new" keyword in loops!)
 const _shootDir = new THREE.Vector3();
 const _posVec = new THREE.Vector3();
 const _axisY = new THREE.Vector3(0, 1, 0);
-const _axisZ = new THREE.Vector3(0, 0, 1);
 
 export function WeaponSystem(dt: number, scene: THREE.Scene) {
-  // 1. SPIN ANIMATION
+  // 1. PROJECTILE VISUALS & ANIMATIONS
   for (const p of world.with('isProjectile', 'transform', 'projectile')) {
-    if (p.projectile && p.projectile.spinSpeed && p.transform) {
-      p.transform.rotation.z += p.projectile.spinSpeed * dt;
-      p.transform.rotation.x += p.projectile.spinSpeed * 0.5 * dt;
-    }
+    updateProjectileVisual(p, dt, scene);
   }
 
   // 2. PLAYER WEAPONS
@@ -212,12 +172,10 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
       weaponStats.bulletWidth || 0.3,
       weaponStats.bulletLength || 1.0,
       finalSpeed * 0.3, // Use speed as orbit speed (scaled down)
+      weaponEntity.weaponId, // Pass the weapon ID
     );
     return; // Don't spawn regular projectiles
   }
-
-  // Reuse Material
-  const material = getBulletMaterial(weaponStats.bulletColor);
 
   for (let i = 0; i < count; i++) {
     // Clone direction locally so we don't mess up the global _shootDir
@@ -229,37 +187,14 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
       dir.applyAxisAngle(_axisY, THREE.MathUtils.degToRad(angleDeg));
     }
 
-    let mesh: THREE.Object3D;
+    const mesh = createCustomProjectileMesh(
+      weaponEntity.weaponId || '',
+      weaponStats.bulletColor,
+      weaponStats.bulletWidth || 0.2,
+      weaponStats.bulletLength || 1.0,
+      dir,
+    );
     let spin = 0;
-
-    if (style === 'ORB') {
-      const group = new THREE.Group();
-      const w = weaponStats.bulletWidth || 0.5;
-
-      const core = new THREE.Mesh(orbGeo, material);
-      core.scale.setScalar(w);
-      group.add(core);
-
-      const shell = new THREE.Mesh(orbGeo, getWireframeMaterial(weaponStats.bulletColor));
-      shell.scale.setScalar(w * 1.5);
-      shell.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
-      group.add(shell);
-
-      mesh = group;
-      spin = 5.0;
-    } else if (style === 'SHARD') {
-      mesh = new THREE.Mesh(shardGeo, material);
-      const w = weaponStats.bulletWidth || 0.3;
-      mesh.scale.setScalar(w);
-      mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
-    } else {
-      // BOLT
-      mesh = new THREE.Mesh(boltGeo, material);
-      const w = weaponStats.bulletWidth || 0.2;
-      const l = weaponStats.bulletLength || 1.0;
-      mesh.scale.set(w, w, l);
-      mesh.quaternion.setFromUnitVectors(_axisZ, dir);
-    }
 
     // Set Position: Owner + (Dir * 0.6)
     // Safe use of _posVec since we don't need it after this line for this iteration
@@ -274,6 +209,7 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
 
     const projectile = world.add({
       isProjectile: true,
+      weaponId: weaponEntity.weaponId,
       position: mesh.position,
       velocity: velocity,
       lifeTimer: 0,
@@ -311,7 +247,7 @@ export function fireWeaponRemote(
   scene: THREE.Scene,
   owner: any,
   weaponId: string,
-  dirVec: { x: number; z: number }
+  dirVec: { x: number; z: number },
 ) {
   const stats = WEAPONS[weaponId];
   if (!stats) return;
@@ -334,7 +270,7 @@ export function fireWeaponRemote(
       knockback: stats.baseKnockback,
       bulletPierce: tierStats.pierce,
       bulletExplodeRadius: stats.explodeRadius,
-    }
+    },
   };
 
   const dir = new THREE.Vector3(dirVec.x, 0, dirVec.z).normalize();
@@ -351,7 +287,7 @@ export function fireWeaponRemote(
   _posVec.copy(dir).multiplyScalar(0.8).add(owner.position);
   flashMesh.position.copy(_posVec);
   scene.add(flashMesh);
-  
+
   world.add({
     isParticle: true,
     position: flashMesh.position,
@@ -363,8 +299,6 @@ export function fireWeaponRemote(
 
   const count = mockWeapon.weapon.bulletCount || 1;
   const spread = mockWeapon.weapon.bulletSpread || 0;
-  const style = mockWeapon.weapon.visualStyle || 'BOLT';
-  const material = getBulletMaterial(mockWeapon.weapon.bulletColor);
 
   for (let i = 0; i < count; i++) {
     const pDir = dir.clone();
@@ -373,33 +307,13 @@ export function fireWeaponRemote(
       pDir.applyAxisAngle(_axisY, THREE.MathUtils.degToRad(angleDeg));
     }
 
-    let mesh: THREE.Object3D;
-    let spin = 0;
-
-    if (style === 'ORB') {
-      const group = new THREE.Group();
-      const w = mockWeapon.weapon.bulletWidth || 0.5;
-      const core = new THREE.Mesh(orbGeo, material);
-      core.scale.setScalar(w);
-      group.add(core);
-      const shell = new THREE.Mesh(orbGeo, getWireframeMaterial(mockWeapon.weapon.bulletColor));
-      shell.scale.setScalar(w * 1.5);
-      shell.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
-      group.add(shell);
-      mesh = group;
-      spin = 5.0;
-    } else if (style === 'SHARD') {
-      mesh = new THREE.Mesh(shardGeo, material);
-      const w = mockWeapon.weapon.bulletWidth || 0.3;
-      mesh.scale.setScalar(w);
-      mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
-    } else {
-      mesh = new THREE.Mesh(boltGeo, material);
-      const w = mockWeapon.weapon.bulletWidth || 0.2;
-      const l = mockWeapon.weapon.bulletLength || 1.0;
-      mesh.scale.set(w, w, l);
-      mesh.quaternion.setFromUnitVectors(_axisZ, pDir);
-    }
+    const mesh = createCustomProjectileMesh(
+      weaponId,
+      mockWeapon.weapon.bulletColor,
+      mockWeapon.weapon.bulletWidth || 0.2,
+      mockWeapon.weapon.bulletLength || 1.0,
+      pDir,
+    );
 
     _posVec.copy(pDir).multiplyScalar(0.6).add(owner.position);
     mesh.position.copy(_posVec);
@@ -410,6 +324,7 @@ export function fireWeaponRemote(
 
     world.add({
       isProjectile: true,
+      weaponId: weaponId,
       position: mesh.position,
       velocity: velocity,
       lifeTimer: 0,
@@ -421,9 +336,8 @@ export function fireWeaponRemote(
         explodeRadius: mockWeapon.weapon.bulletExplodeRadius || 0,
         knockback: mockWeapon.weapon.knockback || 5,
         hitList: [],
-        spinSpeed: spin,
+        spinSpeed: 0,
       },
     });
   }
 }
-
