@@ -312,9 +312,9 @@ function levelUpWeapon(player: any, weaponId: string) {
         // If this is an orbital weapon (Drone Halo, Photon Blades), we MUST clear existing orbitals.
         // WeaponSystem will automatically spawn new ones with updated stats in the next frame.
         if (def.category === 'orbit') {
-          // Mark existing orbitals for death
+          // Mark existing orbitals of this specific weapon type for death
           for (const orbital of world.with('isOrbital', 'orbitalData')) {
-            if (orbital.orbitalData?.ownerId === player.id) {
+            if (orbital.orbitalData?.ownerId === player.id && orbital.weaponId === weaponId) {
               // Setting lifeTimer to -1 forces removal by LifecycleSystem
               orbital.lifeTimer = -1;
             }

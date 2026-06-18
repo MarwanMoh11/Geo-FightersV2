@@ -54,9 +54,11 @@ export function RenderSystem(dt: number) {
       // 3b. INVULNERABILITY BLINK & UPGRADE GLOW & DEATH (player i-frames / menus / deactivated look)
       if (entity.isPlayer) {
         const isDead = entity.health && entity.health.current <= 0;
-        const isUpgrading = entity.isUpgrading || (entity.isLocalPlayer && (uiState.showUpgrade || uiState.gameState === 'PAUSED'));
+        const isUpgrading =
+          entity.isUpgrading ||
+          (entity.isLocalPlayer && (uiState.showUpgrade || uiState.gameState === 'PAUSED'));
         const invulnerable = (entity.invulnTimer ?? 0) > 0 || isUpgrading || isDead;
-        
+
         let blinkOpacity = 1.0;
         if (isDead) {
           // Deactivated/spectator look (dark grey and semi-transparent)
@@ -78,7 +80,7 @@ export function RenderSystem(dt: number) {
           entity.spriteRight.material.color.setHex(0xffffff);
           entity.spriteLeft.material.color.setHex(0xffffff);
         }
-        
+
         entity.spriteRight.material.opacity = blinkOpacity;
         entity.spriteLeft.material.opacity = blinkOpacity;
       }

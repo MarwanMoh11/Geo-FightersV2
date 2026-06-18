@@ -47,6 +47,16 @@
     <div class="damage-vignette" class:low={lowHealth} class:flash={uiState.damageFlash > 0}></div>
   {/key}
 
+  <!-- Top Edge: XP Bar -->
+  <div class="xp-container">
+    <div class="xp-fill" class:level-flash={levelFlash} style="width: {xpPercent}%"></div>
+    <div class="xp-label" class:level-flash={levelFlash}>
+      {levelFlash
+        ? 'LEVEL UP!'
+        : `SYSTEM LVL ${uiState.level.toString().padStart(2, '0')} • SYNC ${Math.floor(xpPercent)}%`}
+    </div>
+  </div>
+
   <!-- Top Center: Boss Health -->
   <div class="top-center">
     {#if uiState.bossHealth.active}
@@ -62,21 +72,26 @@
     {/if}
   </div>
 
-  <!-- Top Left: Minimap (Radar) and Timer -->
+  <!-- Top Left: Minimap (Radar) -->
   <div id="minimap-container" class="glass">
     <canvas id="minimap-canvas" width="150" height="150"></canvas>
     <div id="minimap-label">RADAR</div>
   </div>
 
+  <!-- Center Timer (Vertically aligned with minimap) -->
   <div class="timer-container glass top-left-timer">
     <span class="timer-text">{timerText}</span>
   </div>
 
-  <!-- Top Right: Score and Levels -->
-  <div class="top-right">
+  <!-- Top Right: Pause button container -->
+  <div class="top-right-actions">
     <button class="pause-btn glass" onclick={pauseGame} aria-label="Pause Game" title="Pause (ESC)">
       ⏸
     </button>
+  </div>
+
+  <!-- Stats Panel container -->
+  <div class="stats-panel-container">
     <div class="stat-group glass">
       <div class="stat-item">
         <span class="label">DATA</span>
@@ -87,15 +102,10 @@
         <span class="label">KILLS</span>
         <span class="value gold">{uiState.kills}</span>
       </div>
-      <div class="divider"></div>
-      <div class="stat-item">
-        <span class="label">LVL</span>
-        <span class="value pink">{uiState.level.toString().padStart(2, '0')}</span>
-      </div>
     </div>
   </div>
 
-  <!-- Bottom: Health and XP -->
+  <!-- Bottom: Health and status panels -->
   <div class="bottom-container">
     <div class="status-panels">
       <!-- Health Panel -->
@@ -114,14 +124,6 @@
         </div>
       </div>
     </div>
-
-    <!-- XP Bar (Edge to Edge at bottom) -->
-    <div class="xp-container">
-      <div class="xp-fill" class:level-flash={levelFlash} style="width: {xpPercent}%"></div>
-      <div class="xp-label" class:level-flash={levelFlash}>
-        {levelFlash ? 'LEVEL UP!' : `NEURAL SYNC: ${Math.floor(xpPercent)}%`}
-      </div>
-    </div>
   </div>
 </div>
 
@@ -134,7 +136,7 @@
     flex-direction: column;
     justify-content: space-between;
     padding: 1.5rem;
-    z-index: 50;
+    z-index: 120;
     font-family: var(--font-mono);
   }
 
@@ -195,7 +197,7 @@
   /* Top Bar */
   .top-center {
     position: absolute;
-    top: 1.5rem;
+    top: 4.5rem; /* adjusted down to prevent overlapping with XP label */
     left: 50%;
     transform: translateX(-50%);
     display: flex;
@@ -212,13 +214,15 @@
 
   .top-left-timer {
     position: absolute;
-    top: 1.5rem;
-    left: 195px; /* offset next to minimap */
+    top: 32px;
+    left: 50%;
+    transform: translateX(-50%);
   }
 
   :global(body.inverted-controls) .top-left-timer {
-    left: auto;
-    right: 195px;
+    left: 50%;
+    transform: translateX(-50%);
+    right: auto;
   }
 
   .timer-text {
@@ -264,20 +268,24 @@
     transition: width 0.3s ease;
   }
 
-  /* Top Right */
-  .top-right {
+  /* Top Right Action (Pause Button) */
+  .top-right-actions {
     position: absolute;
-    top: 1.5rem;
-    right: 1.5rem;
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
+    top: 15px;
+    right: 15px;
+    z-index: 130;
+    pointer-events: none;
+  }
+
+  :global(body.inverted-controls) .top-right-actions {
+    right: auto;
+    left: 15px;
   }
 
   .pause-btn {
-    width: 36px;
-    height: 36px;
-    border-radius: 8px;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -285,8 +293,9 @@
     border: 1px solid rgba(255, 255, 255, 0.1);
     color: var(--color-text-main);
     cursor: pointer;
-    font-size: 1rem;
+    font-size: 1.1rem;
     transition: all 0.2s ease;
+    pointer-events: auto !important;
   }
 
   .pause-btn:hover {
@@ -298,12 +307,27 @@
     transform: scale(0.95);
   }
 
+  /* Stats Panel Container */
+  .stats-panel-container {
+    position: absolute;
+    top: 15px;
+    right: 75px; /* sit next to pause button on desktop */
+    z-index: 120;
+    pointer-events: none;
+  }
+
+  :global(body.inverted-controls) .stats-panel-container {
+    right: auto;
+    left: 75px;
+  }
+
   .stat-group {
     display: flex;
     align-items: center;
     gap: 1rem;
     padding: 0.75rem 1.25rem;
     border-radius: 12px;
+    pointer-events: auto !important;
   }
 
   .stat-item {
@@ -335,12 +359,14 @@
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
+    pointer-events: none;
   }
 
   .health-panel {
     width: min(100%, 300px);
     padding: 1rem;
     border-radius: 16px;
+    pointer-events: auto !important;
   }
 
   .panel-header {
@@ -411,14 +437,16 @@
     background: rgba(255, 255, 255, 0.1);
   }
 
-  /* XP Bar */
+  /* XP Bar (Edge to Edge at top) */
   .xp-container {
     position: fixed;
-    bottom: 0;
+    top: 0;
     left: 0;
     width: 100%;
-    height: 4px;
+    height: 6px;
     background: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    pointer-events: none;
   }
 
   .xp-fill {
@@ -435,13 +463,16 @@
 
   .xp-label {
     position: absolute;
-    bottom: 8px;
-    left: 1.5rem;
-    font-size: 0.5rem;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.6rem;
     letter-spacing: 0.2em;
     color: var(--color-text-dim);
     text-transform: uppercase;
     transition: color 0.2s ease;
+    white-space: nowrap;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
   }
 
   .xp-label.level-flash {
@@ -456,17 +487,56 @@
       padding: 1rem;
     }
 
-    .top-right {
-      top: 1rem;
-      right: 1rem;
+    .top-right-actions {
+      top: 15px;
+      right: 15px;
+    }
+
+    .pause-btn {
+      width: 48px;
+      height: 48px;
+      font-size: 1.25rem;
+      border-radius: 12px;
+    }
+
+    .stats-panel-container {
+      top: 75px; /* sit vertically below pause button on mobile */
+      right: 15px;
+    }
+
+    :global(body.inverted-controls) .stats-panel-container {
+      right: auto;
+      left: 15px;
     }
 
     .stat-group {
-      padding: 0.5rem 0.75rem;
+      padding: 0.4rem 0.6rem;
+      gap: 0.5rem;
+      border-radius: 8px;
+    }
+
+    .stat-item .value {
+      font-size: 0.8rem;
+    }
+
+    .stat-item .label {
+      font-size: 0.45rem;
     }
 
     .health-panel {
-      width: 100%;
+      position: fixed;
+      bottom: 110px; /* sit above centered inventory */
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(90vw, 220px);
+      padding: 0.6rem 0.8rem;
+      border-radius: 12px;
+    }
+
+    :global(body.inverted-controls) .health-panel {
+      left: 50%;
+      transform: translateX(-50%);
+      right: auto;
     }
 
     .timer-container {
@@ -478,13 +548,15 @@
     }
 
     .top-left-timer {
-      top: 10px;
-      left: 125px; /* offset next to mobile minimap */
+      top: 32px;
+      left: 50%;
+      transform: translateX(-50%);
     }
 
     :global(body.inverted-controls) .top-left-timer {
-      left: auto;
-      right: 125px;
+      left: 50%;
+      transform: translateX(-50%);
+      right: auto;
     }
   }
 </style>

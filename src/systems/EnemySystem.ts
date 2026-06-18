@@ -32,7 +32,7 @@ const MAX_SEPARATION_CHECKS = 10;
 
 export function EnemySystem(dt: number, scene: THREE.Scene) {
   const players = Array.from(world.with('isPlayer', 'position')).filter(
-    (p: any) => !p.health || p.health.current > 0
+    (p: any) => !p.health || p.health.current > 0,
   );
   if (players.length === 0) return;
 
@@ -42,6 +42,9 @@ export function EnemySystem(dt: number, scene: THREE.Scene) {
 
   for (let i = 0; i < enemyCount; i++) {
     const enemy = enemies[i];
+
+    // Exclude the boss from normal enemy steering, separation, and screen-bound despawning
+    if (enemy.isBoss) continue;
 
     // Tick confusion timer
     if (enemy.confusedTimer && enemy.confusedTimer > 0) {

@@ -80,6 +80,7 @@
     background: rgba(15, 0, 5, 0.8);
     backdrop-filter: blur(15px);
     transition: opacity 0.25s ease;
+    pointer-events: auto;
   }
 
   #game-over-modal.victory {

@@ -47,7 +47,8 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   // Mini-bosses
   [EnemyType.HYDRA]: { hp: 800, speed: 0.4, size: 6.0, color: 0xffffff, xp: 150 },
   [EnemyType.OVERSEER]: { hp: 2000, speed: 0.25, size: 8.0, color: 0xffffff, xp: 300 },
-};export function spawnPlayer(
+};
+export function spawnPlayer(
   scene: THREE.Scene,
   isLocal: boolean = true,
   connectionId: string = 'local',

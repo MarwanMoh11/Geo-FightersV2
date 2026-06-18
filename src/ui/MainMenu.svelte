@@ -54,7 +54,7 @@
           <span class="btn-subtext">START SOLO MISSION</span>
         </button>
 
-        <button class="action" onclick={() => showMpOptions = true}>
+        <button class="action" onclick={() => (showMpOptions = true)}>
           <span class="btn-text">MULTIPLAYER CO-OP</span>
           <span class="btn-subtext">CONNECT PROTOCOL</span>
         </button>
@@ -350,7 +350,7 @@
     margin: 0;
     font-family: var(--font-heading);
     font-weight: 700;
-    font-size: 1.0rem;
+    font-size: 1rem;
     letter-spacing: 0.1em;
     color: var(--color-text-main);
   }
@@ -373,7 +373,8 @@
   }
 
   @keyframes beacon-pulse {
-    0%, 100% {
+    0%,
+    100% {
       opacity: 0.9;
       box-shadow: 0 0 20px rgba(0, 229, 255, 0.2);
     }

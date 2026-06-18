@@ -2,6 +2,7 @@ import { dlog } from '../core/debug';
 import { world } from '../core/world';
 import * as THREE from 'three';
 import { createKinematicBody, isRapierInitialized } from '../core/RapierWorld';
+import { createCustomProjectileMesh } from '../core/projectileVisuals';
 
 const ORBIT_RADIUS = 3.5;
 // ... (rest of constants and OrbitalSystem unchanged)
@@ -24,14 +25,27 @@ export function OrbitalSystem(dt: number) {
     const entity = orbitals[i];
     if (!entity.orbitalData || entity.orbitalData.ownerId !== player.id) continue;
 
-    // Calculate position based on index (evenly spaced)
-    const totalOrbitals = orbitals.filter((o) => o.orbitalData?.ownerId === player.id).length;
-    const angleOffset = (i / totalOrbitals) * Math.PI * 2;
-    const angle = globalOrbitAngle + angleOffset;
+    // Find other orbitals of the same weapon type to space them evenly
+    const sameWeaponOrbitals = orbitals.filter(
+      (o) => o.orbitalData?.ownerId === player.id && o.weaponId === entity.weaponId,
+    );
+    const idx = sameWeaponOrbitals.indexOf(entity);
+    const total = sameWeaponOrbitals.length;
+
+    if (total === 0 || idx === -1) continue;
+
+    const angleOffset = (idx / total) * Math.PI * 2;
+
+    // Customize radius and rotation based on weapon type
+    const isBlade = entity.weaponId === 'photon_blades' || entity.weaponId === 'photon_curtain';
+    const orbitRadius = isBlade ? 5.0 : 3.5;
+    const direction = isBlade ? -1.0 : 1.0;
+    const speedMult = isBlade ? 0.85 : 1.0;
+    const angle = globalOrbitAngle * direction * speedMult + angleOffset;
 
     // Position around player
-    entity.position.x = player.position.x + Math.cos(angle) * ORBIT_RADIUS;
-    entity.position.z = player.position.z + Math.sin(angle) * ORBIT_RADIUS;
+    entity.position.x = player.position.x + Math.cos(angle) * orbitRadius;
+    entity.position.z = player.position.z + Math.sin(angle) * orbitRadius;
     entity.position.y = 0.8;
 
     // Rotate mesh to face tangent
@@ -50,14 +64,15 @@ export function spawnOrbitalProjectile(
   count: number,
   damage: number,
   color: number,
-  visualStyle: string,
+  _visualStyle: string,
   bulletWidth: number,
   bulletLength: number,
   _orbitSpeed: number,
+  weaponId: string = '',
 ) {
-  // Count existing orbitals for this owner
+  // Count existing orbitals for this owner and weapon type
   const existing = Array.from(world.with('isOrbital', 'orbitalData')).filter(
-    (e) => e.orbitalData?.ownerId === owner.id,
+    (e) => e.orbitalData?.ownerId === owner.id && e.weaponId === weaponId,
   );
 
   const toSpawn = count - existing.length;
@@ -65,26 +80,12 @@ export function spawnOrbitalProjectile(
 
   dlog(`[Orbital] Spawning ${toSpawn} new orbitals for count=${count}`);
 
-  // Create material
-  const material = new THREE.MeshStandardMaterial({
-    color: color,
-    emissive: color,
-    emissiveIntensity: 2.0,
-    roughness: 0,
-    metalness: 0,
-  });
-
   for (let i = 0; i < toSpawn; i++) {
-    let mesh: THREE.Object3D;
+    // Generate tangent facing direction for initial mesh orientation
+    const angle = (i / count) * Math.PI * 2;
+    const tangentDir = new THREE.Vector3(-Math.sin(angle), 0, Math.cos(angle));
 
-    if (visualStyle === 'ORB') {
-      const geo = new THREE.IcosahedronGeometry(bulletWidth, 1);
-      mesh = new THREE.Mesh(geo, material);
-    } else {
-      // BOLT style - elongated blade
-      const geo = new THREE.BoxGeometry(bulletWidth, bulletWidth * 0.5, bulletLength);
-      mesh = new THREE.Mesh(geo, material);
-    }
+    const mesh = createCustomProjectileMesh(weaponId, color, bulletWidth, bulletLength, tangentDir);
 
     // Initial position at player
     mesh.position.copy(owner.position);
@@ -96,6 +97,7 @@ export function spawnOrbitalProjectile(
     const projectile = world.add({
       isOrbital: true,
       isProjectile: true,
+      weaponId: weaponId,
       position: mesh.position,
       velocity: new THREE.Vector3(0, 0, 0),
       transform: mesh,

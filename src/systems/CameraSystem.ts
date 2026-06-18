@@ -25,7 +25,9 @@ export function CameraSystem(dt: number, camera: THREE.Camera) {
   const player = world.with('isLocalPlayer', 'transform').first;
   if (!player || !player.transform) return;
 
-  const isMobile = typeof window !== 'undefined' && (window.innerWidth < 768 || ('ontouchstart' in window) || navigator.maxTouchPoints > 0);
+  const isMobile =
+    typeof window !== 'undefined' &&
+    (window.innerWidth < 768 || 'ontouchstart' in window || navigator.maxTouchPoints > 0);
   const cameraHeight = isMobile ? 65 : BASE_CAMERA_HEIGHT;
   const cameraDistance = isMobile ? 26 : BASE_CAMERA_DISTANCE;
 

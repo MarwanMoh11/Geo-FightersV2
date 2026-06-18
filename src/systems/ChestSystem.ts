@@ -162,6 +162,7 @@ function performEvolution(
   if (!slots || weaponSlotIndex >= slots.length) return;
 
   const oldWeaponId = slots[weaponSlotIndex].weaponId;
+  const oldDef = WEAPONS[oldWeaponId];
   const evolvedDef = WEAPONS[evolvedWeaponId];
   if (!evolvedDef) return;
 
@@ -176,9 +177,12 @@ function performEvolution(
 
   for (const entity of world.with('isWeapon', 'ownerId', 'weapon')) {
     if (entity.ownerId === player.id && entity.weapon) {
-      // Find by matching old weapon color (crude but works)
-      const oldDef = WEAPONS[oldWeaponId];
-      if (oldDef && entity.weapon.bulletColor === oldDef.color) {
+      // Find by matching old weapon ID or fallback to color
+      if (
+        entity.weaponId === oldWeaponId ||
+        (!entity.weaponId && oldDef && entity.weapon.bulletColor === oldDef.color)
+      ) {
+        entity.weaponId = evolvedWeaponId;
         // Transform weapon stats
         entity.weapon.fireRate = evolvedStats.cooldown;
         entity.weapon.damage = evolvedStats.damage;
@@ -193,6 +197,15 @@ function performEvolution(
         entity.weapon.knockback = evolvedDef.baseKnockback;
         entity.weapon.bulletPierce = evolvedStats.pierce;
         entity.weapon.bulletExplodeRadius = evolvedDef.explodeRadius;
+
+        // Clear old orbitals if evolving an orbital weapon
+        if (oldDef && oldDef.category === 'orbit') {
+          for (const orbital of world.with('isOrbital', 'orbitalData')) {
+            if (orbital.orbitalData?.ownerId === player.id && orbital.weaponId === oldWeaponId) {
+              orbital.lifeTimer = -1;
+            }
+          }
+        }
         break;
       }
     }
