@@ -16,8 +16,7 @@ crescentGeo.rotateX(Math.PI / 2); // lie flat
 const hexGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.05, 6);
 hexGeo.rotateX(Math.PI / 2); // lie flat
 
-const sparkGeo = new THREE.BoxGeometry(0.08, 0.08, 0.08);
-const frostGeo = new THREE.BoxGeometry(0.12, 0.12, 0.02);
+
 
 // --- MATERIAL CACHES ---
 const glowMaterials = new Map<number, THREE.MeshStandardMaterial>();
