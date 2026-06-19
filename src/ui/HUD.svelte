@@ -148,9 +148,6 @@
   .cyan {
     color: var(--color-primary);
   }
-  .pink {
-    color: var(--color-secondary);
-  }
   .gold {
     color: var(--color-gold);
   }

@@ -36,6 +36,7 @@ export type Entity = {
   enemyType?: string; // 'virus' | 'glitch' | 'firewall'
   isBoss?: boolean;
   spawnTimer?: number;
+  chargeTimer?: number;
   confusedTimer?: number; // Signal Hijacker: enemy attacks other enemies when > 0
 
   // Orbital weapon data
@@ -131,6 +132,8 @@ export type Entity = {
   spinZ?: number;
   // Expanding ring FX: target scale multiplier reached at end of life
   ringGrow?: number;
+  isInstancedParticle?: boolean;
+  particleColor?: number;
 
   // Boss Shockwave Logic
   isBossShockwave?: boolean;

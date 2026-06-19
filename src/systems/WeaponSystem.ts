@@ -11,7 +11,20 @@ import { WEAPONS, getWeaponStatsAtLevel } from '../core/WeaponRegistry';
 import { createCustomProjectileMesh, updateProjectileVisual } from '../core/projectileVisuals';
 
 const muzzleGeo = new THREE.SphereGeometry(0.4, 8, 8);
-const muzzleMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 });
+const muzzleMaterials = new Map<number, THREE.MeshBasicMaterial>();
+
+function getMuzzleMaterial(color: number): THREE.MeshBasicMaterial {
+  let mat = muzzleMaterials.get(color);
+  if (!mat) {
+    mat = new THREE.MeshBasicMaterial({
+      color: color,
+      transparent: true,
+      opacity: 0.9,
+    });
+    muzzleMaterials.set(color, mat);
+  }
+  return mat;
+}
 
 const PROJECTILE_RADIUS = 0.3;
 
@@ -130,8 +143,7 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
   playShoot();
 
   // Muzzle Flash
-  const flashMesh = new THREE.Mesh(muzzleGeo, muzzleMat.clone());
-  (flashMesh.material as THREE.MeshBasicMaterial).color.setHex(weaponStats.bulletColor);
+  const flashMesh = new THREE.Mesh(muzzleGeo, getMuzzleMaterial(weaponStats.bulletColor));
 
   // Position: Owner + (Dir * 0.8)
   _posVec.copy(_shootDir).multiplyScalar(0.8).add(owner.position);
@@ -282,8 +294,7 @@ export function fireWeaponRemote(
   addTrauma(isHeavy ? 0.25 : 0.05);
   playShoot();
 
-  const flashMesh = new THREE.Mesh(muzzleGeo, muzzleMat.clone());
-  (flashMesh.material as THREE.MeshBasicMaterial).color.setHex(mockWeapon.weapon.bulletColor);
+  const flashMesh = new THREE.Mesh(muzzleGeo, getMuzzleMaterial(mockWeapon.weapon.bulletColor));
   _posVec.copy(dir).multiplyScalar(0.8).add(owner.position);
   flashMesh.position.copy(_posVec);
   scene.add(flashMesh);

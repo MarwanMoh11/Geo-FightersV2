@@ -631,37 +631,30 @@ function spawnTrailParticle(
   pos: THREE.Vector3,
   color: number,
   weaponId: string,
-  scene: THREE.Scene,
+  _scene: THREE.Scene,
 ) {
-  let particleMesh: THREE.Object3D;
   let life = 0.15 + Math.random() * 0.1;
-  const mat = getGlowMaterial(color);
 
-  // Pick appropriate trail particle style based on weapon
+  // Create a lightweight dummy Object3D (not added to the scene)
+  const dummy = new THREE.Object3D();
+  dummy.position.copy(pos);
+
+  // Determine scale based on weapon style
+  let sizeScale = 0.6;
   if (weaponId === 'smart_rail_needles' || weaponId === 'magnetic_railstorm') {
-    // Green electrical sparks
-    particleMesh = new THREE.Mesh(sparkGeo, mat);
-    particleMesh.scale.setScalar(0.5);
+    sizeScale = 0.5;
   } else if (weaponId === 'cryo_foam_disperser' || weaponId === 'thermal_collapse') {
-    // Frost flake drift
-    particleMesh = new THREE.Mesh(frostGeo, getWireframeMaterial(color));
-    particleMesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+    sizeScale = 0.8;
   } else if (weaponId === 'overclock_engine' || weaponId === 'runaway_singularity') {
-    // Hot embers rising
-    particleMesh = new THREE.Mesh(sparkGeo, mat);
-    particleMesh.scale.setScalar(0.8);
+    sizeScale = 0.8;
   } else if (weaponId === 'memory_leak' || weaponId === 'heap_overflow') {
-    // Floating purple bits
-    particleMesh = new THREE.Mesh(boxGeo, getWireframeMaterial(color));
-    particleMesh.scale.setScalar(0.18);
-  } else {
-    // Normal fading sphere trail
-    particleMesh = new THREE.Mesh(sphereGeo, mat);
-    particleMesh.scale.setScalar(0.6);
+    sizeScale = 0.5;
   }
+  dummy.scale.setScalar(sizeScale);
 
-  particleMesh.position.copy(pos);
-  scene.add(particleMesh);
+  // Randomize rotation/tumble for visual variety
+  dummy.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+  dummy.updateMatrixWorld(true);
 
   // Compute slight eject velocity for particle realism
   const isElectric = weaponId === 'smart_rail_needles' || weaponId === 'magnetic_railstorm';
@@ -676,10 +669,12 @@ function spawnTrailParticle(
 
   world.add({
     isParticle: true,
-    position: particleMesh.position,
+    isInstancedParticle: true,
+    position: dummy.position,
     velocity: _sparkVel.clone(),
-    transform: particleMesh,
+    transform: dummy,
     lifeTimer: 0,
     maxLife: life,
+    particleColor: color,
   });
 }

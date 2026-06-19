@@ -23,6 +23,12 @@ import { dlog } from '../core/debug';
 
 // --- PRECOMPUTED CONSTANTS ---
 const MAGNET_RADIUS_SQ = 5.0 * 5.0;
+
+let xpInstancedMesh: THREE.InstancedMesh | null = null;
+const MAX_XP_INSTANCES = 500;
+const xpGeo = new THREE.BoxGeometry(1, 1, 1);
+const xpBaseMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
 const COLLECT_RADIUS_SQ = 1.5 * 1.5;
 const MAGNET_FORCE = 32.0;
 const FRICTION = 0.95;
@@ -166,6 +172,50 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
       xp.transform.position.z = xp.position.z;
       xp.transform.rotation.y += 3 * dt;
       xp.transform.rotation.x += 2 * dt;
+      xp.transform.updateMatrix();
+      xp.transform.updateMatrixWorld(true);
+    }
+  }
+
+  // G. RENDER INSTANCED XP
+  const xpEntities = Array.from(world.with('isXP', 'transform', 'particleColor'));
+  if (xpEntities.length > 0) {
+    if (!xpInstancedMesh) {
+      xpInstancedMesh = new THREE.InstancedMesh(xpGeo, xpBaseMat, MAX_XP_INSTANCES);
+      xpInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      xpInstancedMesh.frustumCulled = false;
+      
+      // Pre-allocate instanceColor array to maximum size
+      const defaultColor = new THREE.Color(0xffffff);
+      for (let i = 0; i < MAX_XP_INSTANCES; i++) {
+        xpInstancedMesh.setColorAt(i, defaultColor);
+      }
+      
+      scene.add(xpInstancedMesh);
+    }
+
+    const count = Math.min(xpEntities.length, MAX_XP_INSTANCES);
+    xpInstancedMesh.count = count;
+
+    const tempColor = new THREE.Color();
+    for (let i = 0; i < count; i++) {
+      const entity = xpEntities[i];
+      if (entity.transform && entity.particleColor !== undefined) {
+        xpInstancedMesh.setMatrixAt(i, entity.transform.matrixWorld);
+        tempColor.setHex(entity.particleColor);
+        xpInstancedMesh.setColorAt(i, tempColor);
+      }
+    }
+
+    xpInstancedMesh.instanceMatrix.needsUpdate = true;
+    if (xpInstancedMesh.instanceColor) {
+      xpInstancedMesh.instanceColor.needsUpdate = true;
+    }
+    xpInstancedMesh.visible = true;
+  } else {
+    if (xpInstancedMesh) {
+      xpInstancedMesh.count = 0;
+      xpInstancedMesh.visible = false;
     }
   }
 }

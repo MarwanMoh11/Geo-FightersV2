@@ -13,7 +13,6 @@ import { world } from '../core/world';
 import * as THREE from 'three';
 import { addTrauma } from './CameraSystem';
 import { WEAPONS } from '../core/WeaponRegistry';
-import { getGlowMaterial } from '../core/projectileVisuals';
 import { spawnXP } from '../core/factories';
 import { triggerGameOver } from './GameManager';
 import { playExplosion, playHurt } from '../core/audio';
@@ -335,18 +334,14 @@ function applyDamage(
   }
 }
 
-// --- FX (Shared geometry) ---
-const explosionGeo = new THREE.BoxGeometry(0.12, 0.12, 0.12);
-
 function spawnImpactFX(
   pos: THREE.Vector3,
-  scene: THREE.Scene,
+  _scene: THREE.Scene,
   weaponId?: string,
   color?: number,
   count: number = 5,
 ) {
   const finalColor = color ?? (weaponId ? WEAPONS[weaponId]?.color : 0xff0055) ?? 0xff0055;
-  const mat = getGlowMaterial(finalColor);
 
   for (let i = 0; i < count; i++) {
     // Determine scale & shape based on weapon
@@ -359,16 +354,15 @@ function spawnImpactFX(
       particleScale = 1.35;
     }
 
-    const mesh = new THREE.Mesh(explosionGeo, mat);
-    mesh.position.copy(pos);
+    const dummy = new THREE.Object3D();
+    dummy.position.copy(pos);
 
     if (weaponId === 'monowire_lash' || weaponId === 'nanofiber_guillotine') {
-      mesh.scale.set(0.03 * particleScale, 0.03 * particleScale, 0.3 * particleScale);
+      dummy.scale.set(0.03 * particleScale, 0.03 * particleScale, 0.3 * particleScale);
     } else {
-      mesh.scale.setScalar(particleScale);
+      dummy.scale.setScalar(particleScale);
     }
-
-    scene.add(mesh);
+    dummy.updateMatrixWorld(true);
 
     const vel = new THREE.Vector3(
       (Math.random() - 0.5) * (weaponId ? 18 : 15),
@@ -378,14 +372,16 @@ function spawnImpactFX(
 
     world.add({
       isParticle: true,
-      position: mesh.position,
+      isInstancedParticle: true,
+      position: dummy.position,
       velocity: vel,
-      transform: mesh,
+      transform: dummy,
       lifeTimer: 0,
       maxLife: 0.22 + Math.random() * 0.15,
       // Randomized tumble so each shard spins differently
       spinX: (Math.random() - 0.5) * 20,
       spinZ: (Math.random() - 0.5) * 14,
+      particleColor: finalColor,
     });
   }
 }

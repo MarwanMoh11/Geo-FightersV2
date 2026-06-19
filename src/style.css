@@ -1,4 +1,5 @@
 @import './ui/tokens.css';
+@import './components/debug.css';
 
 :root {
   font-family: var(--font-body);
@@ -1200,8 +1201,6 @@ select option {
     font-size: 10px;
   }
 }
-
-@import './components/debug.css';
 
 /* --- FLOATING DAMAGE NUMBERS (VS-style) --- */
 #damage-number-layer {

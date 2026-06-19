@@ -1,17 +1,25 @@
 import { world } from '../core/world';
+import * as THREE from 'three';
 
 const PARTICLE_GRAVITY = 25.0;
+const maxParticles = 2000;
+const explosionGeo = new THREE.BoxGeometry(0.12, 0.12, 0.12);
+const particleMaterial = new THREE.MeshBasicMaterial({
+  color: 0xffffff,
+});
 
-export function ParticleSystem(dt: number) {
-  // Find all particles that have a lifeTimer (so we know how old they are)
+let instancedMesh: THREE.InstancedMesh | null = null;
+
+export function ParticleSystem(dt: number, scene?: THREE.Scene) {
+  // 1. Update active particles' physics, scale, and rotations
   for (const entity of world.with('isParticle', 'transform', 'lifeTimer', 'maxLife')) {
     if (!entity.transform || entity.lifeTimer === undefined || entity.maxLife === undefined)
       continue;
 
-    // 1. Calculate Progress (0.0 = New, 1.0 = Dead)
+    // Calculate Progress (0.0 = New, 1.0 = Dead)
     const age = Math.min(entity.lifeTimer / entity.maxLife, 1);
 
-    // 2a. EXPANDING RINGS (blast waves, evolution flashes): grow + fade out
+    // 2a. EXPANDING RINGS (blast waves, evolution flashes): grow + fade out (not instanced)
     if (entity.ringGrow !== undefined) {
       const eased = 1 - (1 - age) * (1 - age); // ease-out
       entity.transform.scale.setScalar(1 + eased * entity.ringGrow);
@@ -36,9 +44,59 @@ export function ParticleSystem(dt: number) {
     }
 
     // 4. Tumble: per-particle rates assigned at spawn, easing out with age
-    // so debris settles instead of spinning at full speed forever
     const spinEase = 1 - age;
     entity.transform.rotation.x += (entity.spinX ?? 10) * spinEase * dt;
     entity.transform.rotation.z += (entity.spinZ ?? 5) * spinEase * dt;
+
+    // Sync matrix changes for instancing
+    entity.transform.updateMatrix();
+    entity.transform.updateMatrixWorld(true);
+  }
+
+  // 2. Render instanced particles using InstancedMesh
+  if (scene) {
+    const instancedEntities = Array.from(
+      world.with('isInstancedParticle', 'transform', 'particleColor'),
+    );
+
+    if (instancedEntities.length > 0) {
+      if (!instancedMesh) {
+        instancedMesh = new THREE.InstancedMesh(explosionGeo, particleMaterial, maxParticles);
+        instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        instancedMesh.frustumCulled = false;
+        
+        // Pre-allocate instanceColor array to maximum size
+        const defaultColor = new THREE.Color(0xffffff);
+        for (let i = 0; i < maxParticles; i++) {
+          instancedMesh.setColorAt(i, defaultColor);
+        }
+        
+        scene.add(instancedMesh);
+      }
+
+      const count = Math.min(instancedEntities.length, maxParticles);
+      instancedMesh.count = count;
+
+      const tempColor = new THREE.Color();
+      for (let i = 0; i < count; i++) {
+        const entity = instancedEntities[i];
+        if (entity.transform && entity.particleColor !== undefined) {
+          instancedMesh.setMatrixAt(i, entity.transform.matrixWorld);
+          tempColor.setHex(entity.particleColor);
+          instancedMesh.setColorAt(i, tempColor);
+        }
+      }
+
+      instancedMesh.instanceMatrix.needsUpdate = true;
+      if (instancedMesh.instanceColor) {
+        instancedMesh.instanceColor.needsUpdate = true;
+      }
+      instancedMesh.visible = true;
+    } else {
+      if (instancedMesh) {
+        instancedMesh.count = 0;
+        instancedMesh.visible = false;
+      }
+    }
   }
 }

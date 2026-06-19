@@ -17,7 +17,6 @@ import { world } from '../core/world';
 import { spawnEnemy, EnemyType } from '../core/factories';
 import { getGameTime, LEVEL_DURATION, BOSS_SPAWN_TIME } from './ChestSystem';
 import { triggerVictory } from './GameManager';
-import { loadTexture } from '../core/assets';
 import { addTrauma } from './CameraSystem';
 import { playExplosion, playHurt } from '../core/audio';
 import { dlog } from '../core/debug';
@@ -97,28 +96,48 @@ export function FinaleBossSystem(dt: number, scene: THREE.Scene) {
       bossEntity.barrageTimer = 0;
     }
 
-    // Warning flash visual logic
-    const spriteObj = bossEntity.transform?.children[0] as THREE.Sprite | undefined;
+    // Warning flash visual logic for 3D geometries
+    const container = bossEntity.transform?.getObjectByName('mesh_container');
     if (bossEntity.chargeTimer > 0) {
       bossEntity.chargeTimer -= dt;
-      if (spriteObj && spriteObj.material) {
-        const pulseSpeed = 25.0;
-        const flash = Math.sin(Date.now() * 0.001 * pulseSpeed) > 0;
-        spriteObj.material.color.setHex(flash ? 0xff3333 : 0xffffff);
-        const scalePulse = BOSS_SIZE * (1.0 + Math.sin(Date.now() * 0.001 * pulseSpeed) * 0.12);
-        spriteObj.scale.set(scalePulse, scalePulse, 1);
+      const pulseSpeed = 25.0;
+      const flash = Math.sin(Date.now() * 0.001 * pulseSpeed) > 0;
+      const scalePulse = 1.0 + Math.sin(Date.now() * 0.001 * pulseSpeed) * 0.15;
+
+      if (container) {
+        container.scale.setScalar(scalePulse);
+        container.traverse((child: THREE.Object3D) => {
+          if (child instanceof THREE.Mesh && child.material) {
+            const mat = child.material;
+            if (!Array.isArray(mat)) {
+              const standardMat = mat as THREE.MeshStandardMaterial;
+              if (standardMat.color) standardMat.color.setHex(flash ? 0xff3333 : 0xffffff);
+              if ('emissive' in standardMat && standardMat.emissive instanceof THREE.Color) {
+                standardMat.emissive.setHex(flash ? 0xff3333 : 0x000000);
+              }
+            }
+          }
+        });
       }
 
       if (bossEntity.chargeTimer <= 0) {
-        if (spriteObj && spriteObj.material) {
-          spriteObj.material.color.setHex(0xff8888);
-          spriteObj.scale.set(BOSS_SIZE, BOSS_SIZE, 1);
+        if (container) {
+          container.scale.setScalar(1.0);
+          resetBossMaterials(container);
         }
         fireGlitchRing(scene, bossEntity.position);
       }
     } else {
-      if (spriteObj && spriteObj.material && spriteObj.material.color.getHex() !== 0xff8888) {
-        spriteObj.material.color.setHex(0xff8888);
+      if (container) {
+        const ring1 = container.getObjectByName('ring1') as THREE.Mesh | undefined;
+        if (
+          ring1 &&
+          ring1.material &&
+          !Array.isArray(ring1.material) &&
+          (ring1.material as THREE.MeshBasicMaterial).color.getHex() !== 0xff0033
+        ) {
+          resetBossMaterials(container);
+        }
       }
     }
 
@@ -128,13 +147,34 @@ export function FinaleBossSystem(dt: number, scene: THREE.Scene) {
       triggerShockwave(scene, bossEntity.position);
     }
 
-    // Sync transform + menacing slow pulse (only if not charging)
-    if (bossEntity.transform && bossEntity.chargeTimer <= 0) {
+    // Sync transform position, run multiaxial rotations + menacing slow pulse
+    if (bossEntity.transform) {
       bossEntity.transform.position.copy(bossEntity.position);
-      const pulse = 1 + Math.sin(gameTime * 2.2) * 0.05;
-      bossEntity.transform.scale.setScalar(pulse);
-    } else if (bossEntity.transform) {
-      bossEntity.transform.position.copy(bossEntity.position);
+
+      const meshContainer = bossEntity.transform.getObjectByName('mesh_container');
+      const ring1 = bossEntity.transform.getObjectByName('ring1');
+      const ring2 = bossEntity.transform.getObjectByName('ring2');
+      const ring3 = bossEntity.transform.getObjectByName('ring3');
+
+      // Spin the wireframe boxes on different axes
+      if (ring1) {
+        ring1.rotation.x += dt * 0.8;
+        ring1.rotation.y += dt * 0.5;
+      }
+      if (ring2) {
+        ring2.rotation.y -= dt * 0.6;
+        ring2.rotation.z += dt * 0.4;
+      }
+      if (ring3) {
+        ring3.rotation.z -= dt * 0.3;
+        ring3.rotation.x -= dt * 0.7;
+      }
+
+      // Menacing slow pulse (only when not charging/warning-flashing)
+      if (meshContainer && bossEntity.chargeTimer <= 0) {
+        const pulse = 1.0 + Math.sin(gameTime * 2.2) * 0.05;
+        meshContainer.scale.setScalar(pulse);
+      }
     }
 
     // 4. Continuous enemy spawning (every 2.5 seconds)
@@ -208,22 +248,124 @@ function spawnBoss(scene: THREE.Scene, nearX: number, nearZ: number) {
   const x = nearX + Math.cos(angle) * 20;
   const z = nearZ + Math.sin(angle) * 20;
 
-  // Billboard the Overseer sprite (matches the rest of the enemy art style)
   const group = new THREE.Group();
   group.position.set(x, 0, z);
 
-  const texture = loadTexture('/sprites/enemies/enemy_overseer.png');
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, color: 0xff8888 }));
-  sprite.scale.set(BOSS_SIZE, BOSS_SIZE, 1);
-  sprite.position.y = BOSS_SIZE / 2;
-  group.add(sprite);
+  const container = new THREE.Group();
+  container.name = 'mesh_container';
+  container.position.y = BOSS_SIZE * 0.45;
+  group.add(container);
 
+  // Central Core: inner glowing red energy sphere
+  const innerCoreMat = new THREE.MeshStandardMaterial({
+    color: 0xff0000,
+    emissive: 0xff0000,
+    emissiveIntensity: 2.0,
+    roughness: 0.1,
+    metalness: 0.9,
+  });
+  const innerCore = new THREE.Mesh(new THREE.SphereGeometry(BOSS_SIZE * 0.2, 16, 16), innerCoreMat);
+  innerCore.name = 'innerCore';
+  container.add(innerCore);
+
+  // Volcanic dark metal protective plates (8 panels in a sphere shape with gaps)
+  const plateMat = new THREE.MeshStandardMaterial({
+    color: 0x111111,
+    roughness: 0.8,
+    metalness: 0.3,
+  });
+  const plateGeo = new THREE.BoxGeometry(BOSS_SIZE * 0.11, BOSS_SIZE * 0.11, BOSS_SIZE * 0.035);
+
+  const platesGroup = new THREE.Group();
+  platesGroup.name = 'platesGroup';
+
+  const rotations = [
+    [0, 0, 0],
+    [Math.PI / 2, 0, 0],
+    [-Math.PI / 2, 0, 0],
+    [0, Math.PI / 2, 0],
+    [0, -Math.PI / 2, 0],
+    [0, Math.PI, 0],
+    [Math.PI / 4, Math.PI / 4, 0],
+    [-Math.PI / 4, -Math.PI / 4, 0],
+  ];
+  rotations.forEach((rot, idx) => {
+    const pivot = new THREE.Group();
+    pivot.name = `pivot_${idx}`;
+    pivot.rotation.set(rot[0], rot[1], rot[2]);
+
+    const plateMesh = new THREE.Mesh(plateGeo, plateMat.clone());
+    plateMesh.name = `plateMesh_${idx}`;
+    plateMesh.position.set(0, 0, BOSS_SIZE * 0.22); // base distance
+    pivot.add(plateMesh);
+
+    platesGroup.add(pivot);
+  });
+  container.add(platesGroup);
+
+  // Concentric Cages of different shapes
+  // 1. Inner glowing red wireframe Box
+  const wireMat1 = new THREE.MeshBasicMaterial({
+    color: 0xff0033,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.8,
+  });
+  const ring1 = new THREE.Mesh(
+    new THREE.BoxGeometry(BOSS_SIZE * 0.5, BOSS_SIZE * 0.5, BOSS_SIZE * 0.5),
+    wireMat1,
+  );
+  ring1.name = 'ring1';
+  container.add(ring1);
+
+  // 2. Middle glowing orange wireframe Octahedron
+  const wireMat2 = new THREE.MeshBasicMaterial({
+    color: 0xff6600,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.6,
+  });
+  const ring2 = new THREE.Mesh(new THREE.OctahedronGeometry(BOSS_SIZE * 0.44), wireMat2);
+  ring2.name = 'ring2';
+  container.add(ring2);
+
+  // 3. Outer glowing magenta/pink wireframe Icosahedron
+  const wireMat3 = new THREE.MeshBasicMaterial({
+    color: 0xff00aa,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.45,
+  });
+  const ring3 = new THREE.Mesh(new THREE.IcosahedronGeometry(BOSS_SIZE * 0.54, 1), wireMat3);
+  ring3.name = 'ring3';
+  container.add(ring3);
+
+  // Menacing orbiting spikes
+  const spikeGroup = new THREE.Group();
+  spikeGroup.name = 'spikeGroup';
+  const spikeGeo = new THREE.OctahedronGeometry(BOSS_SIZE * 0.06);
+  spikeGeo.scale(1.0, 3.5, 1.0); // stretch to look like shard-spikes
+  const spikeMat = new THREE.MeshStandardMaterial({
+    color: 0x1a0505,
+    roughness: 0.6,
+    metalness: 0.8,
+    emissive: 0x440000,
+  });
+  for (let i = 0; i < 6; i++) {
+    const spike = new THREE.Mesh(spikeGeo, spikeMat);
+    spike.name = `spike_${i}`;
+    spikeGroup.add(spike);
+  }
+  container.add(spikeGroup);
+
+  // Shadow
   const shadow = new THREE.Mesh(
-    new THREE.CircleGeometry(BOSS_SIZE * 0.3, 24),
+    new THREE.CircleGeometry(BOSS_SIZE * 0.35, 24),
     new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45 }),
   );
   shadow.rotation.x = -Math.PI / 2;
-  shadow.position.y = 0.05;
+  shadow.position.y = 0.02;
+  shadow.name = 'shadow';
   group.add(shadow);
 
   scene.add(group);
@@ -240,6 +382,7 @@ function spawnBoss(scene: THREE.Scene, nearX: number, nearZ: number) {
     health: { current: 50000, max: 50000 }, // Functionally infinite
     transform: group,
     spawnTimer: 0,
+    chargeTimer: 0, // Ensure chargeTimer is initialized
   });
 
   // Create Rapier rigid body for the boss
@@ -248,6 +391,41 @@ function spawnBoss(scene: THREE.Scene, nearX: number, nearZ: number) {
     const { rigidBody, collider } = createDynamicBody(x, z, radius, bossEntity.id);
     bossEntity.rigidBody = rigidBody;
     bossEntity.collider = collider;
+  }
+}
+
+function resetBossMaterials(container: THREE.Object3D) {
+  const innerCore = container.getObjectByName('innerCore') as THREE.Mesh | undefined;
+  const platesGroup = container.getObjectByName('platesGroup');
+  const ring1 = container.getObjectByName('ring1') as THREE.Mesh | undefined;
+  const ring2 = container.getObjectByName('ring2') as THREE.Mesh | undefined;
+  const ring3 = container.getObjectByName('ring3') as THREE.Mesh | undefined;
+
+  if (innerCore && innerCore.material && !Array.isArray(innerCore.material)) {
+    const mat = innerCore.material as THREE.MeshStandardMaterial;
+    if (mat.color) mat.color.setHex(0xff0000);
+    if (mat.emissive) mat.emissive.setHex(0xff0000);
+  }
+  if (platesGroup) {
+    platesGroup.traverse((child) => {
+      if (child instanceof THREE.Mesh && child.material && !Array.isArray(child.material)) {
+        const mat = child.material as THREE.MeshStandardMaterial;
+        if (mat.color) mat.color.setHex(0x111111);
+        if (mat.emissive) mat.emissive.setHex(0x000000);
+      }
+    });
+  }
+  if (ring1 && ring1.material && !Array.isArray(ring1.material)) {
+    const mat = ring1.material as THREE.MeshBasicMaterial;
+    if (mat.color) mat.color.setHex(0xff0033);
+  }
+  if (ring2 && ring2.material && !Array.isArray(ring2.material)) {
+    const mat = ring2.material as THREE.MeshBasicMaterial;
+    if (mat.color) mat.color.setHex(0xff6600);
+  }
+  if (ring3 && ring3.material && !Array.isArray(ring3.material)) {
+    const mat = ring3.material as THREE.MeshBasicMaterial;
+    if (mat.color) mat.color.setHex(0xff00aa);
   }
 }
 
