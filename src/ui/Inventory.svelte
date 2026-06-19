@@ -24,7 +24,9 @@
           {@const name = getName(slot.weaponId, 'weapon')}
           {@const readiness = uiState.weaponReadiness[i] ?? 1}
           <div class="slot weapon glass active" title={name}>
-            {#if icon.endsWith('.png')}
+            {#if icon.startsWith('<svg')}
+              {@html icon}
+            {:else if icon.endsWith('.png')}
               <img src={icon} alt={name} class="item-icon-img" />
             {:else}
               <div class="item-icon">{icon}</div>
@@ -50,7 +52,9 @@
           {@const icon = getPassiveIcon(slot.passiveId)}
           {@const name = getName(slot.passiveId, 'passive')}
           <div class="slot passive glass active" title={name}>
-            {#if icon.endsWith('.png')}
+            {#if icon.startsWith('<svg')}
+              {@html icon}
+            {:else if icon.endsWith('.png')}
               <img src={icon} alt={name} class="item-icon-img" />
             {:else}
               <div class="item-icon">{icon}</div>
@@ -154,6 +158,12 @@
     filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.3));
   }
 
+  .slot :global(svg) {
+    width: 28px;
+    height: 28px;
+    filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.3));
+  }
+
   .item-icon-img {
     width: 80%;
     height: 80%;
@@ -202,6 +212,11 @@
     .slot {
       width: 36px;
       height: 36px;
+    }
+
+    .slot :global(svg) {
+      width: 22px;
+      height: 22px;
     }
 
     .item-icon {

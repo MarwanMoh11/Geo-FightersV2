@@ -103,7 +103,9 @@
             <div class="rarity-tag">{option.rarity || 'COMMON'}</div>
 
             <div class="item-icon">
-              {#if option.icon && option.icon.endsWith('.png')}
+              {#if option.icon && option.icon.startsWith('<svg')}
+                {@html option.icon}
+              {:else if option.icon && option.icon.endsWith('.png')}
                 <img src={option.icon} alt={option.name} class="icon-img" />
               {:else}
                 {option.icon || '📦'}
@@ -321,6 +323,12 @@
     width: 80px;
   }
 
+  .item-icon :global(svg) {
+    width: 64px;
+    height: 64px;
+    filter: drop-shadow(0 0 10px var(--rarity-color));
+  }
+
   .icon-img {
     width: 100%;
     height: 100%;
@@ -403,6 +411,11 @@
       width: 56px;
       height: 56px;
       flex-shrink: 0;
+    }
+
+    .item-icon :global(svg) {
+      width: 44px;
+      height: 44px;
     }
 
     .item-name {

@@ -220,7 +220,7 @@ function startGameLoop(
     ParticleComputeSystem(dt, renderer);
     EnemyComputeSystem(dt, renderer);
 
-    ParticleSystem(dt);
+    ParticleSystem(dt, scene);
     LootSystem(dt, scene);
     PassiveEffectsSystem(dt); // Apply health regen, etc.
     OrbitalSystem(dt); // Update orbital weapon projectiles

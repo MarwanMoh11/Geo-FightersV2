@@ -3,9 +3,8 @@
 
 import * as THREE from 'three';
 import { getCurrentLevel, type Obstacle, type LevelConfig } from '../core/LevelData';
-import { loadTexture } from '../core/assets';
 import { createStaticCuboid, isRapierInitialized } from '../core/RapierWorld';
-import { dlog, dwarn } from '../core/debug';
+import { dlog } from '../core/debug';
 
 // Store references for cleanup
 let groundMesh: THREE.Mesh | null = null;
@@ -124,25 +123,12 @@ function createGround(scene: THREE.Scene, level: LevelConfig): void {
   // Create ground geometry
   const groundGeometry = new THREE.PlaneGeometry(level.mapWidth, level.mapHeight);
 
-  // Ground material - lighter asphalt for better visibility
+  // Ground material - darker cyber metallic purple-blue for better neon readability
   const groundMaterial = new THREE.MeshStandardMaterial({
-    color: 0x3a3a4a, // Brightened from 0x1a1a22
-    roughness: 0.85,
-    metalness: 0.05,
+    color: 0x1c1c28,
+    roughness: 0.7,
+    metalness: 0.3,
   });
-
-  // Try to load ground texture if specified
-  if (level.groundTexture) {
-    try {
-      const texture = loadTexture(level.groundTexture);
-      texture.wrapS = THREE.RepeatWrapping;
-      texture.wrapT = THREE.RepeatWrapping;
-      texture.repeat.set(level.mapWidth / 50, level.mapHeight / 50);
-      groundMaterial.map = texture;
-    } catch {
-      dwarn('[LEVEL] Ground texture not found, using solid color');
-    }
-  }
 
   groundMesh = new THREE.Mesh(groundGeometry, groundMaterial);
   groundMesh.rotation.x = -Math.PI / 2; // Lay flat
@@ -156,7 +142,7 @@ function createGround(scene: THREE.Scene, level: LevelConfig): void {
  * Spawn a single obstacle (wall or prop) into the scene
  */
 function spawnObstacle(scene: THREE.Scene, obstacle: Obstacle): void {
-  const height = obstacle.height ?? (obstacle.type === 'wall' ? 6 : 3); // Reduced wall height from 8 to 6
+  const height = obstacle.height ?? (obstacle.type === 'wall' ? 6 : 3);
 
   // Create geometry
   const geometry = new THREE.BoxGeometry(obstacle.width, height, obstacle.depth);
@@ -166,28 +152,18 @@ function spawnObstacle(scene: THREE.Scene, obstacle: Obstacle): void {
   if (obstacle.type === 'wall') {
     if (!wallMaterial) {
       wallMaterial = new THREE.MeshStandardMaterial({
-        color: 0x8a8a9a, // Lighter base color for texture visibility
+        color: 0x3a3a45, // Cyber-grey monolith
         roughness: 0.6,
-        metalness: 0.15,
+        metalness: 0.2,
       });
-      // Try to load wall texture
-      try {
-        const texture = loadTexture('/textures/environments/wall_texture.png');
-        texture.wrapS = THREE.RepeatWrapping;
-        texture.wrapT = THREE.RepeatWrapping;
-        texture.repeat.set(0.05, 0.1); // Tile based on wall size
-        wallMaterial.map = texture;
-      } catch {
-        dwarn('[LEVEL] Wall texture not found');
-      }
     }
     material = wallMaterial;
   } else {
     if (!propMaterial) {
       propMaterial = new THREE.MeshStandardMaterial({
-        color: 0x7a7a8a, // Brightened from 0x3a3a45
+        color: 0x555566,
         roughness: 0.5,
-        metalness: 0.35,
+        metalness: 0.4,
       });
     }
     material = propMaterial;
@@ -196,35 +172,51 @@ function spawnObstacle(scene: THREE.Scene, obstacle: Obstacle): void {
   // Clone material if we need per-obstacle customization
   const meshMaterial = material.clone();
 
-  // Add some color variation based on obstacle type (brightened colors)
+  // Add some color variation based on obstacle type
   if (obstacle.id.includes('taxi')) {
-    meshMaterial.color.setHex(0x8a7a5a); // Brightened yellow/tan
+    meshMaterial.color.setHex(0x8a7a5a); // Dull yellow
   } else if (obstacle.id.includes('vending')) {
-    meshMaterial.color.setHex(0x4a7a9a); // Brightened cyan-ish
-    meshMaterial.emissive.setHex(0x00ffff);
-    meshMaterial.emissiveIntensity = 0.3; // Boosted glow
+    meshMaterial.color.setHex(0x3a4c5a); // Dull blue
+    meshMaterial.emissive.setHex(0x00aaff);
+    meshMaterial.emissiveIntensity = 0.4;
   } else if (obstacle.id.includes('bench')) {
-    meshMaterial.color.setHex(0x7a7a6a); // Brightened
+    meshMaterial.color.setHex(0x5a5a66);
   } else if (obstacle.id.includes('scrap') || obstacle.id.includes('mech')) {
-    meshMaterial.color.setHex(0x9a7a5a); // Brightened rust
+    meshMaterial.color.setHex(0x7a6555); // Rust
   } else if (obstacle.id.includes('container')) {
-    meshMaterial.color.setHex(0x5a8a6a); // Brightened green
-  } else if (obstacle.id.includes('gate')) {
-    meshMaterial.color.setHex(0x7a7a8a); // Brightened grey
+    meshMaterial.color.setHex(0x3a5a4a); // Cyber-green
   } else if (obstacle.id.includes('barrier')) {
-    meshMaterial.color.setHex(0x9a5a5a); // Brightened red
-    meshMaterial.emissive.setHex(0xff4400);
-    meshMaterial.emissiveIntensity = 0.15; // Boosted
+    meshMaterial.color.setHex(0x8a3a3a); // Red warning
+    meshMaterial.emissive.setHex(0xff3300);
+    meshMaterial.emissiveIntensity = 0.25;
   }
 
-  const mesh = new THREE.Mesh(geometry, meshMaterial);
-  mesh.position.set(obstacle.x, height / 2, obstacle.z);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  mesh.name = obstacle.id;
+  const group = new THREE.Group();
+  group.position.set(obstacle.x, 0, obstacle.z);
 
-  scene.add(mesh);
-  obstacleMeshes.push(mesh);
+  const mainMesh = new THREE.Mesh(geometry, meshMaterial);
+  mainMesh.position.y = height / 2;
+  mainMesh.castShadow = true;
+  mainMesh.receiveShadow = true;
+  mainMesh.name = obstacle.id;
+  group.add(mainMesh);
+
+  // If it's a wall, add a glowing neon-cyan cap plate on top
+  if (obstacle.type === 'wall') {
+    const capGeo = new THREE.BoxGeometry(obstacle.width * 1.02, 0.1, obstacle.depth * 1.02);
+    const capMat = new THREE.MeshStandardMaterial({
+      color: 0x00e5ff,
+      emissive: 0x00e5ff,
+      emissiveIntensity: 1.2,
+    });
+    const cap = new THREE.Mesh(capGeo, capMat);
+    cap.position.y = height + 0.05;
+    cap.name = `${obstacle.id}_cap`;
+    group.add(cap);
+  }
+
+  scene.add(group);
+  obstacleMeshes.push(group);
 }
 
 /**
@@ -266,15 +258,21 @@ export function disposeLevel(scene: THREE.Scene): void {
     groundMesh = null;
   }
 
-  // Remove all obstacle meshes
-  for (const mesh of obstacleMeshes) {
-    scene.remove(mesh);
-    if (mesh instanceof THREE.Mesh) {
-      mesh.geometry.dispose();
-      if (mesh.material instanceof THREE.Material) {
-        mesh.material.dispose();
+  // Remove and dispose all obstacle groups and sub-meshes
+  for (const obj of obstacleMeshes) {
+    scene.remove(obj);
+    obj.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach((m) => m.dispose());
+          } else {
+            child.material.dispose();
+          }
+        }
       }
-    }
+    });
   }
   obstacleMeshes.length = 0;
 

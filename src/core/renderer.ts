@@ -20,12 +20,18 @@ export async function initRenderer() {
 
   // 3. The Renderer - WebGPU with WebGL fallback
   let renderer: any;
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+    navigator.userAgent,
+  );
 
   if (isWebGPUAvailable()) {
     try {
-      console.log('[Renderer] WebGPU is available, attempting to initialize...');
+      console.log(
+        `[Renderer] WebGPU is available. Mobile: ${isMobile}. Attempting to initialize...`,
+      );
       const { WebGPURenderer } = await import('three/webgpu');
-      renderer = new WebGPURenderer({ antialias: true, forceWebGL: false });
+      // Disable AA on mobile for fill-rate performance gain
+      renderer = new WebGPURenderer({ antialias: !isMobile, forceWebGL: false });
       await renderer.init();
 
       // Check if WebGPU actually initialized or fell back to WebGL
@@ -39,17 +45,23 @@ export async function initRenderer() {
       }
     } catch (error) {
       console.warn('[Renderer] WebGPU initialization failed, falling back to WebGL:', error);
-      renderer = new THREE.WebGLRenderer({ antialias: true });
-      renderer.shadowMap.enabled = true;
+      renderer = new THREE.WebGLRenderer({ antialias: !isMobile });
     }
   } else {
-    console.log('[Renderer] WebGPU not available, using WebGL renderer');
-    renderer = new THREE.WebGLRenderer({ antialias: true });
+    console.log(`[Renderer] WebGPU not available, using WebGL renderer. Mobile: ${isMobile}`);
+    renderer = new THREE.WebGLRenderer({ antialias: !isMobile });
+  }
+
+  // Disable shadow map completely on mobile; use soft PCF shadows on desktop
+  if (isMobile) {
+    renderer.shadowMap.enabled = false;
+  } else {
     renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   }
 
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2)); // Lower pixel ratio limit on mobile for speed
 
   // Append to #app container (not body) to prevent layout issues
   const appContainer = document.getElementById('app');
@@ -65,7 +77,19 @@ export async function initRenderer() {
 
   const dirLight = new THREE.DirectionalLight(0xffffff, 1.5); // Boosted from 1.0
   dirLight.position.set(10, 30, 10);
-  dirLight.castShadow = true;
+  dirLight.castShadow = !isMobile; // No shadow maps rendered from light on mobile
+
+  if (!isMobile) {
+    dirLight.shadow.mapSize.width = 512;
+    dirLight.shadow.mapSize.height = 512;
+    dirLight.shadow.camera.near = 0.5;
+    dirLight.shadow.camera.far = 80;
+    dirLight.shadow.camera.left = -25;
+    dirLight.shadow.camera.right = 25;
+    dirLight.shadow.camera.top = 25;
+    dirLight.shadow.camera.bottom = -25;
+    dirLight.shadow.bias = -0.0005;
+  }
   scene.add(dirLight);
 
   // 5. The Floor is now created by LevelSystem
