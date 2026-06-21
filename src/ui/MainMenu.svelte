@@ -45,97 +45,91 @@
   }
 </script>
 
-<!-- Background (texture + scanlines) comes from the global #main-menu styles -->
 <div id="main-menu" class:hidden={uiState.gameState !== 'MENU'}>
   <div class="menu-content">
-    <div class="logo-container">
-      <h1 class="game-title">GEO<span class="accent">FIGHTERS</span></h1>
-      <div class="tagline">NEURAL COMBAT PROTOCOL V2.0</div>
-    </div>
+    <header class="brand">
+      <h1 class="wordmark">GEO<span class="accent">FIGHTERS</span></h1>
+      <div class="tagline">SURVIVE THE HORDE</div>
+    </header>
 
     <div class="menu-actions">
       {#if !showMpOptions && uiState.networkStatus === 'disconnected'}
-        <!-- Standard Main Menu -->
-        <button class="action primary" onclick={startSinglePlayer}>
-          <span class="btn-text">SINGLE PLAYER</span>
-          <span class="btn-subtext">START SOLO MISSION</span>
+        <button class="btn primary" onclick={startSinglePlayer}>
+          <span class="label">Play</span>
+          <span class="sub">Solo run</span>
         </button>
 
-        <button class="action" onclick={() => (showMpOptions = true)}>
-          <span class="btn-text">MULTIPLAYER CO-OP</span>
-          <span class="btn-subtext">CONNECT PROTOCOL</span>
+        <button class="btn" onclick={() => (showMpOptions = true)}>
+          <span class="label">Co-op</span>
+          <span class="sub">Online</span>
         </button>
 
-        <button class="action" onclick={openSettings}>
-          <span class="btn-text">CONFIGURATION</span>
-          <span class="btn-subtext">SYSTEM SETTINGS</span>
+        <button class="btn" onclick={openSettings}>
+          <span class="label">Settings</span>
         </button>
 
         {#if uiState.canInstall}
-          <button class="action install" onclick={handleInstall}>
-            <span class="btn-text">INSTALL APP</span>
-            <span class="btn-subtext">ADD TO HOME SCREEN</span>
+          <button class="btn ghost" onclick={handleInstall}>
+            <span class="label install">Install app</span>
           </button>
         {/if}
       {:else if showMpOptions && uiState.networkStatus === 'disconnected'}
-        <!-- Multiplayer Choices -->
-        <button class="action primary" onclick={handleHost}>
-          <span class="btn-text">HOST LOBBY</span>
-          <span class="btn-subtext">CREATE NEW BEACON</span>
+        <button class="btn primary" onclick={handleHost}>
+          <span class="label">Host lobby</span>
+          <span class="sub">Create beacon</span>
         </button>
 
-        <div class="join-container">
+        <div class="join-row">
           <input
             type="text"
             maxlength="4"
             placeholder="CODE"
-            class="room-input"
+            class="code-input tnum"
             bind:value={roomCodeInput}
           />
-          <button class="action join-btn" onclick={handleJoin}>
-            <span class="btn-text">JOIN</span>
+          <button class="btn join" onclick={handleJoin}>
+            <span class="label">Join</span>
           </button>
         </div>
 
-        <button class="action cancel-btn" onclick={handleCancelMp}>
-          <span class="btn-text">RETURN</span>
+        <button class="btn ghost danger" onclick={handleCancelMp}>
+          <span class="label">Back</span>
         </button>
 
-        <div class="server-config-container">
-          <span class="server-config-label">SIGNALING BEACON:</span>
+        <label class="server-config">
+          <span class="eyebrow">Signaling beacon</span>
           <input
             type="text"
-            placeholder="AUTO (e.g. http://192.168.1.15:3001)"
+            placeholder="auto"
             class="server-input"
             bind:value={uiState.customServerUrl}
             oninput={() => localStorage.setItem('geo_server_url', uiState.customServerUrl)}
           />
-        </div>
+        </label>
       {:else}
-        <!-- Connection Status Screen -->
         <div class="status-panel">
           {#if uiState.networkStatus === 'connecting'}
             <div class="spinner"></div>
-            <p class="status-heading">ESTABLISHING CONNECTION</p>
-            <p class="status-detail">PINGING SIGNALLING BEACON...</p>
+            <p class="status-heading">Connecting</p>
+            <p class="status-detail">Pinging beacon…</p>
           {:else if uiState.networkStatus === 'waiting_for_players'}
-            <div class="glow-box">
-              <p class="lobby-code">{uiState.roomCode}</p>
+            <div class="code-box">
+              <p class="lobby-code tnum">{uiState.roomCode}</p>
             </div>
-            <p class="status-heading">LOBBY BEACON ONLINE</p>
-            <p class="status-detail">WAITING FOR TEAMMATE TO SYNC...</p>
+            <p class="status-heading">Lobby online</p>
+            <p class="status-detail">Waiting for teammate…</p>
           {/if}
-          <button class="action cancel-btn" onclick={handleCancelMp}>
-            <span class="btn-text">ABORT CONNECTION</span>
+          <button class="btn ghost danger" onclick={handleCancelMp}>
+            <span class="label">Abort</span>
           </button>
         </div>
       {/if}
     </div>
 
-    <div class="menu-footer">
-      <p class="status-text">SYSTEM STATUS: <span class="online">ONLINE</span></p>
-      <p class="version">BUILD {__APP_VERSION__}</p>
-    </div>
+    <footer class="menu-footer">
+      <span class="online">● ONLINE</span>
+      <span class="version tnum">v{__APP_VERSION__}</span>
+    </footer>
   </div>
 </div>
 
@@ -143,10 +137,15 @@
   #main-menu {
     position: fixed;
     inset: 0;
+    z-index: 1000;
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 1000;
+    background:
+      radial-gradient(ellipse 80% 50% at 50% 0%, rgba(54, 230, 255, 0.08), transparent 70%),
+      radial-gradient(ellipse 80% 50% at 50% 100%, rgba(255, 61, 119, 0.06), transparent 70%),
+      var(--color-bg-dark);
+    padding: calc(var(--safe-top) + 2rem) 1.5rem calc(var(--safe-bottom) + 2rem);
   }
 
   #main-menu.hidden {
@@ -154,324 +153,241 @@
   }
 
   .menu-content {
-    position: relative;
-    z-index: 1;
+    width: 100%;
+    max-width: 360px;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 3rem;
-    text-align: center;
-    animation: menu-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+    align-items: stretch;
+    gap: 2.5rem;
+    animation: menu-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
   @keyframes menu-in {
     from {
       opacity: 0;
-      transform: translateY(24px) scale(0.98);
+      transform: translateY(18px);
     }
     to {
       opacity: 1;
-      transform: translateY(0) scale(1);
+      transform: translateY(0);
     }
   }
 
-  .game-title {
+  /* ---- Brand ---- */
+  .brand {
+    text-align: center;
+    margin-top: auto;
+  }
+  .wordmark {
     margin: 0;
     font-family: var(--font-heading);
-    font-size: clamp(48px, 11vw, 88px);
-    font-weight: 900;
-    letter-spacing: 0.1em;
+    font-size: clamp(40px, 13vw, 60px);
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    line-height: 0.95;
     color: var(--color-text-main);
-    text-shadow:
-      0 0 20px var(--color-primary),
-      0 0 70px var(--color-primary);
   }
-
-  .game-title .accent {
-    color: var(--color-secondary);
-    text-shadow:
-      0 0 20px var(--color-secondary),
-      0 0 70px var(--color-secondary);
+  .wordmark .accent {
+    color: var(--color-primary);
   }
-
   .tagline {
-    margin-top: 0.75rem;
-    font-family: var(--font-mono);
-    font-size: 0.8rem;
-    letter-spacing: 0.55em;
-    text-indent: 0.55em;
+    margin-top: 0.85rem;
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.42em;
+    text-indent: 0.42em;
     color: var(--color-text-dim);
   }
 
+  /* ---- Actions ---- */
   .menu-actions {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
-    width: min(82vw, 320px);
+    gap: 0.65rem;
   }
 
-  .action {
+  .btn {
     all: unset;
+    box-sizing: border-box;
     cursor: pointer;
     display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 1.1rem 2rem;
-    border-radius: 14px;
-    background: rgba(8, 12, 24, 0.75);
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 1rem 1.25rem;
+    border-radius: var(--r-md);
+    background: rgba(255, 255, 255, 0.035);
     border: 1px solid var(--color-border);
-    backdrop-filter: blur(8px);
-    transition: all var(--transition-smooth);
+    transition: all var(--transition-fast);
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.16);
+  }
+  .btn:active {
+    transform: scale(0.985);
   }
 
-  .action:hover {
-    border-color: var(--color-border-bright);
-    box-shadow: 0 0 28px rgba(0, 229, 255, 0.25);
-    transform: translateY(-3px);
-  }
-
-  .action:active {
-    transform: translateY(0) scale(0.98);
-  }
-
-  .action.primary {
-    background: linear-gradient(180deg, rgba(0, 229, 255, 0.16), rgba(0, 229, 255, 0.05));
-    border-color: var(--color-border-bright);
-    animation: primary-pulse 2.4s ease-in-out infinite;
-  }
-
-  .action.primary:hover {
-    box-shadow: 0 0 38px rgba(0, 229, 255, 0.45);
-  }
-
-  @keyframes primary-pulse {
-    0%,
-    100% {
-      box-shadow: 0 0 16px rgba(0, 229, 255, 0.18);
-    }
-    50% {
-      box-shadow: 0 0 30px rgba(0, 229, 255, 0.4);
-    }
-  }
-
-  .btn-text {
-    font-family: var(--font-heading);
-    font-weight: 700;
+  .btn .label {
     font-size: 1rem;
-    letter-spacing: 0.14em;
+    font-weight: 700;
+    letter-spacing: 0.01em;
     color: var(--color-text-main);
   }
-
-  .action.primary .btn-text {
-    color: var(--color-primary);
-    text-shadow: 0 0 12px rgba(0, 229, 255, 0.6);
-  }
-
-  .btn-subtext {
-    font-family: var(--font-mono);
-    font-size: 0.6rem;
-    letter-spacing: 0.3em;
+  .btn .sub {
+    font-size: 0.62rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
     color: var(--color-text-dim);
   }
 
-  .menu-footer {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-    font-family: var(--font-mono);
-    font-size: 0.65rem;
-    letter-spacing: 0.25em;
+  .btn.primary {
+    background: var(--color-primary);
+    border-color: transparent;
+  }
+  .btn.primary .label {
+    color: #04060f;
+  }
+  .btn.primary .sub {
+    color: rgba(4, 6, 15, 0.6);
+  }
+  .btn.primary:hover {
+    filter: brightness(1.08);
+  }
+
+  .btn.ghost {
+    background: transparent;
+    justify-content: center;
+  }
+  .btn.ghost .label {
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+  .btn.ghost.danger:hover {
+    border-color: rgba(255, 61, 119, 0.4);
+  }
+  .btn.ghost.danger .label {
     color: var(--color-text-dim);
   }
-
-  .menu-footer p {
-    margin: 0;
-  }
-
-  .online {
+  .label.install {
     color: var(--color-accent);
-    text-shadow: 0 0 8px rgba(0, 255, 136, 0.6);
-    animation: online-blink 2s ease-in-out infinite;
   }
 
-  @keyframes online-blink {
-    50% {
-      opacity: 0.55;
-    }
-  }
-
-  .version {
-    opacity: 0.55;
-  }
-
-  .action.install {
-    border-color: rgba(0, 255, 136, 0.4);
-  }
-
-  .action.install:hover {
-    border-color: var(--color-accent);
-    box-shadow: 0 0 28px rgba(0, 255, 136, 0.25);
-  }
-
-  .action.install .btn-text {
-    color: var(--color-accent);
-    text-shadow: 0 0 12px rgba(0, 255, 136, 0.5);
-  }
-
-  .join-container {
+  /* ---- Multiplayer ---- */
+  .join-row {
     display: flex;
     gap: 0.5rem;
-    width: min(82vw, 320px);
   }
-
-  .room-input {
+  .code-input {
     flex: 1;
-    background: rgba(8, 12, 24, 0.75);
+    min-width: 0;
+    background: rgba(255, 255, 255, 0.035);
     border: 1px solid var(--color-border);
-    border-radius: 14px;
+    border-radius: var(--r-md);
     padding: 0 1rem;
-    font-family: var(--font-mono);
-    font-size: 1.2rem;
+    font-size: 1.1rem;
     font-weight: 700;
     color: var(--color-primary);
     text-align: center;
     letter-spacing: 0.3em;
     text-transform: uppercase;
     outline: none;
-    transition: all var(--transition-smooth);
-    box-sizing: border-box;
+  }
+  .code-input:focus {
+    border-color: var(--color-border-bright);
+  }
+  .btn.join {
+    flex: 0 0 auto;
+    justify-content: center;
+    padding: 1rem 1.4rem;
   }
 
-  .room-input:focus {
-    border-color: var(--color-primary);
-    box-shadow: 0 0 16px rgba(0, 229, 255, 0.2);
+  .server-config {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-top: 0.25rem;
+  }
+  .server-config .eyebrow {
+    padding-left: 0.2rem;
+  }
+  .server-input {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px dashed var(--color-border);
+    border-radius: var(--r-sm);
+    padding: 0.55rem 0.8rem;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--color-text-main);
+    outline: none;
+    text-align: center;
+  }
+  .server-input:focus {
+    border-style: solid;
+    border-color: var(--color-border-bright);
   }
 
-  .join-btn {
-    padding: 1.1rem 1.5rem !important;
-    width: auto !important;
-  }
-
-  .cancel-btn {
-    border-color: rgba(255, 68, 68, 0.3) !important;
-  }
-
-  .cancel-btn:hover {
-    border-color: rgba(255, 68, 68, 0.6) !important;
-    box-shadow: 0 0 20px rgba(255, 68, 68, 0.2) !important;
-  }
-
-  .cancel-btn .btn-text {
-    color: rgba(255, 68, 68, 0.8) !important;
-  }
-
+  /* ---- Connection status ---- */
   .status-panel {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 1.5rem;
-    width: min(82vw, 320px);
+    gap: 1.25rem;
+    padding: 1rem 0;
   }
-
   .status-heading {
     margin: 0;
-    font-family: var(--font-heading);
+    font-size: 0.95rem;
     font-weight: 700;
-    font-size: 1rem;
-    letter-spacing: 0.1em;
     color: var(--color-text-main);
   }
-
   .status-detail {
     margin: 0;
-    font-family: var(--font-mono);
-    font-size: 0.7rem;
-    color: var(--color-text-dim);
+    font-size: 0.68rem;
     letter-spacing: 0.1em;
+    color: var(--color-text-dim);
   }
-
-  .glow-box {
-    background: rgba(0, 229, 255, 0.05);
-    border: 1px solid var(--color-primary);
-    border-radius: 14px;
-    padding: 0.8rem 1.6rem;
-    box-shadow: 0 0 20px rgba(0, 229, 255, 0.25);
-    animation: beacon-pulse 2s ease-in-out infinite;
+  .code-box {
+    background: rgba(54, 230, 255, 0.06);
+    border: 1px solid var(--color-border-bright);
+    border-radius: var(--r-md);
+    padding: 0.7rem 1.5rem;
   }
-
-  @keyframes beacon-pulse {
-    0%,
-    100% {
-      opacity: 0.9;
-      box-shadow: 0 0 20px rgba(0, 229, 255, 0.2);
-    }
-    50% {
-      opacity: 1;
-      box-shadow: 0 0 32px rgba(0, 229, 255, 0.4);
-    }
-  }
-
   .lobby-code {
     margin: 0;
-    font-family: var(--font-mono);
-    font-size: 2.2rem;
-    font-weight: 900;
-    letter-spacing: 0.2em;
+    font-size: 2rem;
+    font-weight: 700;
+    letter-spacing: 0.25em;
+    text-indent: 0.25em;
     color: var(--color-primary);
-    text-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
   }
-
   .spinner {
-    width: 32px;
-    height: 32px;
-    border: 3px solid rgba(0, 229, 255, 0.1);
+    width: 28px;
+    height: 28px;
+    border: 2px solid rgba(255, 255, 255, 0.12);
     border-top-color: var(--color-primary);
     border-radius: 50%;
-    animation: spin 1s linear infinite;
+    animation: spin 0.9s linear infinite;
   }
-
   @keyframes spin {
     to {
       transform: rotate(360deg);
     }
   }
 
-  .server-config-container {
+  /* ---- Footer ---- */
+  .menu-footer {
+    margin-top: auto;
     display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-    width: min(82vw, 320px);
-    margin-top: 0.5rem;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.58rem;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    color: var(--color-text-faint);
   }
-
-  .server-config-label {
-    font-family: var(--font-mono);
-    font-size: 0.55rem;
-    color: var(--color-text-dim);
-    letter-spacing: 0.1em;
-    text-align: left;
-    padding-left: 0.2rem;
-  }
-
-  .server-input {
-    background: rgba(8, 12, 24, 0.4);
-    border: 1px dashed rgba(0, 229, 255, 0.3);
-    border-radius: 8px;
-    padding: 0.5rem 0.8rem;
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    color: var(--color-text-main);
-    outline: none;
-    transition: all var(--transition-smooth);
-    box-sizing: border-box;
-    text-align: center;
-  }
-
-  .server-input:focus {
-    border-style: solid;
-    border-color: var(--color-primary);
-    box-shadow: 0 0 10px rgba(0, 229, 255, 0.15);
-    background: rgba(8, 12, 24, 0.7);
+  .online {
+    color: var(--color-accent);
   }
 </style>

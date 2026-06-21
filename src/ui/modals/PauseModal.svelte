@@ -17,21 +17,19 @@
 </script>
 
 {#if uiState.gameState === 'PAUSED' && !uiState.showSettings}
-  <div id="pause-modal" transition:fade={{ duration: 200 }}>
-    <div class="modal-overlay"></div>
-
-    <div class="pause-content glass" transition:scale={{ duration: 250, start: 0.92 }}>
-      <h2 class="title">SYSTEM PAUSED</h2>
+  <div id="pause-modal" transition:fade={{ duration: 180 }}>
+    <div class="sheet glass" transition:scale={{ duration: 240, start: 0.94 }}>
+      <h2 class="title">Paused</h2>
       <div class="actions">
         <button class="action-btn primary" onclick={resume}>
-          <span class="btn-text">RESUME</span>
+          <span class="btn-text">Resume</span>
           <span class="btn-hint">ESC</span>
         </button>
         <button class="action-btn" onclick={openSettings}>
-          <span class="btn-text">SETTINGS</span>
+          <span class="btn-text">Settings</span>
         </button>
-        <button class="action-btn" onclick={backToMenu}>
-          <span class="btn-text">QUIT MISSION</span>
+        <button class="action-btn danger" onclick={backToMenu}>
+          <span class="btn-text">Quit run</span>
         </button>
       </div>
     </div>
@@ -46,102 +44,90 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    background: rgba(4, 4, 16, 0.4);
-    backdrop-filter: blur(8px);
+    background: rgba(4, 6, 15, 0.55);
+    backdrop-filter: blur(10px);
+    padding: 1.5rem;
     pointer-events: auto;
   }
 
-  .modal-overlay {
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(circle at center, transparent 0%, rgba(0, 0, 0, 0.6) 100%);
-  }
-
-  .pause-content {
-    width: min(90%, 350px);
-    border-radius: 24px;
-    padding: 3rem 2rem;
-    z-index: 1;
+  .sheet {
+    width: 100%;
+    max-width: 320px;
+    border-radius: var(--r-xl);
+    padding: 2rem 1.5rem;
     display: flex;
     flex-direction: column;
-    gap: 2.5rem;
+    gap: 2rem;
     text-align: center;
   }
 
   .title {
     font-family: var(--font-heading);
-    font-size: 1.5rem;
-    font-weight: 900;
-    letter-spacing: 0.2em;
+    font-size: 1.4rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
     margin: 0;
-    color: var(--color-primary);
-    text-shadow: 0 0 20px rgba(0, 229, 255, 0.4);
+    color: var(--color-text-main);
   }
 
   .actions {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 0.6rem;
   }
 
   .action-btn {
     all: unset;
     cursor: pointer;
-    padding: 1.25rem;
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 1rem;
+    border-radius: var(--r-md);
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid var(--color-border);
     transition: all var(--transition-fast);
     position: relative;
   }
-
   .action-btn:hover {
-    background: rgba(255, 255, 255, 0.05);
-    transform: translateY(-2px);
+    background: rgba(255, 255, 255, 0.06);
   }
-
   .action-btn:active {
-    transform: translateY(0) scale(0.98);
-  }
-
-  .action-btn:focus-visible {
-    outline: 2px solid var(--color-primary);
-    outline-offset: 2px;
+    transform: scale(0.985);
   }
 
   .btn-text {
-    font-family: var(--font-heading);
-    font-size: 1rem;
+    font-size: 0.95rem;
     font-weight: 700;
-    letter-spacing: 0.1em;
+    color: var(--color-text-main);
   }
 
   .btn-hint {
     position: absolute;
-    right: 1rem;
+    right: 0.9rem;
     top: 50%;
     transform: translateY(-50%);
     font-family: var(--font-mono);
-    font-size: 0.6rem;
-    letter-spacing: 0.15em;
-    color: var(--color-text-dim);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    font-size: 0.58rem;
+    letter-spacing: 0.1em;
+    color: rgba(4, 6, 15, 0.55);
+    border: 1px solid rgba(4, 6, 15, 0.25);
     border-radius: 4px;
     padding: 2px 6px;
   }
 
   .action-btn.primary {
     background: var(--color-primary);
-    color: #000;
-    border: none;
+    border-color: transparent;
   }
-
-  .action-btn.primary .btn-hint {
-    color: rgba(0, 0, 0, 0.6);
-    border-color: rgba(0, 0, 0, 0.3);
+  .action-btn.primary .btn-text {
+    color: #04060f;
   }
-
   .action-btn.primary:hover {
-    box-shadow: 0 0 30px rgba(0, 229, 255, 0.4);
+    filter: brightness(1.08);
+  }
+
+  .action-btn.danger .btn-text {
+    color: var(--color-text-dim);
+  }
+  .action-btn.danger:hover {
+    border-color: rgba(255, 61, 119, 0.4);
   }
 </style>

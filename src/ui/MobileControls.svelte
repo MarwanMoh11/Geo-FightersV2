@@ -105,9 +105,8 @@
     onmousedown={handleStart}
   >
     {#if isDragging}
-      <div class="joystick-base glass" style="left: {joyCenterX}px; top: {joyCenterY}px;">
+      <div class="joystick-base" style="left: {joyCenterX}px; top: {joyCenterY}px;">
         <div class="joystick-knob" style="transform: translate({knobX}px, {knobY}px);"></div>
-        <div class="joystick-ring"></div>
       </div>
     {/if}
   </div>
@@ -115,12 +114,14 @@
   <!-- Action Buttons -->
   <div class="action-buttons">
     <button
-      class="action-btn glass attack"
+      class="action-btn attack"
       aria-label="Attack"
       ontouchstart={onAttackStart}
       ontouchend={() => updateVirtualJoystick(0, 0, false)}
     >
-      <div class="icon">⚡</div>
+      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+        <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" fill="currentColor" />
+      </svg>
     </button>
   </div>
 </div>
@@ -157,42 +158,26 @@
 
   .joystick-base {
     position: fixed;
-    width: 120px;
-    height: 120px;
-    margin-left: -60px;
-    margin-top: -60px;
+    width: 116px;
+    height: 116px;
+    margin-left: -58px;
+    margin-top: -58px;
     border-radius: 50%;
     display: flex;
     justify-content: center;
     align-items: center;
     pointer-events: none;
-    border: 1px solid rgba(45, 226, 230, 0.3);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(4px);
   }
 
   .joystick-knob {
-    width: 50px;
-    height: 50px;
+    width: 48px;
+    height: 48px;
     background: var(--color-primary);
     border-radius: 50%;
-    box-shadow: 0 0 20px var(--color-primary);
-    border: 3px solid rgba(255, 255, 255, 0.2);
-  }
-
-  .joystick-ring {
-    position: absolute;
-    inset: 10px;
-    border: 1px dashed rgba(45, 226, 230, 0.2);
-    border-radius: 50%;
-    animation: rotate 10s linear infinite;
-  }
-
-  @keyframes rotate {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
-    }
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
   }
 
   .action-buttons {
@@ -212,25 +197,22 @@
 
   .action-btn {
     all: unset;
-    width: 88px;
-    height: 88px;
+    width: 84px;
+    height: 84px;
     border-radius: 50%;
     display: flex;
     justify-content: center;
     align-items: center;
     cursor: pointer;
     transition: all var(--transition-fast);
-    border: 1px solid rgba(0, 229, 255, 0.35);
+    color: var(--color-primary);
+    background: rgba(54, 230, 255, 0.06);
+    border: 1.5px solid rgba(54, 230, 255, 0.4);
   }
 
   .action-btn:active {
-    transform: scale(0.9);
-    background: rgba(45, 226, 230, 0.2);
-  }
-
-  .action-btn.attack .icon {
-    font-size: 2rem;
-    text-shadow: 0 0 10px var(--color-primary);
+    transform: scale(0.92);
+    background: rgba(54, 230, 255, 0.22);
   }
 
   /* Desktop Hide */
