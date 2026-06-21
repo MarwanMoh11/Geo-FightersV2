@@ -20,16 +20,18 @@
       {@const name = getName(slot.weaponId, 'weapon')}
       {@const readiness = uiState.weaponReadiness[i] ?? 1}
       <div class="slot weapon" title={name}>
-        {#if icon.startsWith('<svg')}
-          {@html icon}
-        {:else if icon.endsWith('.png')}
-          <img src={icon} alt={name} class="icon-img" />
-        {:else}
-          <div class="icon-emoji">{icon}</div>
-        {/if}
-        {#if readiness < 0.95}
-          <div class="cooldown" style="height: {(1 - readiness) * 100}%"></div>
-        {/if}
+        <div class="art">
+          {#if icon.startsWith('<svg')}
+            {@html icon}
+          {:else if icon.endsWith('.png')}
+            <img src={icon} alt={name} class="icon-img" />
+          {:else}
+            <div class="icon-emoji">{icon}</div>
+          {/if}
+          {#if readiness < 0.95}
+            <div class="cooldown" style="height: {(1 - readiness) * 100}%"></div>
+          {/if}
+        </div>
         <span class="lvl tnum">{slot.level}</span>
       </div>
     {/each}
@@ -42,13 +44,15 @@
       {@const icon = getPassiveIcon(slot.passiveId)}
       {@const name = getName(slot.passiveId, 'passive')}
       <div class="slot passive" title={name}>
-        {#if icon.startsWith('<svg')}
-          {@html icon}
-        {:else if icon.endsWith('.png')}
-          <img src={icon} alt={name} class="icon-img" />
-        {:else}
-          <div class="icon-emoji">{icon}</div>
-        {/if}
+        <div class="art">
+          {#if icon.startsWith('<svg')}
+            {@html icon}
+          {:else if icon.endsWith('.png')}
+            <img src={icon} alt={name} class="icon-img" />
+          {:else}
+            <div class="icon-emoji">{icon}</div>
+          {/if}
+        </div>
         <span class="lvl tnum">{slot.level}</span>
       </div>
     {/each}
@@ -63,7 +67,7 @@
     transform: translateX(-50%);
     z-index: 40;
     pointer-events: none;
-    max-width: calc(100vw - 32px);
+    max-width: calc(100vw - 24px);
   }
 
   .hidden {
@@ -73,10 +77,11 @@
   .loadout {
     display: flex;
     align-items: center;
-    gap: 5px;
-    padding: 5px;
-    border-radius: var(--r-pill);
+    gap: 7px;
+    padding: 6px 8px;
+    border-radius: var(--r-lg);
     overflow-x: auto;
+    overflow-y: visible;
     scrollbar-width: none;
   }
   .loadout::-webkit-scrollbar {
@@ -86,22 +91,18 @@
   .divider {
     width: 1px;
     align-self: stretch;
-    margin: 4px 2px;
+    margin: 4px 1px;
     background: rgba(255, 255, 255, 0.1);
     flex-shrink: 0;
   }
 
+  /* Slot is the positioning context; only the art is clipped so the
+     level badge can sit on top without being cut off. */
   .slot {
     position: relative;
-    width: 38px;
-    height: 38px;
-    border-radius: var(--r-pill);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    width: 40px;
+    height: 40px;
     flex-shrink: 0;
-    background: rgba(255, 255, 255, 0.03);
-    overflow: hidden;
     animation: slot-pop var(--transition-springy) both;
   }
   @keyframes slot-pop {
@@ -114,16 +115,27 @@
       opacity: 1;
     }
   }
-  .slot.weapon {
-    box-shadow: inset 0 0 0 1px rgba(54, 230, 255, 0.35);
+
+  .art {
+    position: absolute;
+    inset: 0;
+    border-radius: var(--r-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.04);
+    overflow: hidden;
   }
-  .slot.passive {
-    box-shadow: inset 0 0 0 1px rgba(56, 245, 168, 0.35);
+  .weapon .art {
+    box-shadow: inset 0 0 0 1px rgba(54, 230, 255, 0.4);
+  }
+  .passive .art {
+    box-shadow: inset 0 0 0 1px rgba(56, 245, 168, 0.4);
   }
 
-  .slot :global(svg) {
-    width: 22px;
-    height: 22px;
+  .art :global(svg) {
+    width: 23px;
+    height: 23px;
   }
   .icon-img {
     width: 76%;
@@ -145,20 +157,22 @@
 
   .lvl {
     position: absolute;
-    bottom: -1px;
-    right: -1px;
-    min-width: 13px;
-    height: 13px;
-    padding: 0 3px;
+    bottom: -4px;
+    right: -4px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.52rem;
+    font-size: 0.6rem;
     font-weight: 700;
     line-height: 1;
     color: #04060f;
     background: var(--color-text-main);
+    border: 1.5px solid var(--color-bg-dark);
     border-radius: var(--r-pill);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
   }
   .weapon .lvl {
     background: var(--color-primary);
