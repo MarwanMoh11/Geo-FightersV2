@@ -268,15 +268,15 @@
   /* Top Right Action (Pause Button) */
   .top-right-actions {
     position: absolute;
-    top: 15px;
-    right: 15px;
+    top: calc(15px + var(--safe-top));
+    right: calc(15px + var(--safe-right));
     z-index: 130;
     pointer-events: none;
   }
 
   :global(body.inverted-controls) .top-right-actions {
     right: auto;
-    left: 15px;
+    left: calc(15px + var(--safe-left));
   }
 
   .pause-btn {
@@ -307,15 +307,15 @@
   /* Stats Panel Container */
   .stats-panel-container {
     position: absolute;
-    top: 15px;
-    right: 75px; /* sit next to pause button on desktop */
+    top: calc(15px + var(--safe-top));
+    right: calc(75px + var(--safe-right)); /* sit next to pause button on desktop */
     z-index: 120;
     pointer-events: none;
   }
 
   :global(body.inverted-controls) .stats-panel-container {
     right: auto;
-    left: 75px;
+    left: calc(75px + var(--safe-left));
   }
 
   .stat-group {
@@ -485,25 +485,25 @@
     }
 
     .top-right-actions {
-      top: 15px;
-      right: 15px;
+      top: calc(15px + var(--safe-top));
+      right: calc(15px + var(--safe-right));
     }
 
     .pause-btn {
-      width: 48px;
-      height: 48px;
-      font-size: 1.25rem;
-      border-radius: 12px;
+      width: 52px;
+      height: 52px;
+      font-size: 1.35rem;
+      border-radius: 14px;
     }
 
     .stats-panel-container {
-      top: 75px; /* sit vertically below pause button on mobile */
-      right: 15px;
+      top: calc(80px + var(--safe-top)); /* sit vertically below pause button on mobile */
+      right: calc(15px + var(--safe-right));
     }
 
     :global(body.inverted-controls) .stats-panel-container {
       right: auto;
-      left: 15px;
+      left: calc(15px + var(--safe-left));
     }
 
     .stat-group {
@@ -522,7 +522,7 @@
 
     .health-panel {
       position: fixed;
-      bottom: 110px; /* sit above centered inventory */
+      bottom: calc(110px + var(--safe-bottom)); /* sit above centered inventory */
       left: 50%;
       transform: translateX(-50%);
       width: min(90vw, 220px);

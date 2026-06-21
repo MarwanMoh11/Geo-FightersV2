@@ -8,6 +8,10 @@ import { getCtx, startMusic } from './core/audio';
 import { isPlaying } from './core/GameState';
 import { uiState } from './core/UIState.svelte.ts';
 import { DEBUG, dlog } from './core/debug';
+import { initPWA } from './core/pwa';
+
+// Register service worker + install-prompt brokering as early as possible.
+initPWA();
 
 // Systems
 import { InputSystem } from './systems/InputSystem';

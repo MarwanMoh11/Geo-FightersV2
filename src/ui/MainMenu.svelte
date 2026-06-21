@@ -3,9 +3,16 @@
   import { setGameState } from '../core/GameState';
   import { resumeAudioContext } from '../core/audio';
   import { hostRoom, joinRoom, disconnectNetwork } from '../core/network';
+  import { promptInstall } from '../core/pwa';
+  import { haptics } from '../core/haptics';
 
   let showMpOptions = $state(false);
   let roomCodeInput = $state('');
+
+  async function handleInstall() {
+    haptics.select();
+    await promptInstall();
+  }
 
   async function startSinglePlayer() {
     await resumeAudioContext();
@@ -63,6 +70,13 @@
           <span class="btn-text">CONFIGURATION</span>
           <span class="btn-subtext">SYSTEM SETTINGS</span>
         </button>
+
+        {#if uiState.canInstall}
+          <button class="action install" onclick={handleInstall}>
+            <span class="btn-text">INSTALL APP</span>
+            <span class="btn-subtext">ADD TO HOME SCREEN</span>
+          </button>
+        {/if}
       {:else if showMpOptions && uiState.networkStatus === 'disconnected'}
         <!-- Multiplayer Choices -->
         <button class="action primary" onclick={handleHost}>
@@ -289,6 +303,20 @@
 
   .version {
     opacity: 0.55;
+  }
+
+  .action.install {
+    border-color: rgba(0, 255, 136, 0.4);
+  }
+
+  .action.install:hover {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 28px rgba(0, 255, 136, 0.25);
+  }
+
+  .action.install .btn-text {
+    color: var(--color-accent);
+    text-shadow: 0 0 12px rgba(0, 255, 136, 0.5);
   }
 
   .join-container {
