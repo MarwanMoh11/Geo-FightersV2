@@ -180,10 +180,14 @@
   }
   .wordmark {
     margin: 0;
+    width: 100%;
     font-family: var(--font-heading);
     font-size: clamp(36px, 11vw, 58px);
     font-weight: 800;
     letter-spacing: 0.04em;
+    /* Compensate the trailing letter-spacing so centered text stays centered */
+    text-indent: 0.04em;
+    text-align: center;
     line-height: 0.92;
     color: var(--color-text-main);
     /* Stack GEO / FIGHTERS so the long wordmark never overflows narrow screens */
@@ -191,6 +195,7 @@
   }
   .wordmark .accent {
     display: block;
+    text-indent: 0.04em;
     color: var(--color-primary);
   }
   .tagline {
