@@ -181,13 +181,16 @@
   .wordmark {
     margin: 0;
     font-family: var(--font-heading);
-    font-size: clamp(40px, 13vw, 60px);
+    font-size: clamp(36px, 11vw, 58px);
     font-weight: 800;
-    letter-spacing: 0.06em;
-    line-height: 0.95;
+    letter-spacing: 0.04em;
+    line-height: 0.92;
     color: var(--color-text-main);
+    /* Stack GEO / FIGHTERS so the long wordmark never overflows narrow screens */
+    overflow-wrap: anywhere;
   }
   .wordmark .accent {
+    display: block;
     color: var(--color-primary);
   }
   .tagline {
