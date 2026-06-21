@@ -2,12 +2,6 @@
   import { onMount } from 'svelte';
   import { updateVirtualJoystick, resetVirtualJoystick } from '../systems/InputSystem';
   import { uiState } from '../core/UIState.svelte.ts';
-  import { haptics } from '../core/haptics';
-
-  function onAttackStart() {
-    haptics.select();
-    updateVirtualJoystick(0, 0, true);
-  }
 
   // let joystickZone: HTMLElement; // Unused in this version as we bind events to div directly
   let joyCenterX = $state(0);
@@ -110,20 +104,6 @@
       </div>
     {/if}
   </div>
-
-  <!-- Action Buttons -->
-  <div class="action-buttons">
-    <button
-      class="action-btn attack"
-      aria-label="Attack"
-      ontouchstart={onAttackStart}
-      ontouchend={() => updateVirtualJoystick(0, 0, false)}
-    >
-      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
-        <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" fill="currentColor" />
-      </svg>
-    </button>
-  </div>
 </div>
 
 <style>
@@ -178,41 +158,6 @@
     background: var(--color-primary);
     border-radius: 50%;
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
-  }
-
-  .action-buttons {
-    position: absolute;
-    bottom: calc(2rem + var(--safe-bottom));
-    right: calc(2rem + var(--safe-right));
-    display: flex;
-    gap: 1rem;
-    pointer-events: auto;
-  }
-
-  /* Inverted controls: move the attack button to the left edge */
-  :global(body.inverted-controls) .action-buttons {
-    right: auto;
-    left: calc(2rem + var(--safe-left));
-  }
-
-  .action-btn {
-    all: unset;
-    width: 84px;
-    height: 84px;
-    border-radius: 50%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    color: var(--color-primary);
-    background: rgba(54, 230, 255, 0.06);
-    border: 1.5px solid rgba(54, 230, 255, 0.4);
-  }
-
-  .action-btn:active {
-    transform: scale(0.92);
-    background: rgba(54, 230, 255, 0.22);
   }
 
   /* Desktop Hide */
