@@ -29,10 +29,11 @@ import {
   isRapierInitialized,
 } from '../core/RapierWorld';
 
-// --- REUSABLE VECTORS (Zero GC pressure) ---
+// --- REUSABLE VECTORS & ARRAYS (Zero GC pressure) ---
 const _pushDir = new THREE.Vector3();
 const _blastDir = new THREE.Vector3();
 const _tempVec = new THREE.Vector3();
+const _nearbyEnemies: any[] = [];
 
 export function CollisionSystem(scene: THREE.Scene) {
   // --- RAPIER EVENT-DRIVEN COLLISION ---
@@ -117,9 +118,13 @@ function handleProjectileEnemyCollision(bullet: any, enemy: any, scene: THREE.Sc
     playExplosion();
 
     const confusionDuration = bullet.projectile.confusionDuration || 0;
-    const enemies = Array.from(world.with('isEnemy', 'position', 'health'));
+    
+    _nearbyEnemies.length = 0;
+    for (const target of world.with('isEnemy', 'position', 'health')) {
+      _nearbyEnemies.push(target);
+    }
 
-    for (const target of enemies) {
+    for (const target of _nearbyEnemies) {
       if (target === enemy) continue;
       if (!target.health || target.health.current <= 0) continue;
 
@@ -201,8 +206,13 @@ function handleEnemyPlayerCollision(enemy: any, player: any, _scene: THREE.Scene
 
   if (player.health.current <= 0) {
     // Cooperative multiplayer check: only game over if ALL players are dead
-    const allPlayers = Array.from(world.with('isPlayer', 'health'));
-    const anyAlive = allPlayers.some((p: any) => p.health.current > 0);
+    let anyAlive = false;
+    for (const p of world.with('isPlayer', 'health')) {
+      if (p.health && p.health.current > 0) {
+        anyAlive = true;
+        break;
+      }
+    }
     if (!anyAlive) {
       triggerGameOver();
     }
@@ -248,8 +258,13 @@ function handleEnemyProjectilePlayerCollision(bullet: any, player: any, scene: T
   despawn(bullet, scene);
 
   if (player.health.current <= 0) {
-    const allPlayers = Array.from(world.with('isPlayer', 'health'));
-    const anyAlive = allPlayers.some((p: any) => p.health.current > 0);
+    let anyAlive = false;
+    for (const p of world.with('isPlayer', 'health')) {
+      if (p.health && p.health.current > 0) {
+        anyAlive = true;
+        break;
+      }
+    }
     if (!anyAlive) {
       triggerGameOver();
     }
@@ -354,15 +369,15 @@ function spawnImpactFX(
       particleScale = 1.35;
     }
 
-    const dummy = new THREE.Object3D();
-    dummy.position.copy(pos);
+    let scaleX = particleScale;
+    let scaleY = particleScale;
+    let scaleZ = particleScale;
 
     if (weaponId === 'monowire_lash' || weaponId === 'nanofiber_guillotine') {
-      dummy.scale.set(0.03 * particleScale, 0.03 * particleScale, 0.3 * particleScale);
-    } else {
-      dummy.scale.setScalar(particleScale);
+      scaleX = 0.03 * particleScale;
+      scaleY = 0.03 * particleScale;
+      scaleZ = 0.3 * particleScale;
     }
-    dummy.updateMatrixWorld(true);
 
     const vel = new THREE.Vector3(
       (Math.random() - 0.5) * (weaponId ? 18 : 15),
@@ -373,9 +388,13 @@ function spawnImpactFX(
     world.add({
       isParticle: true,
       isInstancedParticle: true,
-      position: dummy.position,
+      position: pos.clone(),
       velocity: vel,
-      transform: dummy,
+      scaleX,
+      scaleY,
+      scaleZ,
+      rotationX: 0,
+      rotationZ: 0,
       lifeTimer: 0,
       maxLife: 0.22 + Math.random() * 0.15,
       // Randomized tumble so each shard spins differently

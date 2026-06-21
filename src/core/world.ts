@@ -134,6 +134,11 @@ export type Entity = {
   ringGrow?: number;
   isInstancedParticle?: boolean;
   particleColor?: number;
+  scaleX?: number;
+  scaleY?: number;
+  scaleZ?: number;
+  rotationX?: number;
+  rotationZ?: number;
 
   // Boss Shockwave Logic
   isBossShockwave?: boolean;
@@ -145,34 +150,106 @@ export type Entity = {
   rigidBody?: RAPIER.RigidBody;
   collider?: RAPIER.Collider;
   isUpgrading?: boolean;
+
+  // Spatial representation for scene-graph bypass (Phase 5)
+  rotationY?: number;
+  size?: number;
 };
 
 function createECS() {
   const entities: Entity[] = [];
+
+  const indexKeys: (keyof Entity)[] = [
+    'isEnemy',
+    'isProjectile',
+    'isEnemyProjectile',
+    'isParticle',
+    'isInstancedParticle',
+    'isXP',
+    'isWeapon',
+    'isChest',
+    'isPlayer',
+    'isLocalPlayer',
+    'isBossShockwave',
+    'lifeTimer',
+    'transform',
+  ];
+
+  const indexes = new Map<keyof Entity, Set<Entity>>();
+  for (const key of indexKeys) {
+    indexes.set(key, new Set<Entity>());
+  }
+
+  const addToIndexes = (entity: Entity) => {
+    for (const key of indexKeys) {
+      if (entity[key] !== undefined) {
+        indexes.get(key)!.add(entity);
+      }
+    }
+  };
+
+  const removeFromIndexes = (entity: Entity) => {
+    for (const key of indexKeys) {
+      if (entity[key] !== undefined) {
+        indexes.get(key)!.delete(entity);
+      }
+    }
+  };
+
   return {
     add: (entity: Entity) => {
       entity.id = generateId();
       entities.push(entity);
+      addToIndexes(entity);
       return entity;
     },
     remove: (entity: Entity) => {
       const index = entities.indexOf(entity);
-      if (index > -1) entities.splice(index, 1);
+      if (index > -1) {
+        entities.splice(index, 1);
+      }
+      removeFromIndexes(entity);
     },
     with: (...components: (keyof Entity)[]) => {
+      let bestKey: keyof Entity | null = null;
+      let minSize = Infinity;
+
+      for (const comp of components) {
+        const idx = indexes.get(comp);
+        if (idx) {
+          if (idx.size < minSize) {
+            minSize = idx.size;
+            bestKey = comp;
+          }
+        }
+      }
+
+      const source = bestKey ? indexes.get(bestKey)! : entities;
+
       return {
         get first() {
-          return entities.find((e) => components.every((c) => e[c] !== undefined));
+          for (const e of source) {
+            if (components.every((c) => e[c] !== undefined)) {
+              return e;
+            }
+          }
+          return undefined;
         },
         [Symbol.iterator]: function* () {
-          for (const e of entities) {
-            if (components.every((c) => e[c] !== undefined)) yield e;
+          for (const e of source) {
+            if (components.every((c) => e[c] !== undefined)) {
+              yield e;
+            }
           }
         },
       };
     },
     get: (id: number) => {
       return entities.find((e) => e.id === id);
+    },
+    count: (comp: keyof Entity) => {
+      const idx = indexes.get(comp);
+      return idx ? idx.size : 0;
     },
   };
 }

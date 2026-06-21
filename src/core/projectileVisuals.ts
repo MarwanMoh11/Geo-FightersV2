@@ -495,11 +495,23 @@ export function updateProjectileVisual(projectile: any, dt: number, scene: THREE
   const weaponId = projectile.weaponId || '';
   const color = mesh.children[0]?.material?.color?.getHex() ?? 0x00ffff;
 
+  // Initialize submesh reference cache on the mesh if not present
+  if (!mesh.userData.cache) {
+    const cache: Record<string, THREE.Object3D> = {};
+    mesh.traverse((child: any) => {
+      if (child.name) {
+        cache[child.name] = child;
+      }
+    });
+    mesh.userData.cache = cache;
+  }
+  const cache = mesh.userData.cache;
+
   // 1. UPDATE SUBMESH ROTATION ANIMATIONS
   switch (weaponId) {
     case 'nanofiber_guillotine': {
-      const b1 = mesh.getObjectByName('blade1');
-      const b2 = mesh.getObjectByName('blade2');
+      const b1 = cache['blade1'];
+      const b2 = cache['blade2'];
       if (b1 && b2) {
         b1.rotation.y += 18 * dt;
         b2.rotation.y += 18 * dt;
@@ -509,7 +521,7 @@ export function updateProjectileVisual(projectile: any, dt: number, scene: THREE
 
     case 'emp_pulse_node':
     case 'blackout_field': {
-      const shell = mesh.getObjectByName('rotating_shell');
+      const shell = cache['rotating_shell'];
       if (shell) {
         shell.rotation.x += 1.5 * dt;
         shell.rotation.y += 2.5 * dt;
@@ -518,7 +530,7 @@ export function updateProjectileVisual(projectile: any, dt: number, scene: THREE
     }
 
     case 'thermal_collapse': {
-      const crystals = mesh.getObjectByName('crystals');
+      const crystals = cache['crystals'];
       if (crystals) {
         crystals.rotation.x += 2.0 * dt;
         crystals.rotation.z += 2.0 * dt;
@@ -527,7 +539,7 @@ export function updateProjectileVisual(projectile: any, dt: number, scene: THREE
     }
 
     case 'drone_halo': {
-      const ring = mesh.getObjectByName('drone_ring');
+      const ring = cache['drone_ring'];
       if (ring) {
         ring.rotation.x += 4.5 * dt;
         ring.rotation.y += 2.0 * dt;
@@ -536,7 +548,7 @@ export function updateProjectileVisual(projectile: any, dt: number, scene: THREE
     }
 
     case 'swarm_intelligence': {
-      const rotors = mesh.getObjectByName('rotors');
+      const rotors = cache['rotors'];
       if (rotors) {
         rotors.children.forEach((rotor: any, idx: number) => {
           rotor.rotation.z += (idx % 2 === 0 ? 30 : -30) * dt;
@@ -546,7 +558,7 @@ export function updateProjectileVisual(projectile: any, dt: number, scene: THREE
     }
 
     case 'photon_blades': {
-      const arc = mesh.getObjectByName('hard_light_arc');
+      const arc = cache['hard_light_arc'];
       if (arc) {
         arc.rotation.y += 15 * dt;
       }
@@ -554,9 +566,9 @@ export function updateProjectileVisual(projectile: any, dt: number, scene: THREE
     }
 
     case 'signal_hijacker': {
-      const ripple = mesh.getObjectByName('ripple_ring');
+      const ripple = cache['ripple_ring'];
       if (ripple) {
-        // Expand ring ripple and wrap around
+        // Expand ripple and reset
         let scale = ripple.scale.x + 4.0 * dt;
         if (scale > 3.0) scale = 0.5;
         ripple.scale.setScalar(scale);
@@ -565,7 +577,7 @@ export function updateProjectileVisual(projectile: any, dt: number, scene: THREE
     }
 
     case 'orbital_kill_ping': {
-      const beam = mesh.getObjectByName('kill_beam');
+      const beam = cache['kill_beam'];
       if (beam) {
         // Pulse laser width
         const width = projectile.weapon?.bulletWidth || 0.4;
@@ -577,8 +589,8 @@ export function updateProjectileVisual(projectile: any, dt: number, scene: THREE
     }
 
     case 'overclock_engine': {
-      const s1 = mesh.getObjectByName('shard1');
-      const s2 = mesh.getObjectByName('shard2');
+      const s1 = cache['shard1'];
+      const s2 = cache['shard2'];
       if (s1 && s2) {
         s1.rotation.x += 8 * dt;
         s1.rotation.y += 5 * dt;
@@ -589,7 +601,7 @@ export function updateProjectileVisual(projectile: any, dt: number, scene: THREE
     }
 
     case 'runaway_singularity': {
-      const accretion = mesh.getObjectByName('accretion_disk');
+      const accretion = cache['accretion_disk'];
       if (accretion) {
         accretion.rotation.z += 12 * dt;
       }
@@ -597,7 +609,7 @@ export function updateProjectileVisual(projectile: any, dt: number, scene: THREE
     }
 
     case 'memory_leak': {
-      const leak = mesh.getObjectByName('leak_voxel');
+      const leak = cache['leak_voxel'];
       if (leak) {
         leak.rotation.x += 4 * dt;
         leak.rotation.z += 6 * dt;
@@ -606,7 +618,7 @@ export function updateProjectileVisual(projectile: any, dt: number, scene: THREE
     }
 
     case 'heap_overflow': {
-      const heap = mesh.getObjectByName('heap_stack');
+      const heap = cache['heap_stack'];
       if (heap) {
         heap.children.forEach((layer: any, idx: number) => {
           layer.rotation.y += (idx % 2 === 0 ? 3.0 : -4.5) * dt;
@@ -632,11 +644,7 @@ function spawnTrailParticle(
   weaponId: string,
   _scene: THREE.Scene,
 ) {
-  let life = 0.15 + Math.random() * 0.1;
-
-  // Create a lightweight dummy Object3D (not added to the scene)
-  const dummy = new THREE.Object3D();
-  dummy.position.copy(pos);
+  const life = 0.15 + Math.random() * 0.1;
 
   // Determine scale based on weapon style
   let sizeScale = 0.6;
@@ -649,11 +657,6 @@ function spawnTrailParticle(
   } else if (weaponId === 'memory_leak' || weaponId === 'heap_overflow') {
     sizeScale = 0.5;
   }
-  dummy.scale.setScalar(sizeScale);
-
-  // Randomize rotation/tumble for visual variety
-  dummy.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
-  dummy.updateMatrixWorld(true);
 
   // Compute slight eject velocity for particle realism
   const isElectric = weaponId === 'smart_rail_needles' || weaponId === 'magnetic_railstorm';
@@ -669,9 +672,15 @@ function spawnTrailParticle(
   world.add({
     isParticle: true,
     isInstancedParticle: true,
-    position: dummy.position,
+    position: pos.clone(),
     velocity: _sparkVel.clone(),
-    transform: dummy,
+    scaleX: sizeScale,
+    scaleY: sizeScale,
+    scaleZ: sizeScale,
+    rotationX: Math.random() * Math.PI,
+    rotationZ: Math.random() * Math.PI,
+    spinX: (Math.random() - 0.5) * 10,
+    spinZ: (Math.random() - 0.5) * 5,
     lifeTimer: 0,
     maxLife: life,
     particleColor: color,

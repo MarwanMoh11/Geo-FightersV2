@@ -30,18 +30,29 @@ const DESPAWN_RADIUS_SQ = 36 * 36;
 // --- MAX SEPARATION CHECKS PER ENEMY (Performance cap) ---
 const MAX_SEPARATION_CHECKS = 10;
 
-export function EnemySystem(dt: number, scene: THREE.Scene) {
-  const players = Array.from(world.with('isPlayer', 'position')).filter(
-    (p: any) => !p.health || p.health.current > 0,
-  );
-  if (players.length === 0) return;
+// --- MODULE-LEVEL REUSABLE ARRAYS (Prevents GC Allocations) ---
+const _players: any[] = [];
+const _enemies: any[] = [];
 
-  // Convert to array once per frame
-  const enemies = Array.from(world.with('isEnemy', 'position', 'velocity', 'health'));
-  const enemyCount = enemies.length;
+export function EnemySystem(dt: number, scene: THREE.Scene) {
+  // Populate reusable players array
+  _players.length = 0;
+  for (const p of world.with('isPlayer', 'position')) {
+    if (!p.health || p.health.current > 0) {
+      _players.push(p);
+    }
+  }
+  if (_players.length === 0) return;
+
+  // Populate reusable enemies array
+  _enemies.length = 0;
+  for (const e of world.with('isEnemy', 'position', 'velocity', 'health')) {
+    _enemies.push(e);
+  }
+  const enemyCount = _enemies.length;
 
   for (let i = 0; i < enemyCount; i++) {
-    const enemy = enemies[i];
+    const enemy = _enemies[i];
 
     // Exclude the boss from normal enemy steering, separation, and screen-bound despawning
     if (enemy.isBoss) continue;
@@ -58,9 +69,9 @@ export function EnemySystem(dt: number, scene: THREE.Scene) {
       enemy.velocity.z *= STUN_FRICTION;
     } else {
       // Find closest player for AI targeting
-      let closestPlayer = players[0];
+      let closestPlayer = _players[0];
       let minPDistSq = Infinity;
-      for (const p of players) {
+      for (const p of _players) {
         const dx = p.position.x - enemy.position.x;
         const dz = p.position.z - enemy.position.z;
         const distSq = dx * dx + dz * dz;
@@ -80,7 +91,7 @@ export function EnemySystem(dt: number, scene: THREE.Scene) {
 
         for (let j = 0; j < enemyCount; j++) {
           if (j === i) continue;
-          const other = enemies[j];
+          const other = _enemies[j];
           // Don't target other confused enemies or dead enemies
           if (other.confusedTimer && other.confusedTimer > 0) continue;
           if (!other.health || other.health.current <= 0) continue;
@@ -133,7 +144,7 @@ export function EnemySystem(dt: number, scene: THREE.Scene) {
     let checksRemaining = MAX_SEPARATION_CHECKS;
 
     for (let j = i + 1; j < enemyCount && checksRemaining > 0; j++) {
-      const other = enemies[j];
+      const other = _enemies[j];
 
       const dx = enemy.position.x - other.position.x;
       const dz = enemy.position.z - other.position.z;
@@ -169,7 +180,7 @@ export function EnemySystem(dt: number, scene: THREE.Scene) {
     // 6. DESPAWN (Screen-bound entity recycling)
     // Remove enemies too far from ALL players to maintain performance
     let closeToAnyPlayer = false;
-    for (const p of players) {
+    for (const p of _players) {
       const distX = enemy.position.x - p.position.x;
       const distZ = enemy.position.z - p.position.z;
       const distSq = distX * distX + distZ * distZ;

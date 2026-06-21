@@ -244,7 +244,7 @@ function startGameLoop(
     }
 
     // 4. UI & Camera
-    RenderSystem(dt);
+    RenderSystem(dt, scene);
     CameraSystem(dt, camera);
     DamageNumberSystem(dt, camera);
     UISystem();
