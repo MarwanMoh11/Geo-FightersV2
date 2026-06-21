@@ -50,4 +50,9 @@ export const uiState = $state({
   // Settings
   fps: 60,
   showFps: false,
+
+  // PWA / install
+  canInstall: false,
+  isStandalone: false,
+  needsRefresh: false,
 });

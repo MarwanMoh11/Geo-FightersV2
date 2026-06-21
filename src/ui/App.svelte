@@ -8,6 +8,7 @@
   import GameOverModal from './modals/GameOverModal.svelte';
   import MobileControls from './MobileControls.svelte';
   import FPSCounter from './FPSCounter.svelte';
+  import PwaLayer from './PwaLayer.svelte';
 </script>
 
 <div class="game-ui">
@@ -20,8 +21,9 @@
   <SettingsModal />
   <UpgradeModal />
   <GameOverModal />
-  
+
   <FPSCounter />
+  <PwaLayer />
 </div>
 
 <style>

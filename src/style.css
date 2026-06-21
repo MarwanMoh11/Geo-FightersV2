@@ -220,10 +220,10 @@ html {
 /* --- MINIMAP --- */
 #minimap-container {
   position: fixed;
-  top: 15px;
+  top: calc(15px + var(--safe-top));
   bottom: auto;
   right: auto;
-  left: 15px;
+  left: calc(15px + var(--safe-left));
   /* Default: Left side */
   width: 160px;
   height: 175px;
@@ -242,7 +242,7 @@ html {
 /* Inverted: Minimap on Right */
 body.inverted-controls #minimap-container {
   left: auto;
-  right: 15px;
+  right: calc(15px + var(--safe-right));
 }
 
 #minimap-canvas {
@@ -266,9 +266,9 @@ body.inverted-controls #minimap-container {
   #minimap-container {
     width: 100px;
     height: 115px;
-    top: 10px;
+    top: calc(10px + var(--safe-top));
     bottom: auto;
-    left: 10px;
+    left: calc(10px + var(--safe-left));
   }
 
   #minimap-canvas {

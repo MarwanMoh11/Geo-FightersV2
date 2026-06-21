@@ -2,6 +2,12 @@
   import { onMount } from 'svelte';
   import { updateVirtualJoystick, resetVirtualJoystick } from '../systems/InputSystem';
   import { uiState } from '../core/UIState.svelte.ts';
+  import { haptics } from '../core/haptics';
+
+  function onAttackStart() {
+    haptics.select();
+    updateVirtualJoystick(0, 0, true);
+  }
 
   // let joystickZone: HTMLElement; // Unused in this version as we bind events to div directly
   let joyCenterX = $state(0);
@@ -110,7 +116,8 @@
   <div class="action-buttons">
     <button
       class="action-btn glass attack"
-      ontouchstart={() => updateVirtualJoystick(0, 0, true)}
+      aria-label="Attack"
+      ontouchstart={onAttackStart}
       ontouchend={() => updateVirtualJoystick(0, 0, false)}
     >
       <div class="icon">⚡</div>
@@ -140,6 +147,12 @@
     width: 50%;
     height: 75%;
     pointer-events: auto;
+  }
+
+  /* Inverted controls: move the steering zone to the right edge */
+  :global(body.inverted-controls) .joystick-zone {
+    left: auto;
+    right: 0;
   }
 
   .joystick-base {
@@ -184,23 +197,30 @@
 
   .action-buttons {
     position: absolute;
-    bottom: 2rem;
-    right: 2rem;
+    bottom: calc(2rem + var(--safe-bottom));
+    right: calc(2rem + var(--safe-right));
     display: flex;
     gap: 1rem;
     pointer-events: auto;
   }
 
+  /* Inverted controls: move the attack button to the left edge */
+  :global(body.inverted-controls) .action-buttons {
+    right: auto;
+    left: calc(2rem + var(--safe-left));
+  }
+
   .action-btn {
     all: unset;
-    width: 80px;
-    height: 80px;
+    width: 88px;
+    height: 88px;
     border-radius: 50%;
     display: flex;
     justify-content: center;
     align-items: center;
     cursor: pointer;
     transition: all var(--transition-fast);
+    border: 1px solid rgba(0, 229, 255, 0.35);
   }
 
   .action-btn:active {
