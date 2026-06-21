@@ -3,11 +3,10 @@
   import { setGameState } from '../core/GameState';
   import { fly } from 'svelte/transition';
 
-  // Derived values
   let hpPercent = $derived(
     Math.max(0, Math.min(100, (uiState.health.current / uiState.health.max) * 100)),
   );
-  let xpPercent = $derived((uiState.xp / uiState.xpMax) * 100);
+  let xpPercent = $derived(Math.max(0, Math.min(100, (uiState.xp / uiState.xpMax) * 100)));
   let lowHealth = $derived(hpPercent <= 30);
 
   let minutes = $derived(
@@ -23,13 +22,10 @@
   let timerText = $derived(`${minutes}:${seconds}`);
 
   function pauseGame() {
-    // Route through the state machine so the game loop actually halts
     setGameState('PAUSED');
   }
 
-  // (The damage vignette re-mounts via {#key} each hit, restarting its animation)
-
-  // Flash the XP bar gold when a level-up happens
+  // Flash gold on level-up
   let levelFlash = $state(false);
   let lastLevel = 1;
   $effect(() => {
@@ -42,89 +38,67 @@
 </script>
 
 <div id="hud-overlay" class:hidden={uiState.gameState !== 'PLAYING'}>
-  <!-- Damage feedback vignette (re-keyed per hit so the flash always restarts) -->
+  <!-- Damage feedback vignette (re-keyed per hit so the flash restarts) -->
   {#key uiState.damageFlash}
-    <div class="damage-vignette" class:low={lowHealth} class:flash={uiState.damageFlash > 0}></div>
+    <div class="vignette" class:low={lowHealth} class:flash={uiState.damageFlash > 0}></div>
   {/key}
 
-  <!-- Top Edge: XP Bar -->
-  <div class="xp-container">
-    <div class="xp-fill" class:level-flash={levelFlash} style="width: {xpPercent}%"></div>
-    <div class="xp-label" class:level-flash={levelFlash}>
-      {levelFlash
-        ? 'LEVEL UP!'
-        : `SYSTEM LVL ${uiState.level.toString().padStart(2, '0')} • SYNC ${Math.floor(xpPercent)}%`}
+  <!-- XP rail: hairline across the very top edge -->
+  <div class="xp-rail">
+    <div class="xp-fill" class:flash={levelFlash} style="width: {xpPercent}%"></div>
+  </div>
+
+  <!-- Top HUD: radar (left) · vitals (center) · pause (right) -->
+  <div class="hud-top">
+    <!-- Radar -->
+    <div id="minimap-container" class="radar glass">
+      <canvas id="minimap-canvas" width="150" height="150"></canvas>
+      <span id="minimap-label" class="eyebrow">RADAR</span>
     </div>
-  </div>
 
-  <!-- Top Center: Boss Health -->
-  <div class="top-center">
-    {#if uiState.bossHealth.active}
-      <div class="boss-health glass" transition:fly={{ y: -24, duration: 400 }}>
-        <div class="boss-label">⚠ SYSTEM CORRUPTION ⚠</div>
-        <div class="boss-bar">
-          <div
-            class="boss-fill"
-            style="width: {(uiState.bossHealth.current / uiState.bossHealth.max) * 100}%"
-          ></div>
+    <!-- Vitals -->
+    <div class="vitals">
+      <div class="timer tnum" class:flash={levelFlash}>{timerText}</div>
+
+      <div class="hp">
+        <div class="hp-bar">
+          <div class="hp-fill" class:low={lowHealth} style="width: {hpPercent}%"></div>
         </div>
+        <span class="hp-val tnum" class:low={lowHealth}>{Math.ceil(hpPercent)}</span>
       </div>
-    {/if}
-  </div>
 
-  <!-- Top Left: Minimap (Radar) -->
-  <div id="minimap-container" class="glass">
-    <canvas id="minimap-canvas" width="150" height="150"></canvas>
-    <div id="minimap-label">RADAR</div>
-  </div>
+      <div class="meta tnum">
+        <span class="lv" class:flash={levelFlash}>LV{uiState.level}</span>
+        <span class="dot">·</span>
+        <span class="score">{uiState.score}</span>
+        <span class="dot">·</span>
+        <span class="kills">{uiState.kills}<i>k</i></span>
+      </div>
+    </div>
 
-  <!-- Center Timer (Vertically aligned with minimap) -->
-  <div class="timer-container glass top-left-timer">
-    <span class="timer-text">{timerText}</span>
-  </div>
-
-  <!-- Top Right: Pause button container -->
-  <div class="top-right-actions">
-    <button class="pause-btn glass" onclick={pauseGame} aria-label="Pause Game" title="Pause (ESC)">
-      ⏸
+    <!-- Pause -->
+    <button class="pause-btn glass" onclick={pauseGame} aria-label="Pause" title="Pause (ESC)">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+        <rect x="6" y="5" width="4" height="14" rx="1.2" fill="currentColor" />
+        <rect x="14" y="5" width="4" height="14" rx="1.2" fill="currentColor" />
+      </svg>
     </button>
   </div>
 
-  <!-- Stats Panel container -->
-  <div class="stats-panel-container">
-    <div class="stat-group glass">
-      <div class="stat-item">
-        <span class="label">DATA</span>
-        <span class="value cyan">{uiState.score}</span>
+  <!-- Boss bar -->
+  {#if uiState.bossHealth.active}
+    <div class="boss" transition:fly={{ y: -16, duration: 350 }}>
+      <div class="boss-head">
+        <span class="eyebrow">⚠ SYSTEM CORRUPTION</span>
       </div>
-      <div class="divider"></div>
-      <div class="stat-item">
-        <span class="label">KILLS</span>
-        <span class="value gold">{uiState.kills}</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- Bottom: Health and status panels -->
-  <div class="bottom-container">
-    <div class="status-panels">
-      <!-- Health Panel -->
-      <div class="health-panel glass">
-        <div class="panel-header">
-          <span class="label">INTEGRITY</span>
-          <span class="value" class:danger={lowHealth}>{Math.ceil(hpPercent)}%</span>
-        </div>
-        <div class="gauge-container">
-          <div class="gauge-fill health" class:low={lowHealth} style="width: {hpPercent}%"></div>
-          <div class="gauge-segments">
-            {#each Array(10) as _}
-              <div class="segment"></div>
-            {/each}
-          </div>
-        </div>
+      <div class="boss-bar">
+        <div
+          class="boss-fill"
+          style="width: {(uiState.bossHealth.current / uiState.bossHealth.max) * 100}%"
+        ></div>
       </div>
     </div>
-  </div>
+  {/if}
 </div>
 
 <style>
@@ -132,428 +106,259 @@
     position: fixed;
     inset: 0;
     pointer-events: none;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    padding: 1.5rem;
     z-index: 120;
-    font-family: var(--font-mono);
+    font-family: var(--font-body);
   }
 
   .hidden {
     display: none !important;
   }
 
-  /* Utils */
-  .cyan {
-    color: var(--color-primary);
-  }
-  .gold {
-    color: var(--color-gold);
-  }
-
-  /* Damage vignette: flashes red on hit, simmers when health is low */
-  .damage-vignette {
+  /* ---- Damage vignette ---- */
+  .vignette {
     position: absolute;
     inset: 0;
     pointer-events: none;
     opacity: 0;
-    background: radial-gradient(ellipse at center, transparent 55%, rgba(255, 30, 70, 0.55) 100%);
+    background: radial-gradient(ellipse at center, transparent 58%, rgba(255, 61, 119, 0.5) 100%);
   }
-
-  .damage-vignette.low {
-    opacity: 0.35;
-    animation: low-pulse 1.4s ease-in-out infinite;
+  .vignette.low {
+    opacity: 0.3;
+    animation: low-pulse 1.5s ease-in-out infinite;
   }
-
-  .damage-vignette.flash {
-    animation: vignette-flash 0.45s ease-out;
+  .vignette.flash {
+    animation: vignette-flash 0.4s ease-out;
   }
-
-  .damage-vignette.flash.low {
+  .vignette.flash.low {
     animation:
-      vignette-flash 0.45s ease-out,
-      low-pulse 1.4s ease-in-out 0.45s infinite;
+      vignette-flash 0.4s ease-out,
+      low-pulse 1.5s ease-in-out 0.4s infinite;
   }
-
   @keyframes vignette-flash {
     0% {
-      opacity: 1;
+      opacity: 0.9;
     }
     100% {
       opacity: 0;
     }
   }
-
   @keyframes low-pulse {
     50% {
-      opacity: 0.15;
+      opacity: 0.12;
     }
   }
 
-  /* Top Bar */
-  .top-center {
-    position: absolute;
-    top: 4.5rem; /* adjusted down to prevent overlapping with XP label */
-    left: 50%;
-    transform: translateX(-50%);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1rem;
-    width: min(90%, 400px);
-  }
-
-  .timer-container {
-    padding: 0.5rem 1.5rem;
-    border-radius: 99px;
-  }
-
-  .top-left-timer {
-    position: absolute;
-    top: 32px;
-    left: 50%;
-    transform: translateX(-50%);
-  }
-
-  :global(body.inverted-controls) .top-left-timer {
-    left: 50%;
-    transform: translateX(-50%);
-    right: auto;
-  }
-
-  .timer-text {
-    font-size: 1.5rem;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    color: var(--color-text-main);
-  }
-
-  .boss-health {
-    width: 100%;
-    padding: 0.75rem;
-    border-radius: 12px;
-    border: 1px solid rgba(255, 46, 136, 0.35);
-  }
-
-  .boss-label {
-    font-size: 0.6rem;
-    letter-spacing: 0.2em;
-    color: var(--color-secondary);
-    margin-bottom: 0.5rem;
-    text-align: center;
-    animation: boss-label-pulse 1.2s ease-in-out infinite;
-  }
-
-  @keyframes boss-label-pulse {
-    50% {
-      opacity: 0.6;
-    }
-  }
-
-  .boss-bar {
-    height: 6px;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 3px;
-    overflow: hidden;
-  }
-
-  .boss-fill {
-    height: 100%;
-    background: var(--color-secondary);
-    box-shadow: 0 0 10px var(--color-secondary);
-    transition: width 0.3s ease;
-  }
-
-  /* Top Right Action (Pause Button) */
-  .top-right-actions {
-    position: absolute;
-    top: calc(15px + var(--safe-top));
-    right: calc(15px + var(--safe-right));
-    z-index: 130;
-    pointer-events: none;
-  }
-
-  :global(body.inverted-controls) .top-right-actions {
-    right: auto;
-    left: calc(15px + var(--safe-left));
-  }
-
-  .pause-btn {
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: var(--color-text-main);
-    cursor: pointer;
-    font-size: 1.1rem;
-    transition: all 0.2s ease;
-    pointer-events: auto !important;
-  }
-
-  .pause-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    transform: scale(1.05);
-  }
-
-  .pause-btn:active {
-    transform: scale(0.95);
-  }
-
-  /* Stats Panel Container */
-  .stats-panel-container {
-    position: absolute;
-    top: calc(15px + var(--safe-top));
-    right: calc(75px + var(--safe-right)); /* sit next to pause button on desktop */
-    z-index: 120;
-    pointer-events: none;
-  }
-
-  :global(body.inverted-controls) .stats-panel-container {
-    right: auto;
-    left: calc(75px + var(--safe-left));
-  }
-
-  .stat-group {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding: 0.75rem 1.25rem;
-    border-radius: 12px;
-    pointer-events: auto !important;
-  }
-
-  .stat-item {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-  }
-
-  .stat-item .label {
-    font-size: 0.5rem;
-    letter-spacing: 0.1em;
-    color: var(--color-text-dim);
-  }
-
-  .stat-item .value {
-    font-size: 1.1rem;
-    font-weight: 700;
-  }
-
-  .divider {
-    width: 1px;
-    height: 20px;
-    background: rgba(255, 255, 255, 0.1);
-  }
-
-  /* Bottom Area */
-  .bottom-container {
-    margin-top: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-    pointer-events: none;
-  }
-
-  .health-panel {
-    width: min(100%, 300px);
-    padding: 1rem;
-    border-radius: 16px;
-    pointer-events: auto !important;
-  }
-
-  .panel-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    margin-bottom: 0.5rem;
-  }
-
-  .panel-header .label {
-    font-size: 0.6rem;
-    letter-spacing: 0.2em;
-    color: var(--color-text-dim);
-  }
-
-  .panel-header .value {
-    font-size: 0.9rem;
-    font-weight: 700;
-    transition: color 0.3s ease;
-  }
-
-  .panel-header .value.danger {
-    color: var(--color-secondary);
-    text-shadow: 0 0 8px rgba(255, 46, 136, 0.7);
-  }
-
-  .gauge-container {
-    height: 12px;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 4px;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .gauge-fill {
-    height: 100%;
-    transition: width 0.2s ease;
-  }
-
-  .gauge-fill.health {
-    background: linear-gradient(90deg, var(--color-primary), #6ff2ff);
-    box-shadow: 0 0 15px rgba(0, 229, 255, 0.3);
-  }
-
-  .gauge-fill.health.low {
-    background: linear-gradient(90deg, var(--color-secondary), #ff4d8d);
-    box-shadow: 0 0 15px rgba(255, 0, 85, 0.5);
-    animation: gauge-pulse 0.9s ease-in-out infinite;
-  }
-
-  @keyframes gauge-pulse {
-    50% {
-      opacity: 0.6;
-    }
-  }
-
-  .gauge-segments {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    justify-content: space-between;
-    padding: 0 2px;
-  }
-
-  .segment {
-    width: 1px;
-    height: 100%;
-    background: rgba(255, 255, 255, 0.1);
-  }
-
-  /* XP Bar (Edge to Edge at top) */
-  .xp-container {
+  /* ---- XP rail ---- */
+  .xp-rail {
     position: fixed;
     top: 0;
     left: 0;
-    width: 100%;
-    height: 6px;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 1000;
-    pointer-events: none;
+    right: 0;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.06);
   }
-
   .xp-fill {
     height: 100%;
-    background: var(--color-primary);
-    box-shadow: 0 0 10px var(--color-primary);
+    background: var(--color-gold);
+    transition: width 0.3s ease;
+  }
+  .xp-fill.flash {
+    box-shadow: 0 0 12px var(--color-gold);
+  }
+
+  /* ---- Top HUD bar ---- */
+  .hud-top {
+    position: absolute;
+    top: calc(var(--safe-top) + 10px);
+    left: calc(var(--safe-left) + 10px);
+    right: calc(var(--safe-right) + 10px);
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: start;
+    gap: var(--sp-3);
+  }
+
+  /* Radar (left) */
+  .radar {
+    justify-self: start;
+    width: 70px;
+    height: 70px;
+    border-radius: var(--r-md);
+    padding: 4px;
+    position: relative;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  #minimap-canvas {
+    width: 100%;
+    height: 100%;
+    border-radius: var(--r-sm);
+    display: block;
+    background: rgba(0, 0, 0, 0.35);
+  }
+  #minimap-label {
+    position: absolute;
+    bottom: 5px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 0.4rem;
+    color: var(--color-primary);
+    text-shadow: 0 1px 3px #000;
+  }
+
+  /* Vitals (center) */
+  .vitals {
+    justify-self: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+  }
+  .timer {
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.04em;
+    color: var(--color-text-main);
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+    transition: color 0.3s ease;
+  }
+  .timer.flash {
+    color: var(--color-gold);
+  }
+  .hp {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    width: min(58vw, 240px);
+  }
+  .hp-bar {
+    flex: 1;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: var(--r-pill);
+    overflow: hidden;
+  }
+  .hp-fill {
+    height: 100%;
+    border-radius: var(--r-pill);
+    background: linear-gradient(90deg, var(--color-primary-dim), var(--color-primary));
+    transition:
+      width 0.25s ease,
+      background 0.3s ease;
+  }
+  .hp-fill.low {
+    background: linear-gradient(90deg, #b3315a, var(--color-secondary));
+    animation: hp-pulse 0.9s ease-in-out infinite;
+  }
+  @keyframes hp-pulse {
+    50% {
+      opacity: 0.55;
+    }
+  }
+  .hp-val {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--color-text-dim);
+    min-width: 22px;
+    text-align: right;
+  }
+  .hp-val.low {
+    color: var(--color-secondary);
+  }
+  .meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.62rem;
+    font-weight: 500;
+    color: var(--color-text-dim);
+  }
+  .meta .lv {
+    color: var(--color-gold);
+    font-weight: 700;
+  }
+  .meta .lv.flash {
+    text-shadow: 0 0 10px var(--color-gold);
+  }
+  .meta .score {
+    color: var(--color-primary);
+  }
+  .meta .kills i {
+    font-style: normal;
+    color: var(--color-text-faint);
+  }
+  .meta .dot {
+    color: var(--color-text-faint);
+  }
+
+  /* Pause (right) */
+  .pause-btn {
+    justify-self: end;
+    width: 42px;
+    height: 42px;
+    border-radius: var(--r-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-main);
+    cursor: pointer;
+    pointer-events: auto !important;
+    transition: all var(--transition-fast);
+  }
+  .pause-btn:hover {
+    border-color: var(--color-border-bright);
+  }
+  .pause-btn:active {
+    transform: scale(0.92);
+  }
+
+  /* ---- Boss bar ---- */
+  .boss {
+    position: absolute;
+    top: calc(var(--safe-top) + 92px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(86vw, 420px);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .boss-head {
+    text-align: center;
+  }
+  .boss-head .eyebrow {
+    color: var(--color-secondary);
+    animation: boss-pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes boss-pulse {
+    50% {
+      opacity: 0.55;
+    }
+  }
+  .boss-bar {
+    height: 5px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: var(--r-pill);
+    overflow: hidden;
+  }
+  .boss-fill {
+    height: 100%;
+    background: var(--color-secondary);
+    border-radius: var(--r-pill);
     transition: width 0.3s ease;
   }
 
-  .xp-fill.level-flash {
-    background: var(--color-gold);
-    box-shadow: 0 0 18px var(--color-gold);
-  }
-
-  .xp-label {
-    position: absolute;
-    top: 10px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 0.6rem;
-    letter-spacing: 0.2em;
-    color: var(--color-text-dim);
-    text-transform: uppercase;
-    transition: color 0.2s ease;
-    white-space: nowrap;
-    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
-  }
-
-  .xp-label.level-flash {
-    color: var(--color-gold);
-    text-shadow: 0 0 10px var(--color-gold);
-    font-weight: 700;
-  }
-
-  /* Mobile Adjustments */
-  @media (max-width: 600px) {
-    #hud-overlay {
-      padding: 1rem;
+  /* Landscape / wide: nudge radar + give the timer room */
+  @media (min-width: 700px) {
+    .timer {
+      font-size: 2.4rem;
     }
-
-    .top-right-actions {
-      top: calc(15px + var(--safe-top));
-      right: calc(15px + var(--safe-right));
-    }
-
-    .pause-btn {
-      width: 52px;
-      height: 52px;
-      font-size: 1.35rem;
-      border-radius: 14px;
-    }
-
-    .stats-panel-container {
-      top: calc(80px + var(--safe-top)); /* sit vertically below pause button on mobile */
-      right: calc(15px + var(--safe-right));
-    }
-
-    :global(body.inverted-controls) .stats-panel-container {
-      right: auto;
-      left: calc(15px + var(--safe-left));
-    }
-
-    .stat-group {
-      padding: 0.4rem 0.6rem;
-      gap: 0.5rem;
-      border-radius: 8px;
-    }
-
-    .stat-item .value {
-      font-size: 0.8rem;
-    }
-
-    .stat-item .label {
-      font-size: 0.45rem;
-    }
-
-    .health-panel {
-      position: fixed;
-      bottom: calc(110px + var(--safe-bottom)); /* sit above centered inventory */
-      left: 50%;
-      transform: translateX(-50%);
-      width: min(90vw, 220px);
-      padding: 0.6rem 0.8rem;
-      border-radius: 12px;
-    }
-
-    :global(body.inverted-controls) .health-panel {
-      left: 50%;
-      transform: translateX(-50%);
-      right: auto;
-    }
-
-    .timer-container {
-      padding: 0.25rem 1rem;
-    }
-
-    .timer-text {
-      font-size: 1.25rem;
-    }
-
-    .top-left-timer {
-      top: 32px;
-      left: 50%;
-      transform: translateX(-50%);
-    }
-
-    :global(body.inverted-controls) .top-left-timer {
-      left: 50%;
-      transform: translateX(-50%);
-      right: auto;
+    .radar {
+      width: 84px;
+      height: 84px;
     }
   }
 </style>

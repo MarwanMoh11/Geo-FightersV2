@@ -15,7 +15,9 @@
 
   // Derived stats
   const averageFps = $derived(
-    fpsHistory.length > 0 ? Math.round(fpsHistory.reduce((a, b) => a + b, 0) / fpsHistory.length) : 0
+    fpsHistory.length > 0
+      ? Math.round(fpsHistory.reduce((a, b) => a + b, 0) / fpsHistory.length)
+      : 0,
   );
 
   const pointsString = $derived(
@@ -26,7 +28,7 @@
         const y = 40 - (clampedFps / 90) * 35; // Leave 5px padding on top
         return `${x.toFixed(1)},${y.toFixed(1)}`;
       })
-      .join(' ')
+      .join(' '),
   );
 </script>
 
@@ -39,10 +41,34 @@
     <div class="graph-wrapper">
       <svg class="graph-svg" viewBox="0 0 100 40" preserveAspectRatio="none">
         <!-- Grid lines -->
-        <line x1="0" y1="10" x2="100" y2="10" stroke="rgba(0, 255, 136, 0.15)" stroke-width="0.5" stroke-dasharray="2,2" />
-        <line x1="0" y1="20" x2="100" y2="20" stroke="rgba(0, 255, 136, 0.15)" stroke-width="0.5" stroke-dasharray="2,2" />
-        <line x1="0" y1="30" x2="100" y2="30" stroke="rgba(0, 255, 136, 0.15)" stroke-width="0.5" stroke-dasharray="2,2" />
-        
+        <line
+          x1="0"
+          y1="10"
+          x2="100"
+          y2="10"
+          stroke="rgba(0, 255, 136, 0.15)"
+          stroke-width="0.5"
+          stroke-dasharray="2,2"
+        />
+        <line
+          x1="0"
+          y1="20"
+          x2="100"
+          y2="20"
+          stroke="rgba(0, 255, 136, 0.15)"
+          stroke-width="0.5"
+          stroke-dasharray="2,2"
+        />
+        <line
+          x1="0"
+          y1="30"
+          x2="100"
+          y2="30"
+          stroke="rgba(0, 255, 136, 0.15)"
+          stroke-width="0.5"
+          stroke-dasharray="2,2"
+        />
+
         <!-- Plot line -->
         {#if pointsString}
           <polyline points={pointsString} fill="none" stroke="#00ff88" stroke-width="1.5" />
@@ -55,35 +81,35 @@
 <style>
   .fps-container {
     position: fixed;
-    top: 15px;
-    right: 15px;
-    width: 140px;
-    padding: 8px;
-    border-radius: 8px;
-    border: 1px solid rgba(0, 255, 136, 0.25);
-    background: rgba(10, 10, 18, 0.8) !important;
+    left: calc(var(--safe-left) + 10px);
+    bottom: calc(var(--safe-bottom) + 10px);
+    width: 124px;
+    padding: 7px;
+    border-radius: var(--r-sm);
+    border: 1px solid rgba(56, 245, 168, 0.22);
+    background: var(--glass-bg-solid) !important;
     backdrop-filter: blur(8px);
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 5px;
     pointer-events: auto;
     z-index: 9999;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5), 0 0 10px rgba(0, 255, 136, 0.1);
+    box-shadow: var(--glass-shadow);
   }
 
   .stats-text {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-family: 'Courier New', Courier, monospace;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
     font-size: 10px;
     letter-spacing: 0.05em;
   }
 
   .fps-value {
-    color: #00ff88;
+    color: var(--color-accent);
     font-weight: bold;
-    text-shadow: 0 0 5px rgba(0, 255, 136, 0.5);
   }
 
   .avg-label {

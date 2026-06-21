@@ -83,8 +83,8 @@
 
     <div class="upgrade-content">
       <div class="header" in:fly={{ y: -24, duration: 400, delay: 100 }}>
-        <h2 class="title">SYSTEM EVOLUTION</h2>
-        <div class="subtitle">SELECT ENHANCEMENT PROTOCOL</div>
+        <h2 class="title">Level Up</h2>
+        <div class="subtitle">Choose an upgrade</div>
       </div>
 
       <div class="cards-container">
@@ -141,23 +141,22 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    background: rgba(4, 4, 16, 0.8);
-    backdrop-filter: blur(10px);
+    background: rgba(4, 6, 15, 0.78);
+    backdrop-filter: blur(12px);
+    padding: 1.5rem;
     pointer-events: auto;
   }
 
   .modal-overlay {
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(circle at center, transparent 0%, rgba(0, 0, 0, 0.4) 100%);
-    pointer-events: none;
+    display: none;
   }
 
   .upgrade-content {
-    width: min(95%, 800px);
+    width: 100%;
+    max-width: 420px;
     display: flex;
     flex-direction: column;
-    gap: 3rem;
+    gap: 1.5rem;
     z-index: 1;
   }
 
@@ -167,55 +166,56 @@
 
   .title {
     font-family: var(--font-heading);
-    font-size: 2.5rem;
-    font-weight: 900;
-    letter-spacing: 0.1em;
+    font-size: 1.6rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
     margin: 0;
     color: var(--color-text-main);
-    text-shadow: 0 0 24px rgba(0, 229, 255, 0.45);
   }
 
   .subtitle {
-    font-family: var(--font-mono);
-    font-size: 0.8rem;
-    letter-spacing: 0.4em;
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
     color: var(--color-primary);
     margin-top: 0.5rem;
   }
 
   .cards-container {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
   }
 
   .upgrade-card {
     all: unset;
     cursor: pointer;
     position: relative;
-    padding: 2rem;
-    border-radius: 20px;
+    padding: 1rem 1.1rem;
+    border-radius: var(--r-md);
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
-    text-align: center;
-    gap: 1.25rem;
-    transition: all var(--transition-smooth);
+    text-align: left;
+    gap: 1rem;
+    transition: all var(--transition-fast);
     overflow: hidden;
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    animation: card-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+    border: 1px solid var(--color-border);
+    border-left: 3px solid var(--rarity-color);
+    animation: card-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
   .upgrade-card:hover,
   .upgrade-card:focus-visible,
   .upgrade-card.key-focused {
-    transform: translateY(-10px) scale(1.02);
     border-color: var(--rarity-color);
+    border-left-color: var(--rarity-color);
     background: rgba(255, 255, 255, 0.05);
   }
 
   .upgrade-card.key-focused {
-    box-shadow: 0 0 24px color-mix(in srgb, var(--rarity-color) 45%, transparent);
+    box-shadow: inset 0 0 0 1px var(--rarity-color);
   }
 
   .upgrade-card.key-focused .selection-glow {
@@ -228,36 +228,32 @@
   }
 
   .upgrade-card:active {
-    transform: translateY(-6px) scale(0.99);
+    transform: scale(0.99);
   }
 
   /* Commit animation: chosen card flares, the others fall away */
   .upgrade-card.selected {
-    transform: scale(1.06);
     border-color: var(--rarity-color);
-    box-shadow: 0 0 40px var(--rarity-color);
+    box-shadow: inset 0 0 0 1px var(--rarity-color);
     animation: selected-flash 0.35s ease-out both;
   }
 
   .upgrade-card.dimmed {
-    opacity: 0.25;
-    transform: scale(0.96);
-    filter: grayscale(0.8);
+    opacity: 0.3;
+    filter: grayscale(0.7);
   }
 
   @keyframes selected-flash {
     0% {
-      background: rgba(255, 255, 255, 0.35);
+      background: rgba(255, 255, 255, 0.25);
     }
     100% {
-      background: rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.05);
     }
   }
 
   .hotkey-badge {
-    position: absolute;
-    top: 0.75rem;
-    left: 0.75rem;
+    flex-shrink: 0;
     width: 22px;
     height: 22px;
     display: flex;
@@ -266,9 +262,9 @@
     font-family: var(--font-mono);
     font-size: 0.7rem;
     color: var(--color-text-dim);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 5px;
-    background: rgba(0, 0, 0, 0.35);
+    background: rgba(0, 0, 0, 0.25);
   }
 
   .key-hints {
@@ -303,81 +299,72 @@
   }
 
   .rarity-tag {
-    font-family: var(--font-mono);
-    font-size: 0.6rem;
-    letter-spacing: 0.2em;
+    position: absolute;
+    top: 0.6rem;
+    right: 0.7rem;
+    font-size: 0.46rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
     text-transform: uppercase;
     color: var(--rarity-color);
-    padding: 0.25rem 0.75rem;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 99px;
-    border: 1px solid var(--rarity-color);
   }
 
   .item-icon {
-    font-size: 3.5rem;
+    flex-shrink: 0;
+    font-size: 2rem;
     display: flex;
     justify-content: center;
     align-items: center;
-    height: 80px;
-    width: 80px;
+    height: 48px;
+    width: 48px;
   }
 
   .item-icon :global(svg) {
-    width: 64px;
-    height: 64px;
-    filter: drop-shadow(0 0 10px var(--rarity-color));
+    width: 40px;
+    height: 40px;
   }
 
   .icon-img {
     width: 100%;
     height: 100%;
     object-fit: contain;
-    filter: drop-shadow(0 0 10px var(--rarity-color));
+  }
+
+  .item-info {
+    min-width: 0;
+    padding-right: 2.5rem;
   }
 
   .item-name {
-    font-family: var(--font-heading);
-    font-size: 1.15rem;
+    font-size: 1rem;
     font-weight: 700;
-    margin: 0 0 0.35rem 0;
+    margin: 0 0 0.2rem 0;
     color: var(--color-text-main);
   }
 
   .level-step {
     font-family: var(--font-mono);
-    font-size: 0.65rem;
-    letter-spacing: 0.15em;
+    font-size: 0.6rem;
+    letter-spacing: 0.1em;
     color: var(--rarity-color);
-    margin-bottom: 0.35rem;
+    margin-bottom: 0.2rem;
   }
 
   .item-desc {
-    font-size: 0.85rem;
+    font-size: 0.74rem;
     color: var(--color-text-dim);
-    line-height: 1.4;
+    line-height: 1.35;
     margin: 0;
   }
 
   .selection-glow {
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(circle at center, var(--rarity-color) 0%, transparent 70%);
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    mix-blend-mode: overlay;
-    pointer-events: none;
-  }
-
-  .upgrade-card:hover .selection-glow,
-  .upgrade-card.selected .selection-glow {
-    opacity: 0.25;
+    display: none;
   }
 
   @keyframes card-in {
     from {
       opacity: 0;
-      transform: translateY(40px);
+      transform: translateY(16px);
     }
     to {
       opacity: 1;
@@ -385,52 +372,26 @@
     }
   }
 
-  @media (max-width: 600px) {
-    .cards-container {
-      grid-template-columns: 1fr;
-      gap: 0.75rem;
-    }
-
+  /* Wider screens: lay the choices out side by side */
+  @media (min-width: 720px) {
     .upgrade-content {
-      gap: 1.5rem;
+      max-width: 760px;
     }
-
-    .title {
-      font-size: 1.5rem;
-    }
-
-    .upgrade-card {
+    .cards-container {
       flex-direction: row;
-      text-align: left;
-      padding: 1rem 1.25rem;
-      gap: 1.25rem;
     }
-
+    .upgrade-card {
+      flex: 1;
+      flex-direction: column;
+      align-items: flex-start;
+      padding: 1.5rem;
+    }
     .item-icon {
-      font-size: 2.5rem;
       width: 56px;
       height: 56px;
-      flex-shrink: 0;
     }
-
-    .item-icon :global(svg) {
-      width: 44px;
-      height: 44px;
-    }
-
-    .item-name {
-      font-size: 1rem;
-    }
-
-    .item-desc {
-      font-size: 0.75rem;
-    }
-
-    .rarity-tag {
-      position: absolute;
-      top: 0.75rem;
-      right: 0.75rem;
-      font-size: 0.5rem;
+    .item-info {
+      padding-right: 0;
     }
   }
 </style>

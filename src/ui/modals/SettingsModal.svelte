@@ -31,7 +31,7 @@
 
     <div class="settings-content glass" transition:scale={{ duration: 250, start: 0.94 }}>
       <div class="header">
-        <h2 class="title">CONFIGURATION</h2>
+        <h2 class="title">Settings</h2>
         <div class="tabs">
           <button
             class="tab-btn"
@@ -193,38 +193,38 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    background: rgba(10, 10, 18, 0.4);
-    backdrop-filter: blur(8px);
+    background: rgba(4, 6, 15, 0.55);
+    backdrop-filter: blur(10px);
+    padding: 1.5rem;
     pointer-events: auto;
   }
 
   .modal-overlay {
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(circle at center, transparent 0%, rgba(0, 0, 0, 0.6) 100%);
+    display: none;
   }
 
   .settings-content {
-    width: min(90%, 450px);
-    border-radius: 20px;
-    padding: 2rem;
+    width: 100%;
+    max-width: 380px;
+    border-radius: var(--r-xl);
+    padding: 1.75rem 1.5rem;
     z-index: 1;
     display: flex;
     flex-direction: column;
-    gap: 2rem;
+    gap: 1.75rem;
   }
 
   .header {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: 1.25rem;
   }
 
   .title {
     font-family: var(--font-heading);
-    font-size: 1.5rem;
-    font-weight: 900;
-    letter-spacing: 0.2em;
+    font-size: 1.3rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
     text-align: center;
     margin: 0;
     color: var(--color-text-main);
@@ -370,7 +370,10 @@
 
   .footer-btn.primary {
     background: var(--color-primary);
-    color: #000;
+    color: #04060f;
     border: none;
+  }
+  .footer-btn.primary:hover {
+    filter: brightness(1.08);
   }
 </style>

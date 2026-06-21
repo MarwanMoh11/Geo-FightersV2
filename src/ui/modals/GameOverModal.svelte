@@ -77,14 +77,15 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    background: rgba(15, 0, 5, 0.8);
-    backdrop-filter: blur(15px);
+    background: rgba(8, 4, 8, 0.7);
+    backdrop-filter: blur(14px);
     transition: opacity 0.25s ease;
+    padding: 1.5rem;
     pointer-events: auto;
   }
 
   #game-over-modal.victory {
-    background: rgba(0, 12, 8, 0.8);
+    background: rgba(4, 10, 8, 0.7);
   }
 
   #game-over-modal.leaving {
@@ -92,69 +93,38 @@
   }
 
   .modal-overlay {
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(circle at center, transparent 0%, rgba(255, 46, 136, 0.1) 100%);
-  }
-
-  .victory .modal-overlay {
-    background: radial-gradient(circle at center, transparent 0%, rgba(0, 255, 136, 0.08) 100%);
+    display: none;
   }
 
   .game-over-content {
-    width: min(90%, 480px);
-    border-radius: 28px;
-    padding: 3.5rem 2rem;
+    width: 100%;
+    max-width: 360px;
+    border-radius: var(--r-xl);
+    padding: 2.25rem 1.5rem;
     z-index: 1;
     display: flex;
     flex-direction: column;
-    gap: 2.5rem;
+    gap: 1.75rem;
     text-align: center;
-    border: 1px solid rgba(255, 46, 136, 0.1);
-  }
-
-  .victory .game-over-content {
-    border-color: rgba(0, 255, 136, 0.15);
   }
 
   .title {
     font-family: var(--font-heading);
-    font-size: 2.25rem;
-    font-weight: 900;
-    letter-spacing: 0.1em;
+    font-size: 1.8rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
     margin: 0;
     color: var(--color-secondary);
-    text-shadow: 0 0 30px rgba(255, 46, 136, 0.4);
-    animation: title-glitch 3s ease-in-out infinite;
   }
-
   .title.win {
     color: var(--color-accent);
-    text-shadow: 0 0 30px rgba(0, 255, 136, 0.4);
-    animation: none;
-  }
-
-  @keyframes title-glitch {
-    0%,
-    92%,
-    100% {
-      transform: translateX(0);
-      opacity: 1;
-    }
-    94% {
-      transform: translateX(-3px);
-      opacity: 0.8;
-    }
-    96% {
-      transform: translateX(2px);
-      opacity: 1;
-    }
   }
 
   .subtitle {
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    letter-spacing: 0.3em;
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
     color: var(--color-text-dim);
     margin-top: 0.5rem;
   }
@@ -162,28 +132,30 @@
   .stats-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 0.75rem;
-  }
-
-  .stat-card {
-    background: rgba(255, 255, 255, 0.03);
-    padding: 1.25rem 0.75rem;
-    border-radius: 16px;
-    display: flex;
-    flex-direction: column;
     gap: 0.5rem;
   }
 
+  .stat-card {
+    background: rgba(255, 255, 255, 0.035);
+    padding: 0.9rem 0.5rem;
+    border-radius: var(--r-md);
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
   .stat-card .label {
-    font-family: var(--font-mono);
-    font-size: 0.55rem;
-    letter-spacing: 0.1em;
+    font-size: 0.5rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
     color: var(--color-text-dim);
   }
 
   .stat-card .value {
-    font-family: var(--font-heading);
-    font-size: 1.5rem;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 1.3rem;
     font-weight: 700;
   }
 
@@ -195,64 +167,41 @@
   }
   .gold {
     color: var(--color-gold);
-    text-shadow: 0 0 12px rgba(255, 225, 77, 0.4);
   }
 
   .reboot-btn {
     all: unset;
     cursor: pointer;
-    padding: 1.5rem;
-    border-radius: 16px;
+    padding: 1.1rem;
+    border-radius: var(--r-md);
     background: var(--color-secondary);
-    color: white;
+    color: #fff;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.25rem;
-    transition: all var(--transition-smooth);
+    gap: 0.2rem;
+    transition: all var(--transition-fast);
   }
-
   .victory .reboot-btn {
     background: var(--color-accent);
-    color: #00170d;
+    color: #04130d;
   }
-
   .reboot-btn:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 0 40px rgba(255, 46, 136, 0.5);
-    filter: brightness(1.1);
+    filter: brightness(1.08);
   }
-
-  .victory .reboot-btn:hover {
-    box-shadow: 0 0 40px rgba(0, 255, 136, 0.5);
-  }
-
   .reboot-btn:active {
-    transform: translateY(-1px) scale(0.99);
+    transform: scale(0.985);
   }
-
-  .reboot-btn:focus-visible {
-    outline: 2px solid var(--color-text-main);
-    outline-offset: 3px;
-  }
-
   .reboot-btn .btn-text {
-    font-family: var(--font-heading);
-    font-size: 1.1rem;
+    font-size: 1rem;
     font-weight: 700;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.02em;
   }
-
   .reboot-btn .btn-subtext {
-    font-family: var(--font-mono);
-    font-size: 0.6rem;
-    opacity: 0.8;
-    letter-spacing: 0.1em;
-  }
-
-  @media (max-width: 480px) {
-    .stats-grid {
-      grid-template-columns: 1fr;
-    }
+    font-size: 0.55rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    opacity: 0.7;
   }
 </style>
