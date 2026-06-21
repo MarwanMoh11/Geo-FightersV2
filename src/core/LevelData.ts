@@ -12,6 +12,8 @@ export interface Obstacle {
   type: 'wall' | 'prop';
   asset?: string; // Texture/sprite path for visual rendering
   blocking: boolean; // Whether it blocks player/enemy movement
+  halfWidth?: number; // Precalculated
+  halfDepth?: number; // Precalculated
 }
 
 export interface LevelConfig {
@@ -388,6 +390,11 @@ export const LEVEL_DEBUG: LevelConfig = {
 let currentLevel: LevelConfig = LEVEL_1_NEON_SLUMS;
 
 export function getCurrentLevel(): LevelConfig {
+  // Precalculate halfWidth/halfDepth for obstacles if not present
+  for (const obs of currentLevel.obstacles) {
+    if (obs.halfWidth === undefined) obs.halfWidth = obs.width / 2;
+    if (obs.halfDepth === undefined) obs.halfDepth = obs.depth / 2;
+  }
   return currentLevel;
 }
 
@@ -419,17 +426,27 @@ export function checkAABBCollision(
   entityRadius: number,
   obstacle: Obstacle,
 ): { colliding: boolean; pushX: number; pushZ: number } {
-  const halfW = obstacle.width / 2;
-  const halfD = obstacle.depth / 2;
+  const halfW = obstacle.halfWidth ?? (obstacle.width / 2);
+  const halfD = obstacle.halfDepth ?? (obstacle.depth / 2);
+
+  // Early-out broadphase: check if the circle can possibly intersect the AABB
+  const dx = entityX - obstacle.x;
+  if (Math.abs(dx) >= halfW + entityRadius) {
+    return { colliding: false, pushX: 0, pushZ: 0 };
+  }
+  const dz = entityZ - obstacle.z;
+  if (Math.abs(dz) >= halfD + entityRadius) {
+    return { colliding: false, pushX: 0, pushZ: 0 };
+  }
 
   // Find closest point on obstacle to entity center
   const closestX = Math.max(obstacle.x - halfW, Math.min(entityX, obstacle.x + halfW));
   const closestZ = Math.max(obstacle.z - halfD, Math.min(entityZ, obstacle.z + halfD));
 
   // Distance from entity center to closest point
-  const dx = entityX - closestX;
-  const dz = entityZ - closestZ;
-  const distSq = dx * dx + dz * dz;
+  const cdx = entityX - closestX;
+  const cdz = entityZ - closestZ;
+  const distSq = cdx * cdx + cdz * cdz;
 
   if (distSq < entityRadius * entityRadius) {
     // Collision! Calculate push vector
@@ -439,8 +456,8 @@ export function checkAABBCollision(
       return { colliding: true, pushX: entityRadius, pushZ: 0 };
     }
     const overlap = entityRadius - dist;
-    const nx = dx / dist;
-    const nz = dz / dist;
+    const nx = cdx / dist;
+    const nz = cdz / dist;
     return {
       colliding: true,
       pushX: nx * overlap,

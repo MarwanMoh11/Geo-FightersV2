@@ -5,6 +5,8 @@ import { WEAPONS, getWeaponStatsAtLevel } from './WeaponRegistry';
 import { getTierForValue, bankXP, MAX_ACTIVE_XP } from './XPManager';
 import { createDynamicBody, isRapierInitialized } from './RapierWorld';
 import { uiState } from './UIState.svelte';
+import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
+
 
 // Player/enemy collision radii
 const PLAYER_RADIUS = 0.8;
@@ -24,179 +26,6 @@ coneZGeometry.rotateX(Math.PI / 2);
 const torusGeometry = new THREE.TorusGeometry(1, 0.03, 8, 24);
 const octahedronGeometry = new THREE.OctahedronGeometry(1);
 const icosahedronGeometry = new THREE.IcosahedronGeometry(1, 1);
-
-const enemyMaterials: Record<string, Record<string, THREE.Material>> = {
-  glitch: {
-    coreMat: new THREE.MeshStandardMaterial({
-      color: 0x00ff88,
-      emissive: 0x00ff88,
-      emissiveIntensity: 0.8,
-      roughness: 0.2,
-      metalness: 0.8,
-    }),
-    cageMat1: new THREE.MeshBasicMaterial({
-      color: 0x00ff88,
-      wireframe: true,
-      transparent: true,
-      opacity: 0.6,
-    }),
-    cageMat2: new THREE.MeshBasicMaterial({
-      color: 0x00aa66,
-      wireframe: true,
-      transparent: true,
-      opacity: 0.4,
-    }),
-    shardMat: new THREE.MeshStandardMaterial({
-      color: 0x00ff88,
-      emissive: 0x00ff88,
-      emissiveIntensity: 1.2,
-    }),
-  },
-  virus: {
-    coreMat: new THREE.MeshStandardMaterial({
-      color: 0xff0055,
-      emissive: 0xff0055,
-      emissiveIntensity: 0.7,
-      roughness: 0.4,
-      metalness: 0.2,
-      transparent: true,
-      opacity: 0.85,
-    }),
-    innerCoreMat: new THREE.MeshStandardMaterial({
-      color: 0x550022,
-      roughness: 0.8,
-      metalness: 0.9,
-    }),
-    needleMat: new THREE.MeshStandardMaterial({
-      color: 0x442233,
-      roughness: 0.5,
-      metalness: 0.8,
-    }),
-    tipMat: new THREE.MeshStandardMaterial({
-      color: 0xff0088,
-      emissive: 0xff0088,
-      emissiveIntensity: 1.5,
-    }),
-    dnaMat: new THREE.MeshStandardMaterial({
-      color: 0xff55aa,
-      emissive: 0xff55aa,
-      emissiveIntensity: 1.0,
-    }),
-  },
-  firewall: {
-    pillarMat: new THREE.MeshStandardMaterial({
-      color: 0x332211,
-      roughness: 0.4,
-      metalness: 0.9,
-    }),
-    shieldMat: new THREE.MeshStandardMaterial({
-      color: 0xff5500,
-      emissive: 0xff5500,
-      emissiveIntensity: 0.8,
-      roughness: 0.1,
-      metalness: 0.5,
-      transparent: true,
-      opacity: 0.8,
-    }),
-    stripMat: new THREE.MeshStandardMaterial({
-      color: 0xffaa00,
-      emissive: 0xffaa00,
-      emissiveIntensity: 1.5,
-    }),
-  },
-  enforcer: {
-    chassisMat: new THREE.MeshStandardMaterial({
-      color: 0x223344,
-      roughness: 0.3,
-      metalness: 0.9,
-    }),
-    shieldMat: new THREE.MeshStandardMaterial({
-      color: 0x00ffcc,
-      emissive: 0x00ffcc,
-      emissiveIntensity: 0.8,
-      roughness: 0.1,
-      metalness: 0.7,
-      transparent: true,
-      opacity: 0.8,
-    }),
-    eyeMat: new THREE.MeshStandardMaterial({
-      color: 0x00ffff,
-      emissive: 0x00ffff,
-      emissiveIntensity: 2.0,
-    }),
-    flameMat: new THREE.MeshBasicMaterial({
-      color: 0x00ffcc,
-      transparent: true,
-      opacity: 0.8,
-    }),
-  },
-  colossus: {
-    metalMat: new THREE.MeshStandardMaterial({
-      color: 0xff3300,
-      emissive: 0xff3300,
-      emissiveIntensity: 0.3,
-      roughness: 0.5,
-      metalness: 0.7,
-    }),
-    darkMetal: new THREE.MeshStandardMaterial({
-      color: 0x221111,
-      roughness: 0.4,
-      metalness: 0.9,
-    }),
-    energyMat: new THREE.MeshStandardMaterial({
-      color: 0xffaa00,
-      emissive: 0xffaa00,
-      emissiveIntensity: 1.5,
-    }),
-  },
-  warden: {
-    coreMat: new THREE.MeshStandardMaterial({
-      color: 0xaa00ff,
-      emissive: 0x5500aa,
-      emissiveIntensity: 0.8,
-      roughness: 0.05,
-      metalness: 0.95,
-    }),
-    ringMat: new THREE.MeshStandardMaterial({
-      color: 0xd900ff,
-      emissive: 0xd900ff,
-      emissiveIntensity: 1.0,
-      roughness: 0.2,
-      metalness: 0.8,
-    }),
-  },
-  hydra: {
-    coreMat: new THREE.MeshStandardMaterial({
-      color: 0x0088ff,
-      emissive: 0x0055ff,
-      emissiveIntensity: 0.8,
-      roughness: 0.1,
-      metalness: 0.9,
-    }),
-    beamMat: new THREE.MeshBasicMaterial({
-      color: 0x00ffff,
-      transparent: true,
-      opacity: 0.8,
-    }),
-  },
-  overseer: {
-    coreMat: new THREE.MeshStandardMaterial({
-      color: 0xff0055,
-      emissive: 0xff0055,
-      emissiveIntensity: 0.9,
-      roughness: 0.1,
-      metalness: 0.9,
-    }),
-    darkMat: new THREE.MeshStandardMaterial({
-      color: 0x220005,
-      roughness: 0.3,
-      metalness: 0.9,
-    }),
-    wireMat1: new THREE.MeshBasicMaterial({ color: 0xff0055, wireframe: true }),
-    wireMat2: new THREE.MeshBasicMaterial({ color: 0xffaa00, wireframe: true }),
-    wireMat3: new THREE.MeshBasicMaterial({ color: 0xff00aa, wireframe: true }),
-  },
-};
 
 // --- ENEMY DEFINITIONS (Restored) ---
 export const EnemyType = {
@@ -542,450 +371,427 @@ export function spawnPlayer(
 }
 
 // --- CACHE & TYPES ---
+// --- GEOMETRY PRE-MERGING FOR ENEMY TYPES ---
+export interface CachedGeom {
+  solid: THREE.BufferGeometry;
+  wire?: THREE.BufferGeometry;
+}
+export const cachedEnemyGeometries = new Map<string, CachedGeom>();
+
+function getModelMatrix(pos: THREE.Vector3, scale: THREE.Vector3, rot?: THREE.Euler): THREE.Matrix4 {
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  if (rot) q.setFromEuler(rot);
+  m.compose(pos, q, scale);
+  return m;
+}
+
+function createColoredGeometry(geom: THREE.BufferGeometry, colorHex: number, matrix?: THREE.Matrix4): THREE.BufferGeometry {
+  let g = geom.clone();
+  if (matrix) {
+    g.applyMatrix4(matrix);
+  }
+  if (g.index) {
+    g = g.toNonIndexed();
+  }
+  const count = g.attributes.position.count;
+  const colors = new Float32Array(count * 3);
+  const color = new THREE.Color(colorHex);
+  for (let i = 0; i < count; i++) {
+    colors[i * 3] = color.r;
+    colors[i * 3 + 1] = color.g;
+    colors[i * 3 + 2] = color.b;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  return g;
+}
+
+function pregenerateAllEnemyGeometries(): void {
+  // 1. GLITCH
+  const glitchSolidParts: THREE.BufferGeometry[] = [];
+  const voxelOffsets = [
+    new THREE.Vector3(0.05, -0.05, 0.05),
+    new THREE.Vector3(-0.05, 0.08, -0.05),
+    new THREE.Vector3(0.08, 0.05, -0.08),
+    new THREE.Vector3(-0.08, -0.08, 0.08),
+    new THREE.Vector3(0, 0, 0)
+  ];
+  voxelOffsets.forEach(offset => {
+    glitchSolidParts.push(
+      createColoredGeometry(
+        boxGeometry,
+        0x00ff88,
+        getModelMatrix(offset, new THREE.Vector3().setScalar(0.15))
+      )
+    );
+  });
+  const shardOffsets = [
+    new THREE.Vector3(-0.1, 0.1, -0.35),
+    new THREE.Vector3(0.15, -0.1, -0.45),
+    new THREE.Vector3(-0.05, -0.15, -0.55)
+  ];
+  shardOffsets.forEach(offset => {
+    glitchSolidParts.push(
+      createColoredGeometry(
+        boxGeometry,
+        0x00ff88,
+        getModelMatrix(offset, new THREE.Vector3(0.04, 0.04, 0.12))
+      )
+    );
+  });
+  const glitchSolid = BufferGeometryUtils.mergeGeometries(glitchSolidParts);
+
+  const glitchWireParts: THREE.BufferGeometry[] = [];
+  glitchWireParts.push(
+    createColoredGeometry(
+      octahedronGeometry,
+      0x00ff88,
+      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.45))
+    )
+  );
+  glitchWireParts.push(
+    createColoredGeometry(
+      octahedronGeometry,
+      0x00aa66,
+      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.55))
+    )
+  );
+  const glitchWire = BufferGeometryUtils.mergeGeometries(glitchWireParts);
+  cachedEnemyGeometries.set(EnemyType.GLITCH, { solid: glitchSolid, wire: glitchWire });
+
+  // 2. VIRUS
+  const virusParts: THREE.BufferGeometry[] = [];
+  virusParts.push(
+    createColoredGeometry(
+      icosahedronGeometry,
+      0xff0055,
+      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.26))
+    )
+  );
+  virusParts.push(
+    createColoredGeometry(
+      sphereGeometry,
+      0x550022,
+      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.15))
+    )
+  );
+
+  const virusSpikeVertices = [
+    new THREE.Vector3(0, 1, 1.618),
+    new THREE.Vector3(0, 1, -1.618),
+    new THREE.Vector3(0, -1, 1.618),
+    new THREE.Vector3(0, -1, -1.618),
+    new THREE.Vector3(1, 1.618, 0),
+    new THREE.Vector3(1, -1.618, 0),
+    new THREE.Vector3(-1, 1.618, 0),
+    new THREE.Vector3(-1, -1.618, 0),
+    new THREE.Vector3(1.618, 0, 1),
+    new THREE.Vector3(1.618, 0, -1),
+    new THREE.Vector3(-1.618, 0, 1),
+    new THREE.Vector3(-1.618, 0, -1),
+  ];
+  virusSpikeVertices.forEach(v => {
+    v.normalize();
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), v);
+    
+    const basePos = v.clone().multiplyScalar(0.28);
+    const baseMatrix = new THREE.Matrix4().compose(
+      basePos,
+      q,
+      new THREE.Vector3(0.02, 0.16, 0.02)
+    );
+    virusParts.push(createColoredGeometry(cylinderYGeometry, 0x442233, baseMatrix));
+
+    const tipPos = v.clone().multiplyScalar(0.37);
+    const tipMatrix = new THREE.Matrix4().compose(
+      tipPos,
+      q,
+      new THREE.Vector3().setScalar(0.04)
+    );
+    virusParts.push(createColoredGeometry(sphereGeometry, 0xff0088, tipMatrix));
+  });
+
+  for (let i = 0; i < 8; i++) {
+    const angle = (i / 8) * Math.PI * 2;
+    const radius = 0.38;
+    const height = Math.sin(angle * 2) * 0.25;
+    const pos = new THREE.Vector3(Math.cos(angle) * radius, height, Math.sin(angle) * radius);
+    virusParts.push(
+      createColoredGeometry(
+        sphereGeometry,
+        0xff55aa,
+        getModelMatrix(pos, new THREE.Vector3().setScalar(0.03))
+      )
+    );
+  }
+  const virusSolid = BufferGeometryUtils.mergeGeometries(virusParts);
+  cachedEnemyGeometries.set(EnemyType.VIRUS, { solid: virusSolid });
+
+  // 3. FIREWALL
+  const firewallParts: THREE.BufferGeometry[] = [];
+  firewallParts.push(
+    createColoredGeometry(boxGeometry, 0x332211, getModelMatrix(new THREE.Vector3(-0.4, 0, 0), new THREE.Vector3(0.15, 0.9, 0.15)))
+  );
+  firewallParts.push(
+    createColoredGeometry(boxGeometry, 0x332211, getModelMatrix(new THREE.Vector3(0.4, 0, 0), new THREE.Vector3(0.15, 0.9, 0.15)))
+  );
+  firewallParts.push(
+    createColoredGeometry(boxGeometry, 0xffaa00, getModelMatrix(new THREE.Vector3(-0.4, 0, 0), new THREE.Vector3(0.02, 0.8, 0.16)))
+  );
+  firewallParts.push(
+    createColoredGeometry(boxGeometry, 0xffaa00, getModelMatrix(new THREE.Vector3(0.4, 0, 0), new THREE.Vector3(0.02, 0.8, 0.16)))
+  );
+  firewallParts.push(
+    createColoredGeometry(sphereGeometry, 0xffaa00, getModelMatrix(new THREE.Vector3(-0.4, 0.48, 0), new THREE.Vector3().setScalar(0.06)))
+  );
+  firewallParts.push(
+    createColoredGeometry(sphereGeometry, 0xffaa00, getModelMatrix(new THREE.Vector3(0.4, 0.48, 0), new THREE.Vector3().setScalar(0.06)))
+  );
+  for (let r = 0; r < 2; r++) {
+    for (let c = 0; c < 3; c++) {
+      const pos = new THREE.Vector3((c - 1) * 0.24, (r - 0.5) * 0.3, 0);
+      firewallParts.push(
+        createColoredGeometry(boxGeometry, 0xff5500, getModelMatrix(pos, new THREE.Vector3(0.22, 0.22, 0.05)))
+      );
+    }
+  }
+  const firewallSolid = BufferGeometryUtils.mergeGeometries(firewallParts);
+  cachedEnemyGeometries.set(EnemyType.FIREWALL, { solid: firewallSolid });
+
+  // 4. ENFORCER
+  const enforcerParts: THREE.BufferGeometry[] = [];
+  enforcerParts.push(
+    createColoredGeometry(cylinderYGeometry, 0x223344, getModelMatrix(new THREE.Vector3(), new THREE.Vector3(0.18, 0.38, 0.18), new THREE.Euler(Math.PI / 2, 0, 0)))
+  );
+  enforcerParts.push(
+    createColoredGeometry(boxGeometry, 0x223344, getModelMatrix(new THREE.Vector3(0, 0, 0.22), new THREE.Vector3(0.35, 0.28, 0.05)))
+  );
+  enforcerParts.push(
+    createColoredGeometry(boxGeometry, 0x00ffcc, getModelMatrix(new THREE.Vector3(0, 0.12, 0.22), new THREE.Vector3(0.37, 0.03, 0.06)))
+  );
+  enforcerParts.push(
+    createColoredGeometry(boxGeometry, 0x223344, getModelMatrix(new THREE.Vector3(-0.245, 0, 0.17), new THREE.Vector3(0.16, 0.28, 0.04), new THREE.Euler(0, Math.PI / 5, 0)))
+  );
+  enforcerParts.push(
+    createColoredGeometry(boxGeometry, 0x223344, getModelMatrix(new THREE.Vector3(0.245, 0, 0.17), new THREE.Vector3(0.16, 0.28, 0.04), new THREE.Euler(0, -Math.PI / 5, 0)))
+  );
+  enforcerParts.push(
+    createColoredGeometry(cylinderZGeometry, 0x223344, getModelMatrix(new THREE.Vector3(-0.26, -0.05, 0.05), new THREE.Vector3(0.03, 0.03, 0.28)))
+  );
+  enforcerParts.push(
+    createColoredGeometry(cylinderZGeometry, 0x223344, getModelMatrix(new THREE.Vector3(0.26, -0.05, 0.05), new THREE.Vector3(0.03, 0.03, 0.28)))
+  );
+  enforcerParts.push(
+    createColoredGeometry(cylinderYGeometry, 0x223344, getModelMatrix(new THREE.Vector3(0, -0.2, -0.05), new THREE.Vector3(0.1, 0.12, 0.1)))
+  );
+  enforcerParts.push(
+    createColoredGeometry(coneZGeometry, 0x00ffcc, getModelMatrix(new THREE.Vector3(0, -0.25, -0.05), new THREE.Vector3(0.06, 0.06, 0.18), new THREE.Euler(0, Math.PI, 0)))
+  );
+  enforcerParts.push(
+    createColoredGeometry(boxGeometry, 0x00ffcc, getModelMatrix(new THREE.Vector3(-0.45, 0, 0), new THREE.Vector3(0.08, 0.15, 0.02)))
+  );
+  enforcerParts.push(
+    createColoredGeometry(boxGeometry, 0x00ffcc, getModelMatrix(new THREE.Vector3(0.45, 0, 0), new THREE.Vector3(0.08, 0.15, 0.02)))
+  );
+  const enforcerSolid = BufferGeometryUtils.mergeGeometries(enforcerParts);
+  cachedEnemyGeometries.set(EnemyType.ENFORCER, { solid: enforcerSolid });
+
+  // 5. COLOSSUS
+  const colossusParts: THREE.BufferGeometry[] = [];
+  colossusParts.push(
+    createColoredGeometry(cylinderYGeometry, 0x111111, getModelMatrix(new THREE.Vector3(0, -0.2, 0), new THREE.Vector3(0.35, 0.18, 0.35)))
+  );
+  colossusParts.push(
+    createColoredGeometry(cylinderYGeometry, 0x444444, getModelMatrix(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0.26, 0.18, 0.26)))
+  );
+  colossusParts.push(
+    createColoredGeometry(cylinderYGeometry, 0x111111, getModelMatrix(new THREE.Vector3(0, 0.2, 0), new THREE.Vector3(0.16, 0.18, 0.16)))
+  );
+  colossusParts.push(
+    createColoredGeometry(cylinderYGeometry, 0x111111, getModelMatrix(new THREE.Vector3(-0.08, 0.28, -0.08), new THREE.Vector3(0.03, 0.16, 0.03), new THREE.Euler(Math.PI / 6, 0, 0)))
+  );
+  const smoke0Pos = new THREE.Vector3(-0.08, 0.28, -0.08).add(new THREE.Vector3(0, 0.1, -0.05).applyEuler(new THREE.Euler(Math.PI / 6, 0, 0)));
+  colossusParts.push(
+    createColoredGeometry(coneZGeometry, 0x00ff88, getModelMatrix(smoke0Pos, new THREE.Vector3(0.025, 0.025, 0.1), new THREE.Euler(Math.PI / 6, 0, 0)))
+  );
+  colossusParts.push(
+    createColoredGeometry(cylinderYGeometry, 0x111111, getModelMatrix(new THREE.Vector3(0.08, 0.28, -0.08), new THREE.Vector3(0.03, 0.16, 0.03), new THREE.Euler(Math.PI / 6, 0, 0)))
+  );
+  const smoke1Pos = new THREE.Vector3(0.08, 0.28, -0.08).add(new THREE.Vector3(0, 0.1, -0.05).applyEuler(new THREE.Euler(Math.PI / 6, 0, 0)));
+  colossusParts.push(
+    createColoredGeometry(coneZGeometry, 0x00ff88, getModelMatrix(smoke1Pos, new THREE.Vector3(0.025, 0.025, 0.1), new THREE.Euler(Math.PI / 6, 0, 0)))
+  );
+  for (let i = 0; i < 4; i++) {
+    const angle = (i / 4) * Math.PI * 2 + Math.PI / 4;
+    const pos = new THREE.Vector3(Math.cos(angle) * 0.35, -0.16, Math.sin(angle) * 0.35);
+    colossusParts.push(
+      createColoredGeometry(sphereGeometry, 0x00ff88, getModelMatrix(pos, new THREE.Vector3().setScalar(0.04)))
+    );
+  }
+  const colossusSolid = BufferGeometryUtils.mergeGeometries(colossusParts);
+  cachedEnemyGeometries.set(EnemyType.COLOSSUS, { solid: colossusSolid });
+
+  // 6. WARDEN
+  const wardenParts: THREE.BufferGeometry[] = [];
+  wardenParts.push(
+    createColoredGeometry(octahedronGeometry, 0xff00cc, getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.24)))
+  );
+  wardenParts.push(
+    createColoredGeometry(sphereGeometry, 0x00ffff, getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.12)))
+  );
+  wardenParts.push(
+    createColoredGeometry(torusGeometry, 0x00ffff, getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.42), new THREE.Euler(Math.PI / 2, 0, 0)))
+  );
+  wardenParts.push(
+    createColoredGeometry(torusGeometry, 0x00ffff, getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.38), new THREE.Euler(0, Math.PI / 2, 0)))
+  );
+  wardenParts.push(
+    createColoredGeometry(torusGeometry, 0x00ffff, getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.46)))
+  );
+  for (let i = 0; i < 4; i++) {
+    const angle = (i / 4) * Math.PI * 2;
+    const pos = new THREE.Vector3(Math.cos(angle) * 0.52, 0, Math.sin(angle) * 0.52);
+    wardenParts.push(
+      createColoredGeometry(octahedronGeometry, 0xff00cc, getModelMatrix(pos, new THREE.Vector3().setScalar(0.05)))
+    );
+  }
+  const wardenSolid = BufferGeometryUtils.mergeGeometries(wardenParts);
+  cachedEnemyGeometries.set(EnemyType.WARDEN, { solid: wardenSolid });
+
+  // 7. HYDRA
+  const hydraParts: THREE.BufferGeometry[] = [];
+  hydraParts.push(
+    createColoredGeometry(icosahedronGeometry, 0xff0033, getModelMatrix(new THREE.Vector3(-0.26, 0, 0), new THREE.Vector3().setScalar(0.15)))
+  );
+  hydraParts.push(
+    createColoredGeometry(torusGeometry, 0x00ffcc, getModelMatrix(new THREE.Vector3(-0.26, 0, 0), new THREE.Vector3().setScalar(0.2), new THREE.Euler(Math.PI / 2, 0, 0)))
+  );
+  hydraParts.push(
+    createColoredGeometry(icosahedronGeometry, 0xff0033, getModelMatrix(new THREE.Vector3(0, 0.08, 0), new THREE.Vector3().setScalar(0.18)))
+  );
+  hydraParts.push(
+    createColoredGeometry(torusGeometry, 0x00ffcc, getModelMatrix(new THREE.Vector3(0, 0.08, 0), new THREE.Vector3().setScalar(0.24), new THREE.Euler(0, Math.PI / 2, 0)))
+  );
+  hydraParts.push(
+    createColoredGeometry(icosahedronGeometry, 0xff0033, getModelMatrix(new THREE.Vector3(0.26, 0, 0), new THREE.Vector3().setScalar(0.15)))
+  );
+  hydraParts.push(
+    createColoredGeometry(torusGeometry, 0x00ffcc, getModelMatrix(new THREE.Vector3(0.26, 0, 0), new THREE.Vector3().setScalar(0.2), new THREE.Euler(Math.PI / 2, 0, 0)))
+  );
+  hydraParts.push(
+    createColoredGeometry(cylinderYGeometry, 0x00ffcc, getModelMatrix(new THREE.Vector3(-0.13, 0.04, 0), new THREE.Vector3(0.02, 0.26, 0.02), new THREE.Euler(0, 0, Math.PI / 2)))
+  );
+  hydraParts.push(
+    createColoredGeometry(cylinderYGeometry, 0x00ffcc, getModelMatrix(new THREE.Vector3(0.13, 0.04, 0), new THREE.Vector3(0.02, 0.26, 0.02), new THREE.Euler(0, 0, Math.PI / 2)))
+  );
+  const hydraSolid = BufferGeometryUtils.mergeGeometries(hydraParts);
+  cachedEnemyGeometries.set(EnemyType.HYDRA, { solid: hydraSolid });
+
+  // 8. OVERSEER
+  const overseerParts: THREE.BufferGeometry[] = [];
+  overseerParts.push(
+    createColoredGeometry(sphereGeometry, 0xff00ff, getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.18)))
+  );
+  overseerParts.push(
+    createColoredGeometry(boxGeometry, 0xff00ff, getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.32)))
+  );
+  overseerParts.push(
+    createColoredGeometry(octahedronGeometry, 0xff00ff, getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.44)))
+  );
+  overseerParts.push(
+    createColoredGeometry(icosahedronGeometry, 0xff00ff, getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.54)))
+  );
+  for (let i = 0; i < 4; i++) {
+    const angle = (i / 4) * Math.PI * 2;
+    const pos = new THREE.Vector3(Math.cos(angle) * 0.65, 0, Math.sin(angle) * 0.65);
+    overseerParts.push(
+      createColoredGeometry(cylinderZGeometry, 0x111111, getModelMatrix(pos, new THREE.Vector3(0.04, 0.04, 0.15)))
+    );
+    const glowPos = pos.clone().add(new THREE.Vector3(0, 0, 0.08));
+    overseerParts.push(
+      createColoredGeometry(sphereGeometry, 0xff00ff, getModelMatrix(glowPos, new THREE.Vector3().setScalar(0.025)))
+    );
+  }
+  const overseerSolid = BufferGeometryUtils.mergeGeometries(overseerParts);
+  cachedEnemyGeometries.set(EnemyType.OVERSEER, { solid: overseerSolid });
+}
+
+const enemySolidMaterials = new Map<string, THREE.MeshStandardMaterial>();
+const enemyWireMaterials = new Map<string, THREE.MeshBasicMaterial>();
+const fallbackMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+
+export function getEnemySolidMaterial(type: EnemyType): THREE.MeshStandardMaterial {
+  let mat = enemySolidMaterials.get(type);
+  if (!mat) {
+    let emissiveColor = 0x000000;
+    let emissiveIntensity = 0.0;
+    if (type === EnemyType.GLITCH) { emissiveColor = 0x00ff88; emissiveIntensity = 0.4; }
+    else if (type === EnemyType.VIRUS) { emissiveColor = 0xff0055; emissiveIntensity = 0.4; }
+    else if (type === EnemyType.FIREWALL) { emissiveColor = 0xff5500; emissiveIntensity = 0.4; }
+    else if (type === EnemyType.ENFORCER) { emissiveColor = 0x00ffcc; emissiveIntensity = 0.4; }
+    else if (type === EnemyType.COLOSSUS) { emissiveColor = 0xffaa00; emissiveIntensity = 0.4; }
+    else if (type === EnemyType.WARDEN) { emissiveColor = 0xd900ff; emissiveIntensity = 0.4; }
+    else if (type === EnemyType.HYDRA) { emissiveColor = 0x00ffff; emissiveIntensity = 0.4; }
+    else if (type === EnemyType.OVERSEER) { emissiveColor = 0xff0055; emissiveIntensity = 0.4; }
+
+    mat = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      roughness: 0.5,
+      metalness: 0.1, // Reduced from 0.8 to prevent dark/black appearance without environment maps
+      emissive: new THREE.Color(emissiveColor),
+      emissiveIntensity: emissiveIntensity,
+    });
+    enemySolidMaterials.set(type, mat);
+  }
+  return mat;
+}
+
+export function getEnemyWireMaterial(type: EnemyType): THREE.MeshBasicMaterial {
+  let mat = enemyWireMaterials.get(type);
+  if (!mat) {
+    mat = new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.6,
+    });
+    enemyWireMaterials.set(type, mat);
+  }
+  return mat;
+}
+
 function buildEnemyMesh(type: EnemyType, size: number): THREE.Object3D {
+  if (cachedEnemyGeometries.size === 0) {
+    pregenerateAllEnemyGeometries();
+  }
+
   const container = new THREE.Group();
   container.name = 'mesh_container';
-  const mats = enemyMaterials[type];
 
-  switch (type) {
-    case EnemyType.GLITCH: {
-      // Cluster of 5 voxel cubes that will jitter in RenderSystem
-      for (let i = 0; i < 5; i++) {
-        const voxel = new THREE.Mesh(boxGeometry, mats.coreMat);
-        voxel.name = `voxel_${i}`;
-        voxel.scale.setScalar(size * 0.15);
-        voxel.position.set(
-          (Math.random() - 0.5) * size * 0.3,
-          (Math.random() - 0.5) * size * 0.3,
-          (Math.random() - 0.5) * size * 0.3,
-        );
-        container.add(voxel);
-      }
+  const geomData = cachedEnemyGeometries.get(type);
+  if (geomData) {
+    // 1. Solid Mesh
+    const solidMat = getEnemySolidMaterial(type);
+    const solidMesh = new THREE.Mesh(geomData.solid, solidMat);
+    solidMesh.name = 'solidMesh';
+    solidMesh.scale.setScalar(size);
+    solidMesh.castShadow = true;
+    solidMesh.receiveShadow = true;
+    container.add(solidMesh);
 
-      // Outer nested wireframe octahedrons
-      const cage1 = new THREE.Mesh(octahedronGeometry, mats.cageMat1);
-      cage1.scale.setScalar(size * 0.45);
-      cage1.name = 'cage1';
-      container.add(cage1);
-
-      const cage2 = new THREE.Mesh(octahedronGeometry, mats.cageMat2);
-      cage2.scale.setScalar(size * 0.55);
-      cage2.name = 'cage2';
-      container.add(cage2);
-
-      // Trailing glitch coordinate shards
-      for (let i = 0; i < 3; i++) {
-        const shard = new THREE.Mesh(boxGeometry, mats.shardMat);
-        shard.name = `shard_${i}`;
-        shard.scale.set(size * 0.04, size * 0.04, size * 0.12);
-        shard.position.set(
-          (Math.random() - 0.5) * size * 0.4,
-          (Math.random() - 0.5) * size * 0.4,
-          -size * 0.25 - Math.random() * size * 0.3,
-        );
-        container.add(shard);
-      }
-      break;
+    // 2. Wireframe Mesh (only if exists, e.g. for glitch)
+    if (geomData.wire) {
+      const wireMat = getEnemyWireMaterial(type);
+      const wireMesh = new THREE.Mesh(geomData.wire, wireMat);
+      wireMesh.name = 'wireMesh';
+      wireMesh.scale.setScalar(size);
+      container.add(wireMesh);
     }
-    case EnemyType.VIRUS: {
-      // Outer semi-transparent icosahedron capsid
-      const outerCapsid = new THREE.Mesh(icosahedronGeometry, mats.coreMat);
-      outerCapsid.scale.setScalar(size * 0.26);
-      outerCapsid.name = 'outerCapsid';
-      container.add(outerCapsid);
-
-      // Inner dense replication core
-      const innerCore = new THREE.Mesh(sphereGeometry, mats.innerCoreMat);
-      innerCore.scale.setScalar(size * 0.15);
-      innerCore.name = 'innerCore';
-      container.add(innerCore);
-
-      const vertices = [
-        new THREE.Vector3(0, 1, 1.618),
-        new THREE.Vector3(0, 1, -1.618),
-        new THREE.Vector3(0, -1, 1.618),
-        new THREE.Vector3(0, -1, -1.618),
-        new THREE.Vector3(1, 1.618, 0),
-        new THREE.Vector3(1, -1.618, 0),
-        new THREE.Vector3(-1, 1.618, 0),
-        new THREE.Vector3(-1, -1.618, 0),
-        new THREE.Vector3(1.618, 0, 1),
-        new THREE.Vector3(1.618, 0, -1),
-        new THREE.Vector3(-1.618, 0, 1),
-        new THREE.Vector3(-1.618, 0, -1),
-      ];
-
-      vertices.forEach((v, idx) => {
-        v.normalize();
-        const spikeGroup = new THREE.Group();
-        spikeGroup.name = `spikeGroup_${idx}`;
-
-        const base = new THREE.Mesh(cylinderYGeometry, mats.needleMat);
-        base.scale.set(size * 0.02, size * 0.16, size * 0.02);
-        base.position.set(0, size * 0.08, 0);
-
-        const tip = new THREE.Mesh(sphereGeometry, mats.tipMat);
-        tip.scale.setScalar(size * 0.04);
-        tip.position.set(0, size * 0.17, 0);
-
-        spikeGroup.add(base);
-        spikeGroup.add(tip);
-
-        // Orient spike group to point outward along vertex direction
-        spikeGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), v);
-        spikeGroup.position.copy(v).multiplyScalar(size * 0.2);
-
-        container.add(spikeGroup);
-      });
-
-      // DNA Double-Helix orbiting loop
-      const dnaGroup = new THREE.Group();
-      dnaGroup.name = 'dnaGroup';
-      for (let i = 0; i < 8; i++) {
-        const node = new THREE.Mesh(sphereGeometry, mats.dnaMat);
-        node.name = `dnaNode_${i}`;
-        node.scale.setScalar(size * 0.03);
-        dnaGroup.add(node);
-      }
-      container.add(dnaGroup);
-      break;
-    }
-    case EnemyType.FIREWALL: {
-      // Left Pillar
-      const leftPillar = new THREE.Mesh(boxGeometry, mats.pillarMat);
-      leftPillar.scale.set(size * 0.15, size * 0.9, size * 0.15);
-      leftPillar.position.set(-size * 0.4, 0, 0);
-      leftPillar.name = 'leftPillar';
-      container.add(leftPillar);
-
-      // Right Pillar
-      const rightPillar = leftPillar.clone();
-      rightPillar.position.x = size * 0.4;
-      rightPillar.name = 'rightPillar';
-      container.add(rightPillar);
-
-      // Glowing power strips on pillars
-      const leftStrip = new THREE.Mesh(boxGeometry, mats.stripMat);
-      leftStrip.scale.set(size * 0.02, size * 0.8, size * 0.16);
-      leftStrip.position.set(-size * 0.4, 0, 0);
-      container.add(leftStrip);
-
-      const rightStrip = leftStrip.clone();
-      rightStrip.position.x = size * 0.4;
-      container.add(rightStrip);
-
-      // Energy Gate Matrix: 6 overlapping horizontal/vertical shield tiles
-      const shieldGroup = new THREE.Group();
-      shieldGroup.name = 'shieldGroup';
-
-      const rows = 2;
-      const cols = 3;
-      let count = 0;
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          const tile = new THREE.Mesh(boxGeometry, mats.shieldMat);
-          tile.name = `tile_${count}`;
-          tile.scale.set(size * 0.22, size * 0.22, size * 0.05);
-          tile.position.set((c - 1) * size * 0.24, (r - 0.5) * size * 0.3, 0);
-          shieldGroup.add(tile);
-          count++;
-        }
-      }
-      container.add(shieldGroup);
-
-      // Projector nodes
-      const leftNode = new THREE.Mesh(sphereGeometry, mats.stripMat);
-      leftNode.scale.setScalar(size * 0.06);
-      leftNode.position.set(-size * 0.4, size * 0.48, 0);
-      leftNode.name = 'leftNode';
-      container.add(leftNode);
-
-      const rightNode = leftNode.clone();
-      rightNode.position.x = size * 0.4;
-      rightNode.name = 'rightNode';
-      container.add(rightNode);
-      break;
-    }
-    case EnemyType.ENFORCER: {
-      // Armored central chassis
-      const chassis = new THREE.Mesh(cylinderYGeometry, mats.chassisMat);
-      chassis.scale.set(size * 0.18, size * 0.38, size * 0.18);
-      chassis.rotation.x = Math.PI / 2;
-      chassis.name = 'chassis';
-      container.add(chassis);
-
-      // Heavy curved compound shield in front (3 plates)
-      const shieldGroup = new THREE.Group();
-      shieldGroup.name = 'shieldGroup';
-      shieldGroup.position.set(0, 0, size * 0.22);
-
-      const centerPlate = new THREE.Mesh(boxGeometry, mats.chassisMat);
-      centerPlate.scale.set(size * 0.35, size * 0.28, size * 0.05);
-      centerPlate.name = 'centerPlate';
-      shieldGroup.add(centerPlate);
-
-      // Glowing trim on center plate
-      const trim = new THREE.Mesh(boxGeometry, mats.eyeMat);
-      trim.scale.set(size * 0.37, size * 0.03, size * 0.06);
-      trim.position.set(0, size * 0.12, 0);
-      shieldGroup.add(trim);
-
-      // Flanking angled plates
-      const leftPlate = new THREE.Mesh(boxGeometry, mats.chassisMat);
-      leftPlate.scale.set(size * 0.16, size * 0.28, size * 0.04);
-      leftPlate.position.set(-size * 0.245, 0, -size * 0.05); // pre-translated offset position
-      leftPlate.rotation.y = Math.PI / 5;
-      leftPlate.name = 'leftPlate';
-      shieldGroup.add(leftPlate);
-
-      const rightPlate = new THREE.Mesh(boxGeometry, mats.chassisMat);
-      rightPlate.scale.set(size * 0.16, size * 0.28, size * 0.04);
-      rightPlate.position.set(size * 0.245, 0, -size * 0.05);
-      rightPlate.rotation.y = -Math.PI / 5;
-      rightPlate.name = 'rightPlate';
-      shieldGroup.add(rightPlate);
-
-      container.add(shieldGroup);
-
-      // Twin Gun Barrels
-      const leftBarrel = new THREE.Mesh(cylinderZGeometry, mats.chassisMat);
-      leftBarrel.scale.set(size * 0.03, size * 0.03, size * 0.28);
-      leftBarrel.position.set(-size * 0.26, -size * 0.05, size * 0.05);
-      leftBarrel.name = 'leftBarrel';
-      container.add(leftBarrel);
-
-      const rightBarrel = leftBarrel.clone();
-      rightBarrel.position.x = size * 0.26;
-      rightBarrel.name = 'rightBarrel';
-      container.add(rightBarrel);
-
-      // Repulsor lift nozzle
-      const nozzle = new THREE.Mesh(cylinderYGeometry, mats.chassisMat);
-      nozzle.scale.set(size * 0.1, size * 0.12, size * 0.1);
-      nozzle.position.set(0, -size * 0.2, -size * 0.05);
-      nozzle.name = 'nozzle';
-      container.add(nozzle);
-
-      const flame = new THREE.Mesh(coneZGeometry, mats.flameMat);
-      flame.scale.set(size * 0.06, size * 0.06, size * 0.18);
-      flame.rotation.y = Math.PI; // point backwards
-      flame.position.set(0, -size * 0.25, -size * 0.05);
-      flame.name = 'flame';
-      container.add(flame);
-
-      // Orbiting shield shards (2 shards rotating around Enforcer)
-      const orbiterGroup = new THREE.Group();
-      orbiterGroup.name = 'orbiterGroup';
-      for (let i = 0; i < 2; i++) {
-        const orb = new THREE.Mesh(boxGeometry, mats.shieldMat);
-        orb.name = `orb_${i}`;
-        orb.scale.set(size * 0.08, size * 0.15, size * 0.02);
-        orbiterGroup.add(orb);
-      }
-      container.add(orbiterGroup);
-      break;
-    }
-    case EnemyType.COLOSSUS: {
-      // Bottom step (Stationary base)
-      const baseStep = new THREE.Mesh(cylinderYGeometry, mats.darkMetal);
-      baseStep.scale.set(size * 0.35, size * 0.18, size * 0.35);
-      baseStep.name = 'baseStep';
-      baseStep.position.y = -size * 0.2;
-      container.add(baseStep);
-
-      // Middle step (Rotates Clockwise)
-      const midStep = new THREE.Mesh(cylinderYGeometry, mats.metalMat);
-      midStep.scale.set(size * 0.26, size * 0.18, size * 0.26);
-      midStep.name = 'midStep';
-      midStep.position.y = 0;
-      container.add(midStep);
-
-      // Top step (Rotates Counter-Clockwise)
-      const topStep = new THREE.Mesh(cylinderYGeometry, mats.darkMetal);
-      topStep.scale.set(size * 0.16, size * 0.18, size * 0.16);
-      topStep.name = 'topStep';
-      topStep.position.y = size * 0.2;
-      container.add(topStep);
-
-      // Exhaust Pipes on top
-      const exhaustGroup = new THREE.Group();
-      exhaustGroup.name = 'exhaustGroup';
-
-      const pipePositions = [
-        new THREE.Vector3(-size * 0.08, size * 0.28, -size * 0.08),
-        new THREE.Vector3(size * 0.08, size * 0.28, -size * 0.08),
-      ];
-      pipePositions.forEach((pos, idx) => {
-        const pipe = new THREE.Mesh(cylinderYGeometry, mats.darkMetal);
-        pipe.scale.set(size * 0.03, size * 0.16, size * 0.03);
-        pipe.rotation.x = Math.PI / 6; // angled back
-        pipe.position.copy(pos);
-        pipe.name = `pipe_${idx}`;
-
-        // Add fire/smoke cone
-        const smoke = new THREE.Mesh(coneZGeometry, mats.energyMat);
-        smoke.scale.set(size * 0.025, size * 0.025, size * 0.1);
-        smoke.position.set(0, size * 0.1, -size * 0.05);
-        smoke.name = `smoke_${idx}`;
-        pipe.add(smoke);
-
-        exhaustGroup.add(pipe);
-      });
-      container.add(exhaustGroup);
-
-      // 4 Shield node projectors on base corners
-      for (let i = 0; i < 4; i++) {
-        const angle = (i / 4) * Math.PI * 2 + Math.PI / 4;
-        const projector = new THREE.Mesh(sphereGeometry, mats.energyMat);
-        projector.scale.setScalar(size * 0.04);
-        projector.position.set(
-          Math.cos(angle) * size * 0.35,
-          -size * 0.16,
-          Math.sin(angle) * size * 0.35,
-        );
-        projector.name = `projector_${i}`;
-        container.add(projector);
-      }
-      break;
-    }
-    case EnemyType.WARDEN: {
-      // Octahedron core
-      const core = new THREE.Mesh(octahedronGeometry, mats.coreMat);
-      core.scale.setScalar(size * 0.24);
-      core.name = 'core';
-      container.add(core);
-
-      // Inner glowing energy sphere
-      const innerCore = new THREE.Mesh(sphereGeometry, mats.ringMat);
-      innerCore.scale.setScalar(size * 0.12);
-      innerCore.name = 'innerCore';
-      container.add(innerCore);
-
-      // Triple Gimbal Rings (horizontal, vertical-X, vertical-Z)
-      const ring1 = new THREE.Mesh(torusGeometry, mats.ringMat);
-      ring1.scale.setScalar(size * 0.42);
-      ring1.rotation.x = Math.PI / 2;
-      ring1.name = 'ring1';
-      container.add(ring1);
-
-      const ring2 = new THREE.Mesh(torusGeometry, mats.ringMat);
-      ring2.scale.setScalar(size * 0.38);
-      ring2.rotation.y = Math.PI / 2;
-      ring2.name = 'ring2';
-      container.add(ring2);
-
-      const ring3 = new THREE.Mesh(torusGeometry, mats.ringMat);
-      ring3.scale.setScalar(size * 0.46);
-      ring3.name = 'ring3';
-      container.add(ring3);
-
-      // 4 orbiting crystal nodes
-      const orbiterGroup = new THREE.Group();
-      orbiterGroup.name = 'orbiterGroup';
-
-      for (let i = 0; i < 4; i++) {
-        const crystal = new THREE.Mesh(octahedronGeometry, mats.coreMat);
-        crystal.scale.setScalar(size * 0.05);
-        crystal.name = `crystal_${i}`;
-        orbiterGroup.add(crystal);
-      }
-      container.add(orbiterGroup);
-      break;
-    }
-    case EnemyType.HYDRA: {
-      // 3 Hovering nodes
-      const c1 = new THREE.Group();
-      c1.position.set(-size * 0.26, 0, 0);
-      c1.name = 'node1';
-      const c1Mesh = new THREE.Mesh(icosahedronGeometry, mats.coreMat);
-      c1Mesh.scale.setScalar(size * 0.15);
-      c1.add(c1Mesh);
-      const c1Ring = new THREE.Mesh(torusGeometry, mats.beamMat);
-      c1Ring.scale.setScalar(size * 0.2);
-      c1Ring.rotation.x = Math.PI / 2;
-      c1Ring.name = 'ring1';
-      c1.add(c1Ring);
-      container.add(c1);
-
-      const c2 = new THREE.Group();
-      c2.position.set(0, size * 0.08, 0);
-      c2.name = 'node2';
-      const c2Mesh = new THREE.Mesh(icosahedronGeometry, mats.coreMat);
-      c2Mesh.scale.setScalar(size * 0.18);
-      c2.add(c2Mesh);
-      const c2Ring = new THREE.Mesh(torusGeometry, mats.beamMat);
-      c2Ring.scale.setScalar(size * 0.24);
-      c2Ring.rotation.y = Math.PI / 2;
-      c2Ring.name = 'ring2';
-      c2.add(c2Ring);
-      container.add(c2);
-
-      const c3 = new THREE.Group();
-      c3.position.set(size * 0.26, 0, 0);
-      c3.name = 'node3';
-      const c3Mesh = new THREE.Mesh(icosahedronGeometry, mats.coreMat);
-      c3Mesh.scale.setScalar(size * 0.15);
-      c3.add(c3Mesh);
-      const c3Ring = c1Ring.clone();
-      c3Ring.name = 'ring3';
-      c3.add(c3Ring);
-      container.add(c3);
-
-      // Connecting energy beams
-      const leftBeam = new THREE.Mesh(cylinderYGeometry, mats.beamMat);
-      leftBeam.scale.set(size * 0.02, 1, size * 0.02); // Height scale is 1 initially, adjusted dynamically
-      leftBeam.rotation.z = Math.PI / 2; // Lie flat along X-axis
-      leftBeam.name = 'leftBeam';
-      container.add(leftBeam);
-
-      const rightBeam = new THREE.Mesh(cylinderYGeometry, mats.beamMat);
-      rightBeam.scale.set(size * 0.02, 1, size * 0.02);
-      rightBeam.rotation.z = Math.PI / 2;
-      rightBeam.name = 'rightBeam';
-      container.add(rightBeam);
-      break;
-    }
-    case EnemyType.OVERSEER: {
-      // Core sphere
-      const core = new THREE.Mesh(sphereGeometry, mats.coreMat);
-      core.scale.setScalar(size * 0.18);
-      core.name = 'core';
-      container.add(core);
-
-      // Three Concentric Cages
-      const ring1 = new THREE.Mesh(boxGeometry, mats.wireMat1);
-      ring1.scale.setScalar(size * 0.32);
-      ring1.name = 'ring1';
-      container.add(ring1);
-
-      const ring2 = new THREE.Mesh(octahedronGeometry, mats.wireMat2);
-      ring2.scale.setScalar(size * 0.44);
-      ring2.name = 'ring2';
-      container.add(ring2);
-
-      const ring3 = new THREE.Mesh(icosahedronGeometry, mats.wireMat3);
-      ring3.scale.setScalar(size * 0.54);
-      ring3.name = 'ring3';
-      container.add(ring3);
-
-      // 4 floating weapon satellite pods
-      const satellites = new THREE.Group();
-      satellites.name = 'satellites';
-      for (let i = 0; i < 4; i++) {
-        const sat = new THREE.Mesh(cylinderZGeometry, mats.darkMat);
-        sat.scale.set(size * 0.04, size * 0.04, size * 0.15);
-        sat.name = `sat_${i}`;
-
-        const satGlow = new THREE.Mesh(sphereGeometry, mats.coreMat);
-        satGlow.scale.setScalar(size * 0.025);
-        satGlow.position.set(0, 0, size * 0.08);
-        satGlow.name = 'glow';
-        sat.add(satGlow);
-        satellites.add(sat);
-      }
-      container.add(satellites);
-      break;
-    }
+  } else {
+    // Fallback: create a simple box if not found
+    const fallbackMesh = new THREE.Mesh(boxGeometry, fallbackMaterial);
+    fallbackMesh.scale.setScalar(size);
+    container.add(fallbackMesh);
   }
 
   // Position it floating above the ground
@@ -994,7 +800,7 @@ function buildEnemyMesh(type: EnemyType, size: number): THREE.Object3D {
 }
 
 export function spawnEnemy(
-  scene: THREE.Scene,
+  _scene: THREE.Scene,
   x: number,
   z: number,
   type: EnemyType = EnemyType.GLITCH,
@@ -1002,7 +808,6 @@ export function spawnEnemy(
   const stats = ENEMY_STATS[type];
   const group = new THREE.Group();
   group.position.set(x, 0, z);
-  scene.add(group);
 
   // 1. Build and attach the custom 3D model
   const enemyMesh = buildEnemyMesh(type, stats.size);
@@ -1024,6 +829,7 @@ export function spawnEnemy(
     health: { current: stats.hp, max: stats.hp },
     moveSpeed: stats.speed,
     transform: group,
+    size: stats.size,
     aimTarget: new THREE.Vector3(),
     xpValue: stats.xp,
     baseColor: stats.color,
@@ -1043,7 +849,7 @@ export function spawnEnemy(
 
 export function spawnXP(_scene: THREE.Scene, x: number, z: number, value: number) {
   // Check XP cap - bank instead of spawning if at limit
-  const activeXPCount = Array.from(world.with('isXP')).length;
+  const activeXPCount = world.count('isXP');
   if (activeXPCount >= MAX_ACTIVE_XP) {
     bankXP(value);
     return;
@@ -1052,12 +858,6 @@ export function spawnXP(_scene: THREE.Scene, x: number, z: number, value: number
   // Get tier based on value
   const tier = getTierForValue(value);
 
-  // Create dummy Object3D (not added to the scene)
-  const dummy = new THREE.Object3D();
-  dummy.scale.setScalar(tier.size);
-  dummy.position.set(x, 0.5, z);
-  dummy.updateMatrixWorld(true);
-
   // Small random eject velocity
   const angle = Math.random() * Math.PI * 2;
   const force = 1.5;
@@ -1065,10 +865,12 @@ export function spawnXP(_scene: THREE.Scene, x: number, z: number, value: number
 
   return world.add({
     isXP: true,
-    position: dummy.position,
+    position: new THREE.Vector3(x, 0.5, z),
     velocity: velocity,
     xpValue: value,
-    transform: dummy,
+    size: tier.size,
+    rotationX: Math.random() * Math.PI,
+    rotationY: Math.random() * Math.PI,
     particleColor: tier.color,
   });
 }

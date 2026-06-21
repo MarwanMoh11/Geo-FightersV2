@@ -40,12 +40,25 @@ const STREAK_WINDOW = 1.0; // seconds between pickups to keep the streak
 let collectStreak = 0;
 let lastCollectTime = -Infinity;
 
+const _activePlayers: any[] = [];
+
+// Reusable math objects to prevent per-frame allocations during rendering
+const tempPosition = new THREE.Vector3();
+const tempScale = new THREE.Vector3();
+const tempRotation = new THREE.Euler();
+const tempQuaternion = new THREE.Quaternion();
+const tempMatrix = new THREE.Matrix4();
+const tempColor = new THREE.Color();
+
 export function LootSystem(dt: number, scene: THREE.Scene) {
-  // Find all alive players
-  const players = Array.from(
-    world.with('isPlayer', 'position', 'xp', 'xpMax', 'score', 'level', 'stats'),
-  ).filter((p: any) => !p.health || p.health.current > 0);
-  if (players.length === 0) return;
+  // Find all alive players using a pre-allocated array to prevent GC allocations
+  _activePlayers.length = 0;
+  for (const p of world.with('isPlayer', 'position', 'xp', 'xpMax', 'score', 'level', 'stats')) {
+    if (!p.health || p.health.current > 0) {
+      _activePlayers.push(p);
+    }
+  }
+  if (_activePlayers.length === 0) return;
 
   // We still need the local player for bank delivery (only local player handles its own bank spawn)
   const localPlayer = world.with('isLocalPlayer', 'position').first;
@@ -66,7 +79,7 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
     let closestPlayer: any = null;
     let minDistanceSq = Infinity;
 
-    for (const player of players) {
+    for (const player of _activePlayers) {
       const dx = player.position.x - xp.position.x;
       const dz = player.position.z - xp.position.z;
       const distSq = dx * dx + dz * dz;
@@ -165,25 +178,25 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
     xp.position.y += xp.velocity.y * dt;
     xp.position.z += xp.velocity.z * dt;
 
-    // F. SYNC VISUALS
-    if (xp.transform) {
-      xp.transform.position.x = xp.position.x;
-      xp.transform.position.y = xp.position.y;
-      xp.transform.position.z = xp.position.z;
-      xp.transform.rotation.y += 3 * dt;
-      xp.transform.rotation.x += 2 * dt;
-      xp.transform.updateMatrix();
-      xp.transform.updateMatrixWorld(true);
-    }
+    // F. SYNC VISUALS (rotation properties directly on the entity)
+    xp.rotationY = (xp.rotationY ?? 0) + 3 * dt;
+    xp.rotationX = (xp.rotationX ?? 0) + 2 * dt;
   }
 
-  // G. RENDER INSTANCED XP
-  const xpEntities = Array.from(world.with('isXP', 'transform', 'particleColor'));
-  if (xpEntities.length > 0) {
+  // Scene change check: clear cached InstancedMesh if scene changes
+  if (xpInstancedMesh && xpInstancedMesh.parent !== scene) {
+    xpInstancedMesh = null;
+  }
+
+  // G. RENDER INSTANCED XP (Direct iterator rendering, zero Array.from allocations)
+  let count = 0;
+  for (const entity of world.with('isXP', 'particleColor')) {
+    if (count >= MAX_XP_INSTANCES) break;
+
     if (!xpInstancedMesh) {
       xpInstancedMesh = new THREE.InstancedMesh(xpGeo, xpBaseMat, MAX_XP_INSTANCES);
       xpInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      xpInstancedMesh.frustumCulled = false;
+      xpInstancedMesh.frustumCulled = false; // Disable frustum culling
       
       // Pre-allocate instanceColor array to maximum size
       const defaultColor = new THREE.Color(0xffffff);
@@ -194,19 +207,21 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
       scene.add(xpInstancedMesh);
     }
 
-    const count = Math.min(xpEntities.length, MAX_XP_INSTANCES);
+    // Compose matrix directly from entity properties
+    tempPosition.copy(entity.position);
+    tempScale.setScalar(entity.size ?? 0.6);
+    tempRotation.set(entity.rotationX ?? 0, entity.rotationY ?? 0, 0);
+    tempQuaternion.setFromEuler(tempRotation);
+    tempMatrix.compose(tempPosition, tempQuaternion, tempScale);
+
+    xpInstancedMesh.setMatrixAt(count, tempMatrix);
+    tempColor.setHex(entity.particleColor ?? 0xffffff);
+    xpInstancedMesh.setColorAt(count, tempColor);
+    count++;
+  }
+
+  if (count > 0 && xpInstancedMesh) {
     xpInstancedMesh.count = count;
-
-    const tempColor = new THREE.Color();
-    for (let i = 0; i < count; i++) {
-      const entity = xpEntities[i];
-      if (entity.transform && entity.particleColor !== undefined) {
-        xpInstancedMesh.setMatrixAt(i, entity.transform.matrixWorld);
-        tempColor.setHex(entity.particleColor);
-        xpInstancedMesh.setColorAt(i, tempColor);
-      }
-    }
-
     xpInstancedMesh.instanceMatrix.needsUpdate = true;
     if (xpInstancedMesh.instanceColor) {
       xpInstancedMesh.instanceColor.needsUpdate = true;

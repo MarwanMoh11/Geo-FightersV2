@@ -9,9 +9,7 @@ import { setMasterGain, setMusicGain, setSFXGain, resumeMusic } from '../core/au
 
 import { uiState } from '../core/UIState.svelte.ts';
 
-// --- DOM ELEMENTS ---
-// mainMenu, settingsModal, pauseModal are now handled by Svelte
-const fpsCounter = document.getElementById('fps-counter');
+//MainMenu, settingsModal, pauseModal are now handled by Svelte
 // const mobilePauseBtn = document.getElementById('mobile-pause-btn');
 
 // --- INITIALIZATION ---
@@ -97,6 +95,9 @@ function applySettingsToGame(settings: GameSettings): void {
 
   // Apply control layout
   document.body.classList.toggle('inverted-controls', settings.invertControls);
+
+  // Sync showFps setting to uiState
+  uiState.showFps = settings.showFps;
 }
 
 // --- FPS TRACKING ---
@@ -107,9 +108,7 @@ export function updateFPS(currentTime: number): void {
   frameCount++;
 
   if (currentTime - lastFpsUpdate >= 1000) {
-    if (fpsCounter && !fpsCounter.classList.contains('hidden')) {
-      fpsCounter.textContent = `FPS: ${frameCount}`;
-    }
+    uiState.fps = frameCount;
     frameCount = 0;
     lastFpsUpdate = currentTime;
   }

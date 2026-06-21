@@ -10,17 +10,25 @@ const particleMaterial = new THREE.MeshBasicMaterial({
 
 let instancedMesh: THREE.InstancedMesh | null = null;
 
+// Reusable math objects to prevent per-frame allocations during rendering
+const tempPosition = new THREE.Vector3();
+const tempScale = new THREE.Vector3();
+const tempRotation = new THREE.Euler();
+const tempQuaternion = new THREE.Quaternion();
+const tempMatrix = new THREE.Matrix4();
+const tempColor = new THREE.Color();
+
 export function ParticleSystem(dt: number, scene?: THREE.Scene) {
   // 1. Update active particles' physics, scale, and rotations
-  for (const entity of world.with('isParticle', 'transform', 'lifeTimer', 'maxLife')) {
-    if (!entity.transform || entity.lifeTimer === undefined || entity.maxLife === undefined)
+  for (const entity of world.with('isParticle', 'lifeTimer', 'maxLife')) {
+    if (entity.lifeTimer === undefined || entity.maxLife === undefined)
       continue;
 
     // Calculate Progress (0.0 = New, 1.0 = Dead)
     const age = Math.min(entity.lifeTimer / entity.maxLife, 1);
 
     // 2a. EXPANDING RINGS (blast waves, evolution flashes): grow + fade out (not instanced)
-    if (entity.ringGrow !== undefined) {
+    if (entity.ringGrow !== undefined && entity.transform) {
       const eased = 1 - (1 - age) * (1 - age); // ease-out
       entity.transform.scale.setScalar(1 + eased * entity.ringGrow);
       const mesh = entity.transform as { material?: { opacity?: number } };
@@ -30,36 +38,58 @@ export function ParticleSystem(dt: number, scene?: THREE.Scene) {
       continue;
     }
 
-    // 2b. Shrink over time with an ease-out so the pop reads better
-    const scale = 1.0 - age * age;
-    entity.transform.scale.setScalar(Math.max(scale, 0.001));
-
-    // 3. Gravity arc for debris (skip flat FX rings, which carry no spin)
-    if (entity.spinX !== undefined && entity.velocity) {
-      entity.velocity.y -= PARTICLE_GRAVITY * dt;
-      if (entity.position.y < 0.05 && entity.velocity.y < 0) {
-        entity.position.y = 0.05;
-        entity.velocity.y *= -0.4; // small bounce
+    // 2b. Instanced particles (calculate spatial properties directly on coordinates)
+    if (entity.isInstancedParticle) {
+      // Gravity arc for debris (skip flat FX rings, which carry no spin)
+      if (entity.spinX !== undefined && entity.velocity) {
+        entity.velocity.y -= PARTICLE_GRAVITY * dt;
+        if (entity.position.y < 0.05 && entity.velocity.y < 0) {
+          entity.position.y = 0.05;
+          entity.velocity.y *= -0.4; // small bounce
+        }
       }
+
+      // Tumble: ease out with age
+      const spinEase = 1 - age;
+      if (entity.rotationX !== undefined) {
+        entity.rotationX += (entity.spinX ?? 10) * spinEase * dt;
+      }
+      if (entity.rotationZ !== undefined) {
+        entity.rotationZ += (entity.spinZ ?? 5) * spinEase * dt;
+      }
+    } else if (entity.transform) {
+      // 2c. Non-instanced particles (other legacy debris)
+      // Shrink over time with an ease-out so the pop reads better
+      const scale = 1.0 - age * age;
+      entity.transform.scale.setScalar(Math.max(scale, 0.001));
+
+      // Gravity arc for debris
+      if (entity.spinX !== undefined && entity.velocity) {
+        entity.velocity.y -= PARTICLE_GRAVITY * dt;
+        if (entity.position.y < 0.05 && entity.velocity.y < 0) {
+          entity.position.y = 0.05;
+          entity.velocity.y *= -0.4; // small bounce
+        }
+      }
+
+      // Tumble
+      const spinEase = 1 - age;
+      entity.transform.rotation.x += (entity.spinX ?? 10) * spinEase * dt;
+      entity.transform.rotation.z += (entity.spinZ ?? 5) * spinEase * dt;
     }
-
-    // 4. Tumble: per-particle rates assigned at spawn, easing out with age
-    const spinEase = 1 - age;
-    entity.transform.rotation.x += (entity.spinX ?? 10) * spinEase * dt;
-    entity.transform.rotation.z += (entity.spinZ ?? 5) * spinEase * dt;
-
-    // Sync matrix changes for instancing
-    entity.transform.updateMatrix();
-    entity.transform.updateMatrixWorld(true);
   }
 
   // 2. Render instanced particles using InstancedMesh
   if (scene) {
-    const instancedEntities = Array.from(
-      world.with('isInstancedParticle', 'transform', 'particleColor'),
-    );
+    if (instancedMesh && instancedMesh.parent !== scene) {
+      instancedMesh = null;
+    }
 
-    if (instancedEntities.length > 0) {
+    let count = 0;
+
+    for (const entity of world.with('isInstancedParticle', 'position', 'particleColor')) {
+      if (count >= maxParticles) break;
+
       if (!instancedMesh) {
         instancedMesh = new THREE.InstancedMesh(explosionGeo, particleMaterial, maxParticles);
         instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -67,26 +97,41 @@ export function ParticleSystem(dt: number, scene?: THREE.Scene) {
         
         // Pre-allocate instanceColor array to maximum size
         const defaultColor = new THREE.Color(0xffffff);
-        for (let i = 0; i < maxParticles; i++) {
-          instancedMesh.setColorAt(i, defaultColor);
+        for (let j = 0; j < maxParticles; j++) {
+          instancedMesh.setColorAt(j, defaultColor);
         }
         
         scene.add(instancedMesh);
       }
 
-      const count = Math.min(instancedEntities.length, maxParticles);
+      // Calculate scale (shrinking with age)
+      const age = entity.lifeTimer !== undefined && entity.maxLife !== undefined
+        ? Math.min(entity.lifeTimer / entity.maxLife, 1)
+        : 0;
+      const scaleBase = 1.0 - age * age;
+      const scaleVal = Math.max(scaleBase, 0.001);
+
+      // Compose matrix directly from entity properties
+      tempPosition.copy(entity.position);
+      
+      const sX = (entity.scaleX ?? 1.0) * scaleVal;
+      const sY = (entity.scaleY ?? 1.0) * scaleVal;
+      const sZ = (entity.scaleZ ?? 1.0) * scaleVal;
+      tempScale.set(sX, sY, sZ);
+
+      tempRotation.set(entity.rotationX ?? 0, 0, entity.rotationZ ?? 0);
+      tempQuaternion.setFromEuler(tempRotation);
+
+      tempMatrix.compose(tempPosition, tempQuaternion, tempScale);
+
+      instancedMesh.setMatrixAt(count, tempMatrix);
+      tempColor.setHex(entity.particleColor ?? 0xffffff);
+      instancedMesh.setColorAt(count, tempColor);
+      count++;
+    }
+
+    if (count > 0 && instancedMesh) {
       instancedMesh.count = count;
-
-      const tempColor = new THREE.Color();
-      for (let i = 0; i < count; i++) {
-        const entity = instancedEntities[i];
-        if (entity.transform && entity.particleColor !== undefined) {
-          instancedMesh.setMatrixAt(i, entity.transform.matrixWorld);
-          tempColor.setHex(entity.particleColor);
-          instancedMesh.setColorAt(i, tempColor);
-        }
-      }
-
       instancedMesh.instanceMatrix.needsUpdate = true;
       if (instancedMesh.instanceColor) {
         instancedMesh.instanceColor.needsUpdate = true;
