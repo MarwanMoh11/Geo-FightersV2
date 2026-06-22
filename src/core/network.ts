@@ -7,7 +7,6 @@ import { spawnPlayer, spawnEnemy, spawnXP } from './factories';
 import { spawnChest } from '../systems/ChestSystem';
 import { spawnClientBoss, removeClientBoss } from '../systems/FinaleBoss';
 import { removeBody } from './RapierWorld';
-import { WEAPONS, getWeaponStatsAtLevel } from './WeaponRegistry';
 import { playLevelUp } from './audio';
 import { triggerLevelUp } from '../systems/UpgradeSystem';
 
@@ -16,6 +15,19 @@ let activeScene: THREE.Scene | null = null;
 
 // Map to track remote player entities: connectionId -> entity
 export const remotePlayers = new Map<string, any>();
+
+// Rebuild the live party roster (used by the co-op teammate HUD) from a host/client
+// players payload. Each entry: { c: connId, n: name, h: hp, m: maxHp, l: level }.
+function rebuildPartyFromPayload(players: any[]) {
+  uiState.party = players.map((p: any) => ({
+    connectionId: p.c,
+    name: p.n || 'PLAYER',
+    hp: Math.round(p.h ?? 0),
+    maxHp: Math.round(p.m ?? 100),
+    level: p.l || 1,
+    isLocal: p.c === socket?.id,
+  }));
+}
 
 // Helper to determine socket URL
 const getSocketUrl = (): string => {
@@ -69,7 +81,7 @@ export function joinRoom(roomCode: string) {
     setupSocketListeners();
   }
 
-  socket.emit('client-join-room', { roomCode });
+  socket.emit('client-join-room', { roomCode, name: uiState.playerName });
 }
 
 // 3. Disconnect from room/server
@@ -88,6 +100,7 @@ export function disconnectNetwork() {
   uiState.isHost = false;
   uiState.roomCode = '';
   uiState.networkStatus = 'disconnected';
+  uiState.party = [];
   remotePlayers.clear();
 }
 
@@ -156,8 +169,8 @@ function setupSocketListeners() {
     disconnectNetwork();
   });
 
-  socket.on('player-joined', ({ playerId }) => {
-    console.log(`[Network] Player joined: ${playerId}`);
+  socket.on('player-joined', ({ playerId, name }) => {
+    console.log(`[Network] Player joined: ${playerId} (${name || 'PLAYER'})`);
     uiState.networkStatus = 'connected';
 
     // Spawn player avatar on host side
@@ -170,6 +183,7 @@ function setupSocketListeners() {
         (e: any) => e.connectionId === playerId,
       );
       if (playerEntity) {
+        playerEntity.playerName = name || 'PLAYER';
         remotePlayers.set(playerId, playerEntity);
         uiState.remotePlayersCount = remotePlayers.size;
       }
@@ -232,6 +246,7 @@ function setupSocketListeners() {
       player.level = state.level;
       player.score = state.score;
       player.isUpgrading = state.isUpgrading;
+      if (state.name) player.playerName = state.name;
       if (state.stats) {
         player.stats = state.stats;
       }
@@ -447,66 +462,36 @@ function setupSocketListeners() {
     // 5. Sync Global State
     uiState.gameTime = state.gameTime;
     uiState.bossHealth = state.bossHealth;
+
+    // 6. Party roster (names + health) for the co-op teammate HUD
+    rebuildPartyFromPayload(state.players);
   });
 
-  // Remote shoots visual projectile
-  socket.on('remote-shoot', (pData) => {
+  // Remote player fired — spawn a visual-only projectile for them.
+  socket.on('remote-shoot', (pData: any) => {
     if (!activeScene) return;
 
-    // Play sound and spawn visual projectile for remote player
-    // Call fireWeapon directly on client side for remote player representation
+    // The host already simulates every player's weapons authoritatively (it owns the
+    // real projectiles + damage), so rendering remote-shoot visuals there would just
+    // double every client's bullets. Only non-host clients need these visuals.
+    if (uiState.isHost) return;
+
+    // Match the shooter strictly by connectionId. Entity `id`s are assigned per-client
+    // and collide across machines (every player's local avatar tends to be id 1), so the
+    // old `|| e.id === pData.ownerId` fallback frequently matched the WRONG entity (often
+    // our own local player) — which is why teammates' bullets never appeared.
+    const shooterConnId = pData.connectionId;
+    if (!shooterConnId || shooterConnId === socket?.id) return; // ignore our own shots
+
     const remoteEntity = Array.from(world.with('isPlayer')).find(
-      (e: any) => e.connectionId === pData.connectionId || e.id === pData.ownerId,
+      (e: any) => e.connectionId === shooterConnId,
     );
+    if (!remoteEntity) return; // avatar not synced yet; drop this shot
 
-    if (remoteEntity) {
-      // Find remote player's weapon entity matching the projectile weapon ID
-      let weapon = Array.from(world.with('isWeapon', 'ownerId')).find(
-        (w: any) => w.ownerId === remoteEntity.id && w.weaponId === pData.weaponId,
-      );
-
-      // If remote player's weapon slot is not created yet, spawn a mock weapon entity
-      if (!weapon) {
-        const stats = WEAPONS[pData.weaponId];
-        const tierStats = getWeaponStatsAtLevel(pData.weaponId, 1)!;
-        weapon = world.add({
-          isWeapon: true,
-          weaponId: pData.weaponId,
-          ownerId: remoteEntity.id,
-          position: new THREE.Vector3(),
-          velocity: new THREE.Vector3(),
-          weapon: {
-            cooldownTimer: 0,
-            fireRate: tierStats.cooldown,
-            damage: tierStats.damage,
-            bulletSpeed: stats.baseSpeed,
-            bulletColor: stats.color,
-            bulletLifetime: stats.baseLifetime,
-            category: stats.category,
-            bulletWidth: stats.bulletWidth,
-            bulletLength: stats.bulletLength,
-            visualStyle: stats.visualStyle,
-            bulletCount: tierStats.projectiles,
-            bulletSpread: stats.baseSpread,
-            knockback: stats.baseKnockback,
-            bulletPierce: tierStats.pierce,
-            bulletExplodeRadius: stats.explodeRadius,
-          },
-        });
-      }
-
-      // Temporarily set remote player's aim target to match the direction of travel
-      if (!remoteEntity.aimTarget) remoteEntity.aimTarget = new THREE.Vector3();
-      remoteEntity.aimTarget
-        .copy(remoteEntity.position)
-        .add(new THREE.Vector3(pData.dir.x, 0, pData.dir.z).normalize().multiplyScalar(10));
-
-      // Run local visual firing for remote player
-      // Import dynamically to avoid circular references
-      import('../systems/WeaponSystem').then(({ fireWeaponRemote }) => {
-        fireWeaponRemote(activeScene!, remoteEntity, pData.weaponId, pData.dir);
-      });
-    }
+    // Import dynamically to avoid circular references
+    import('../systems/WeaponSystem').then(({ fireWeaponRemote }) => {
+      fireWeaponRemote(activeScene!, remoteEntity, pData.weaponId, pData.dir);
+    });
   });
 
   // Game events (loot collection, boss spawns, victory/gameover)
@@ -564,6 +549,7 @@ export function sendClientUpdate() {
         },
         level: localPlayer.level || 1,
         score: localPlayer.score || 0,
+        name: uiState.playerName,
         weaponSlots: localPlayer.weaponSlots || [],
         isUpgrading: uiState.showUpgrade || uiState.gameState === 'PAUSED',
         stats: localPlayer.stats,
@@ -586,6 +572,8 @@ export function sendHostUpdate() {
     world.with('isPlayer', 'position', 'velocity', 'health', 'level', 'score'),
   ).map((p: any) => ({
     c: p.connectionId,
+    // Host's own name lives in uiState; remote players carry it on the entity.
+    n: p.isLocalPlayer ? uiState.playerName || 'HOST' : p.playerName || 'PLAYER',
     p: [Math.round(p.position.x * 10) / 10, Math.round(p.position.z * 10) / 10],
     v: [Math.round(p.velocity.x * 10) / 10, Math.round(p.velocity.z * 10) / 10],
     f: p.facingRight ? 1 : 0,
@@ -594,6 +582,9 @@ export function sendHostUpdate() {
     l: p.level || 1,
     s: p.score || 0,
   }));
+
+  // Keep the host's own party roster in sync from the same data it broadcasts.
+  rebuildPartyFromPayload(players);
 
   // Gather active enemies
   // NOTE: `facingRight` is intentionally NOT part of this query (see players note above).
