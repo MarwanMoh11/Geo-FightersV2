@@ -13,7 +13,7 @@
  */
 
 import * as THREE from 'three';
-import { world } from '../core/world';
+import { world, type Entity } from '../core/world';
 import { spawnEnemy, EnemyType } from '../core/factories';
 import { getGameTime, LEVEL_DURATION, BOSS_SPAWN_TIME } from './ChestSystem';
 import { triggerVictory } from './GameManager';
@@ -30,12 +30,17 @@ import { spawnDamageNumber } from './DamageNumberSystem';
 import { uiState } from '../core/UIState.svelte';
 import { haptics } from '../core/haptics';
 import { createCustomProjectileMesh } from '../core/projectileVisuals';
+import { broadcastGameEvent } from '../core/network';
 
 // --- BOSS STATE ---
 let bossSpawned = false;
 let bossEntity: any = null;
 
 const BOSS_SIZE = 9;
+
+// Boss is now killable. This is the boss HP pool — tune freely. The run is also
+// still winnable by simply surviving until the boss escapes at LEVEL_DURATION.
+const BOSS_MAX_HEALTH = 20000;
 
 // --- RESET ---
 export function resetBoss() {
@@ -64,6 +69,17 @@ export function FinaleBossSystem(dt: number, scene: THREE.Scene) {
 
   // B. BOSS BEHAVIOR
   if (bossEntity) {
+    // 0. Death check — a depleted boss is destroyed and the run is won.
+    if (bossEntity.health && bossEntity.health.current <= 0) {
+      dlog('[BOSS] SYSTEM CORRUPTION destroyed!');
+      addTrauma(1.0);
+      playExplosion();
+      despawnBoss(scene);
+      broadcastGameEvent('victory'); // notify multiplayer clients (no-op in single-player)
+      triggerVictory();
+      return;
+    }
+
     // 1. Slow chase toward player
     const dx = player.position.x - bossEntity.position.x;
     const dz = player.position.z - bossEntity.position.z;
@@ -200,6 +216,7 @@ export function FinaleBossSystem(dt: number, scene: THREE.Scene) {
     if (gameTime >= LEVEL_DURATION) {
       dlog('[BOSS] SYSTEM CORRUPTION is retreating...');
       despawnBoss(scene);
+      broadcastGameEvent('victory'); // notify multiplayer clients (no-op in single-player)
       triggerVictory();
     }
   }
@@ -241,15 +258,9 @@ export function FinaleBossSystem(dt: number, scene: THREE.Scene) {
   }
 }
 
-// --- SPAWN BOSS ---
-function spawnBoss(scene: THREE.Scene, nearX: number, nearZ: number) {
-  // Spawn at edge of screen
-  const angle = Math.random() * Math.PI * 2;
-  const x = nearX + Math.cos(angle) * 20;
-  const z = nearZ + Math.sin(angle) * 20;
-
+// --- BUILD BOSS VISUAL (shared by host spawn + client mirror) ---
+export function buildBossGroup(): THREE.Group {
   const group = new THREE.Group();
-  group.position.set(x, 0, z);
 
   const container = new THREE.Group();
   container.name = 'mesh_container';
@@ -368,6 +379,18 @@ function spawnBoss(scene: THREE.Scene, nearX: number, nearZ: number) {
   shadow.name = 'shadow';
   group.add(shadow);
 
+  return group;
+}
+
+// --- SPAWN BOSS (host / single-player authority) ---
+function spawnBoss(scene: THREE.Scene, nearX: number, nearZ: number) {
+  // Spawn at edge of screen
+  const angle = Math.random() * Math.PI * 2;
+  const x = nearX + Math.cos(angle) * 20;
+  const z = nearZ + Math.sin(angle) * 20;
+
+  const group = buildBossGroup();
+  group.position.set(x, 0, z);
   scene.add(group);
 
   // ENTRANCE: heavy rumble + boom so the spawn is felt, not just seen
@@ -379,7 +402,7 @@ function spawnBoss(scene: THREE.Scene, nearX: number, nearZ: number) {
     isEnemy: true,
     position: group.position,
     velocity: new THREE.Vector3(0, 0, 0),
-    health: { current: 50000, max: 50000 }, // Functionally infinite
+    health: { current: BOSS_MAX_HEALTH, max: BOSS_MAX_HEALTH },
     transform: group,
     spawnTimer: 0,
     chargeTimer: 0, // Ensure chargeTimer is initialized
@@ -392,6 +415,37 @@ function spawnBoss(scene: THREE.Scene, nearX: number, nearZ: number) {
     bossEntity.rigidBody = rigidBody;
     bossEntity.collider = collider;
   }
+}
+
+// --- CLIENT BOSS MIRROR ---
+// Visual-only boss representation on a multiplayer client. The host owns the boss
+// simulation; the client just renders its model and tracks its synced health so the
+// boss bar and on-screen body stay in sync. No physics body (host is authoritative).
+export function spawnClientBoss(
+  scene: THREE.Scene,
+  x: number,
+  z: number,
+  hpCurrent: number,
+  hpMax: number,
+) {
+  const group = buildBossGroup();
+  group.position.set(x, 0, z);
+  scene.add(group);
+
+  return world.add({
+    isBoss: true,
+    isEnemy: true,
+    position: group.position,
+    velocity: new THREE.Vector3(0, 0, 0),
+    health: { current: hpCurrent, max: hpMax },
+    transform: group,
+    chargeTimer: 0,
+  });
+}
+
+export function removeClientBoss(scene: THREE.Scene, entity: Entity) {
+  if (entity.transform) scene.remove(entity.transform);
+  world.remove(entity);
 }
 
 function resetBossMaterials(container: THREE.Object3D) {
