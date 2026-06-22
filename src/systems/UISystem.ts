@@ -17,8 +17,16 @@ export function UISystem() {
     'passiveSlots',
   ).first;
 
+  // On a multiplayer client (non-host) the authoritative game clock and boss state
+  // arrive via host-state-update. The local ChestSystem clock never advances on a
+  // client, so overwriting these here would freeze the run timer at 0:00 and hide
+  // the boss bar. Trust the synced values instead.
+  const isNetClient = uiState.isMultiplayer && !uiState.isHost;
+
   // 2. Update Global States
-  uiState.gameTime = getGameTime();
+  if (!isNetClient) {
+    uiState.gameTime = getGameTime();
+  }
   uiState.isPaused = _isPauseGlobal;
   uiState.isGameOver = _isGameOverGlobal;
 
@@ -51,12 +59,17 @@ export function UISystem() {
   });
 
   // 5. Boss Info
-  const boss = world.with('isBoss', 'health').first;
-  if (boss && boss.health) {
-    uiState.bossHealth.active = true;
-    uiState.bossHealth.current = boss.health.current;
-    uiState.bossHealth.max = boss.health.max;
-  } else {
-    uiState.bossHealth.active = false;
+  // Skip on a network client: the boss does not exist as a local entity there,
+  // its health is delivered through host-state-update. Recomputing it locally would
+  // always resolve to "no boss" and hide the synced boss bar.
+  if (!isNetClient) {
+    const boss = world.with('isBoss', 'health').first;
+    if (boss && boss.health) {
+      uiState.bossHealth.active = true;
+      uiState.bossHealth.current = boss.health.current;
+      uiState.bossHealth.max = boss.health.max;
+    } else {
+      uiState.bossHealth.active = false;
+    }
   }
 }
