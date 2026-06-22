@@ -118,7 +118,7 @@ function handleProjectileEnemyCollision(bullet: any, enemy: any, scene: THREE.Sc
     playExplosion();
 
     const confusionDuration = bullet.projectile.confusionDuration || 0;
-    
+
     _nearbyEnemies.length = 0;
     for (const target of world.with('isEnemy', 'position', 'health')) {
       _nearbyEnemies.push(target);
@@ -285,9 +285,11 @@ function applyDamage(
   if (!enemy.health) return;
 
   if (enemy.isBoss) {
-    // Boss takes damage and its health bar decreases, but it is unkillable
-    // (health clamped to minimum of 1) and immune to knockback/stun.
-    enemy.health.current = Math.max(1, enemy.health.current - dmg);
+    // Boss takes real damage and can now be killed. Death/cleanup is owned by
+    // FinaleBossSystem (it manages the boss entity, rapier body and victory
+    // trigger), so we only apply the damage here — no knockback/stun, and no
+    // generic enemy death/XP/chest handling.
+    enemy.health.current -= dmg;
     spawnDamageNumber(enemy.position, dmg, variant);
     enemy.hitFlashTimer = 0.1;
     return;

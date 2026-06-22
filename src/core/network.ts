@@ -5,6 +5,7 @@ import { uiState } from './UIState.svelte';
 import { setGameState } from './GameState';
 import { spawnPlayer, spawnEnemy, spawnXP } from './factories';
 import { spawnChest } from '../systems/ChestSystem';
+import { spawnClientBoss, removeClientBoss } from '../systems/FinaleBoss';
 import { removeBody } from './RapierWorld';
 import { WEAPONS, getWeaponStatsAtLevel } from './WeaponRegistry';
 import { playLevelUp } from './audio';
@@ -309,8 +310,12 @@ function setupSocketListeners() {
     }
 
     // 2. Sync Enemies
+    // Skip the boss here — it is flagged `isEnemy` but synced separately (section 2b).
+    // Without this guard the boss would never match a host enemy entry and would be
+    // despawned as "obsolete" on every frame.
     const enemyMap = new Map<number, any>();
     for (const e of world.with('isEnemy')) {
+      if (e.isBoss) continue;
       enemyMap.set(e.id!, e);
     }
 
@@ -353,6 +358,26 @@ function setupSocketListeners() {
       if (obsoleteEnemy.transform) activeScene?.remove(obsoleteEnemy.transform);
       if (obsoleteEnemy.rigidBody) removeBody(obsoleteEnemy.rigidBody);
       world.remove(obsoleteEnemy);
+    }
+
+    // 2b. Sync Boss (host-authoritative; visual mirror on the client)
+    const existingBoss = world.with('isBoss', 'position', 'health').first;
+    if (state.boss) {
+      const bx = state.boss.p[0];
+      const bz = state.boss.p[1];
+      const boss =
+        existingBoss ?? spawnClientBoss(activeScene!, bx, bz, state.boss.h, state.boss.m);
+      if (boss) {
+        boss.position.set(bx, 0, bz);
+        if (boss.transform) boss.transform.position.copy(boss.position);
+        if (boss.health) {
+          boss.health.current = state.boss.h;
+          boss.health.max = state.boss.m;
+        }
+      }
+    } else if (existingBoss) {
+      // Host no longer reports a boss (killed or escaped) — remove the mirror.
+      removeClientBoss(activeScene!, existingBoss);
     }
 
     // 3. Sync Loot/XP
@@ -574,14 +599,18 @@ export function sendHostUpdate() {
   // NOTE: `facingRight` is intentionally NOT part of this query (see players note above).
   // Including it filtered out ALL enemies, so the host sent an empty enemy list and the
   // joining client never saw any enemies.
-  const enemies = Array.from(world.with('isEnemy', 'position', 'health')).map((e: any) => ({
-    i: e.id,
-    t: e.enemyType,
-    p: [Math.round(e.position.x * 10) / 10, Math.round(e.position.z * 10) / 10],
-    h: Math.round(e.health?.current || 0),
-    f: e.facingRight ? 1 : 0,
-    fl: e.hitFlashTimer > 0 ? 1 : 0,
-  }));
+  // The boss is also flagged `isEnemy`, but it has no `enemyType` and a bespoke model,
+  // so it is excluded here and synced separately via the `boss` field below.
+  const enemies = Array.from(world.with('isEnemy', 'position', 'health'))
+    .filter((e: any) => !e.isBoss)
+    .map((e: any) => ({
+      i: e.id,
+      t: e.enemyType,
+      p: [Math.round(e.position.x * 10) / 10, Math.round(e.position.z * 10) / 10],
+      h: Math.round(e.health?.current || 0),
+      f: e.facingRight ? 1 : 0,
+      fl: e.hitFlashTimer > 0 ? 1 : 0,
+    }));
 
   // Gather active XP gems
   const xp = Array.from(world.with('isXP', 'position')).map((x: any) => ({
@@ -597,6 +626,16 @@ export function sendHostUpdate() {
     r: c.chestRarity || 'common',
   }));
 
+  // Gather boss (single entity, or null when not present)
+  const bossE = world.with('isBoss', 'position', 'health').first;
+  const boss = bossE
+    ? {
+        p: [Math.round(bossE.position.x * 10) / 10, Math.round(bossE.position.z * 10) / 10],
+        h: Math.round(bossE.health?.current ?? 0),
+        m: Math.round(bossE.health?.max ?? 1),
+      }
+    : null;
+
   socket.emit('host-update', {
     roomCode: uiState.roomCode,
     state: {
@@ -604,6 +643,7 @@ export function sendHostUpdate() {
       enemies,
       xp,
       chests,
+      boss,
       gameTime: uiState.gameTime,
       bossHealth: uiState.bossHealth,
     },
