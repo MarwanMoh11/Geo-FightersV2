@@ -552,8 +552,13 @@ export function sendHostUpdate() {
   if (!socket || socket.disconnected || !uiState.isHost) return;
 
   // Gather players info
+  // NOTE: `facingRight` is intentionally NOT part of this query. It is an optional
+  // field that is never assigned on entities (3D models face via transform.rotation),
+  // and world.with() requires every listed component to be defined. Including it here
+  // filtered out ALL players, so the host transmitted an empty player list and clients
+  // never saw the host or other players.
   const players = Array.from(
-    world.with('isPlayer', 'position', 'velocity', 'facingRight', 'health', 'level', 'score'),
+    world.with('isPlayer', 'position', 'velocity', 'health', 'level', 'score'),
   ).map((p: any) => ({
     c: p.connectionId,
     p: [Math.round(p.position.x * 10) / 10, Math.round(p.position.z * 10) / 10],
@@ -566,16 +571,17 @@ export function sendHostUpdate() {
   }));
 
   // Gather active enemies
-  const enemies = Array.from(world.with('isEnemy', 'position', 'health', 'facingRight')).map(
-    (e: any) => ({
-      i: e.id,
-      t: e.enemyType,
-      p: [Math.round(e.position.x * 10) / 10, Math.round(e.position.z * 10) / 10],
-      h: Math.round(e.health?.current || 0),
-      f: e.facingRight ? 1 : 0,
-      fl: e.hitFlashTimer > 0 ? 1 : 0,
-    }),
-  );
+  // NOTE: `facingRight` is intentionally NOT part of this query (see players note above).
+  // Including it filtered out ALL enemies, so the host sent an empty enemy list and the
+  // joining client never saw any enemies.
+  const enemies = Array.from(world.with('isEnemy', 'position', 'health')).map((e: any) => ({
+    i: e.id,
+    t: e.enemyType,
+    p: [Math.round(e.position.x * 10) / 10, Math.round(e.position.z * 10) / 10],
+    h: Math.round(e.health?.current || 0),
+    f: e.facingRight ? 1 : 0,
+    fl: e.hitFlashTimer > 0 ? 1 : 0,
+  }));
 
   // Gather active XP gems
   const xp = Array.from(world.with('isXP', 'position')).map((x: any) => ({
