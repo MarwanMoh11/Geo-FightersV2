@@ -9,6 +9,9 @@
   let xpPercent = $derived(Math.max(0, Math.min(100, (uiState.xp / uiState.xpMax) * 100)));
   let lowHealth = $derived(hpPercent <= 30);
 
+  // Co-op: everyone in the party except ourselves (we already have the main HUD).
+  let teammates = $derived(uiState.isMultiplayer ? uiState.party.filter((p) => !p.isLocal) : []);
+
   let minutes = $derived(
     Math.floor(uiState.gameTime / 60)
       .toString()
@@ -85,6 +88,29 @@
     </button>
   </div>
 
+  <!-- Co-op teammate roster: name + health for every other player -->
+  {#if teammates.length > 0}
+    <div class="party">
+      {#each teammates as mate (mate.connectionId)}
+        <div class="mate" class:dead={mate.hp <= 0}>
+          <div class="mate-head">
+            <span class="mate-name">{mate.name}</span>
+            <span class="mate-lv tnum">LV{mate.level}</span>
+          </div>
+          <div class="mate-hp">
+            <div
+              class="mate-hp-fill"
+              class:low={mate.maxHp > 0 && mate.hp / mate.maxHp <= 0.3}
+              style="width: {mate.maxHp > 0
+                ? Math.max(0, Math.min(100, (mate.hp / mate.maxHp) * 100))
+                : 0}%"
+            ></div>
+          </div>
+        </div>
+      {/each}
+    </div>
+  {/if}
+
   <!-- Boss bar -->
   {#if uiState.bossHealth.active}
     <div class="boss" transition:fly={{ y: -16, duration: 350 }}>
@@ -108,6 +134,66 @@
     pointer-events: none;
     z-index: 120;
     font-family: var(--font-body);
+  }
+
+  /* ---- Co-op party roster ---- */
+  .party {
+    position: absolute;
+    left: max(0.75rem, var(--safe-left, 0px));
+    top: 8.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    width: 150px;
+    pointer-events: none;
+  }
+  .mate {
+    background: rgba(8, 12, 22, 0.55);
+    border: 1px solid var(--color-border);
+    border-radius: var(--r-sm);
+    padding: 0.35rem 0.5rem;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  .mate.dead {
+    opacity: 0.45;
+    filter: grayscale(0.8);
+  }
+  .mate-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.4rem;
+    margin-bottom: 0.28rem;
+  }
+  .mate-name {
+    font-size: 0.64rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--color-text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .mate-lv {
+    flex: 0 0 auto;
+    font-size: 0.55rem;
+    font-weight: 600;
+    color: var(--color-text-dim);
+  }
+  .mate-hp {
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.1);
+    overflow: hidden;
+  }
+  .mate-hp-fill {
+    height: 100%;
+    background: var(--color-accent);
+    transition: width 0.2s linear;
+  }
+  .mate-hp-fill.low {
+    background: var(--color-primary);
   }
 
   .hidden {

@@ -43,6 +43,10 @@
   function openSettings() {
     uiState.showSettings = true;
   }
+
+  function saveName() {
+    localStorage.setItem('geo_player_name', uiState.playerName.trim());
+  }
 </script>
 
 <div id="main-menu" class:hidden={uiState.gameState !== 'MENU'}>
@@ -74,6 +78,18 @@
           </button>
         {/if}
       {:else if showMpOptions && uiState.networkStatus === 'disconnected'}
+        <label class="name-config">
+          <span class="eyebrow">Call sign</span>
+          <input
+            type="text"
+            maxlength="12"
+            placeholder="PLAYER"
+            class="name-input"
+            bind:value={uiState.playerName}
+            oninput={saveName}
+          />
+        </label>
+
         <button class="btn primary" onclick={handleHost}>
           <span class="label">Host lobby</span>
           <span class="sub">Create beacon</span>
@@ -309,6 +325,32 @@
     flex: 0 0 auto;
     justify-content: center;
     padding: 1rem 1.4rem;
+  }
+
+  .name-config {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-bottom: 0.25rem;
+  }
+  .name-config .eyebrow {
+    padding-left: 0.2rem;
+  }
+  .name-input {
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid var(--color-border);
+    border-radius: var(--r-md);
+    padding: 0.7rem 1rem;
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-text-main);
+    text-align: center;
+    outline: none;
+  }
+  .name-input:focus {
+    border-color: var(--color-border-bright);
   }
 
   .server-config {

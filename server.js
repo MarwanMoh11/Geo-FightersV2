@@ -47,7 +47,7 @@ io.on('connection', (socket) => {
   });
 
   // 2. Client joins a room
-  socket.on('client-join-room', ({ roomCode }) => {
+  socket.on('client-join-room', ({ roomCode, name }) => {
     const code = roomCode.toUpperCase().trim();
     const room = rooms.get(code);
 
@@ -69,10 +69,10 @@ io.on('connection', (socket) => {
 
     // Notify client they joined successfully
     socket.emit('joined-room', { roomCode: code, hostId: room.hostId });
-    // Notify host that a new player joined
-    io.to(room.hostId).emit('player-joined', { playerId: socket.id });
+    // Notify host that a new player joined (carry their chosen display name)
+    io.to(room.hostId).emit('player-joined', { playerId: socket.id, name: name || 'PLAYER' });
 
-    console.log(`[Server] Client ${socket.id} joined room ${code}`);
+    console.log(`[Server] Client ${socket.id} joined room ${code} as "${name || 'PLAYER'}"`);
   });
 
   // 3. Relay state update from Client to Host

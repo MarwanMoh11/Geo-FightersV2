@@ -47,6 +47,19 @@ export const uiState = $state({
   customServerUrl:
     typeof window !== 'undefined' ? localStorage.getItem('geo_server_url') || '' : '',
 
+  // Chosen display name (persisted), used as this player's name in multiplayer
+  playerName: typeof window !== 'undefined' ? localStorage.getItem('geo_player_name') || '' : '',
+
+  // Live party roster (all players incl. self) — drives the co-op teammate HUD
+  party: [] as {
+    connectionId: string;
+    name: string;
+    hp: number;
+    maxHp: number;
+    level: number;
+    isLocal: boolean;
+  }[],
+
   // Settings
   fps: 60,
   showFps: false,

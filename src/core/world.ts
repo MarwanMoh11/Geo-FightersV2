@@ -23,6 +23,7 @@ export type Entity = {
   isPlayer?: boolean;
   isLocalPlayer?: boolean;
   connectionId?: string;
+  playerName?: string; // multiplayer display name (remote players)
   isEnemy?: boolean;
   isProjectile?: boolean;
   isEnemyProjectile?: boolean;
