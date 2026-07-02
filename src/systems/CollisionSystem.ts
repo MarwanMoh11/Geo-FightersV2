@@ -18,7 +18,12 @@ import { triggerGameOver } from './GameManager';
 import { playExplosion, playHurt, playCollect } from '../core/audio';
 import { reportDamageTaken, reportKill } from '../core/FlowStateManager';
 import { recordKill, recordDamage, recordVaultCracked } from '../core/ProgressManager';
-import { spawnChest } from './ChestSystem';
+import {
+  spawnChest,
+  tryDropEliteChest,
+  registerGuaranteedChestDrop,
+  rollChestRarity,
+} from './ChestSystem';
 import { uiState, announce } from '../core/UIState.svelte.ts';
 import { spawnDamageNumber } from './DamageNumberSystem';
 import { haptics } from '../core/haptics';
@@ -381,21 +386,6 @@ export function handleEnemyDeath(
   recordKill();
   chainCombo();
 
-  // Data vault greed event: cracking it showers credits + guarantees a chest.
-  if (enemy.isVault) {
-    recordVaultCracked();
-    announce('VAULT CRACKED');
-    for (let i = 0; i < 12; i++) {
-      const a = (i / 12) * Math.PI * 2;
-      spawnCredit(
-        scene,
-        enemy.position.x + Math.cos(a) * 1.2,
-        enemy.position.z + Math.sin(a) * 1.2,
-        2,
-      );
-    }
-    spawnChest(scene, enemy.position.x, enemy.position.z, Math.random() < 0.3 ? 'epic' : 'rare');
-  }
   spawnImpactFX(enemy.position, scene, weaponId, bulletColor, 6);
   spawnXP(scene, enemy.position.x, enemy.position.z, enemy.xpValue || 10);
 
@@ -405,6 +395,25 @@ export function handleEnemyDeath(
 
   const player = world.with('isLocalPlayer', 'stats').first;
   const luckMult = player?.stats?.luck || 1.0;
+
+  // Data vault greed event: cracking it showers credits + guarantees a chest
+  // (rarity rolls with time/luck but never below rare — it's the greed prize).
+  if (enemy.isVault) {
+    recordVaultCracked();
+    announce('VAULT CRACKED');
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      spawnCredit(scene, px + Math.cos(a) * 1.2, pz + Math.sin(a) * 1.2, 2);
+    }
+    registerGuaranteedChestDrop();
+    const vaultRarity = rollChestRarity(luckMult + 0.5);
+    spawnChest(scene, px, pz, vaultRarity === 'common' ? 'rare' : vaultRarity);
+
+    // The vault reuses the firewall enemy type — skip the regular elite
+    // credit/chest branches below or it would double-pay.
+    despawn(enemy, scene);
+    return;
+  }
 
   // === CREDIT DROPS ===
   let insideLeakZone = false;
@@ -446,34 +455,50 @@ export function handleEnemyDeath(
   }
 
   // === CHEST DROPS BY ENEMY TYPE ===
-  // Standard elite (1 chest)
+  // Standard elites go through the chest governor (at most one chest per
+  // cooldown window — firewalls spawn in packs late game and used to rain
+  // chests). A denied drop pays credits instead so the kill still rewards.
   if (type === 'firewall' || type === 'enforcer' || type === 'warden') {
-    const roll = Math.random();
-    const rarity = roll < 0.7 ? 'common' : roll < 0.95 ? 'rare' : 'epic';
-    spawnChest(scene, px, pz, rarity as 'common' | 'rare' | 'epic');
-    dlog(`[Chest] ${type} dropped ${rarity} chest`);
+    if (tryDropEliteChest(scene, px, pz, luckMult)) {
+      dlog(`[Chest] ${type} dropped a chest`);
+    } else {
+      spawnCredit(scene, px, pz, 3 * creditMultiplier);
+    }
   }
-  // Mid-tier elite (1 rare chest)
+  // Mid-tier elite: also gated, but pays a bigger consolation.
   else if (type === 'colossus') {
-    spawnChest(scene, px, pz, 'rare');
-    dlog(`[Chest] ${type} dropped rare chest`);
+    if (tryDropEliteChest(scene, px, pz, luckMult + 0.5)) {
+      dlog(`[Chest] ${type} dropped a chest`);
+    } else {
+      spawnCredit(scene, px, pz, 8 * creditMultiplier);
+    }
   }
-  // Mini-boss HYDRA (3 chests)
+  // Mini-boss HYDRA: one guaranteed epic (was 3 rares — chained 3 ceremony
+  // modals back-to-back) plus a credit fan.
   else if (type === 'hydra') {
-    for (let i = 0; i < 3; i++) {
-      const offset = (i - 1) * 1.5;
-      spawnChest(scene, px + offset, pz, 'rare');
+    registerGuaranteedChestDrop();
+    spawnChest(scene, px, pz, 'epic');
+    for (let i = 0; i < 4; i++) {
+      spawnCredit(scene, px + (i - 1.5) * 1.2, pz + 1.2, 6 * creditMultiplier);
     }
-    dlog(`[Chest] HYDRA dropped 3 rare chests!`);
+    dlog(`[Chest] HYDRA dropped an epic chest`);
   }
-  // Major boss OVERSEER (5 chests)
+  // Major boss OVERSEER: two epics (was 5 — five chained ceremonies and a
+  // free full build) plus a credit ring.
   else if (type === 'overseer') {
-    for (let i = 0; i < 5; i++) {
-      const angle = (i / 5) * Math.PI * 2;
-      const dist = 2;
-      spawnChest(scene, px + Math.cos(angle) * dist, pz + Math.sin(angle) * dist, 'epic');
+    registerGuaranteedChestDrop();
+    spawnChest(scene, px - 1.5, pz, 'epic');
+    spawnChest(scene, px + 1.5, pz, 'epic');
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2;
+      spawnCredit(
+        scene,
+        px + Math.cos(angle) * 2.2,
+        pz + Math.sin(angle) * 2.2,
+        8 * creditMultiplier,
+      );
     }
-    dlog(`[Chest] OVERSEER dropped 5 epic chests!`);
+    dlog(`[Chest] OVERSEER dropped 2 epic chests`);
   }
 
   despawn(enemy, scene);
