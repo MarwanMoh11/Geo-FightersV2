@@ -29,6 +29,12 @@ export type Entity = {
   isEnemyProjectile?: boolean;
   isParticle?: boolean;
   isXP?: boolean;
+  isCredit?: boolean;
+  creditValue?: number;
+  isLashTear?: boolean;
+  hitList?: number[];
+  isAnomaly?: boolean;
+  anomalyType?: 'overclock' | 'defrag' | 'leak';
   isWeapon?: boolean;
   isChest?: boolean;
   isOrbital?: boolean;
@@ -167,6 +173,9 @@ function createECS() {
     'isParticle',
     'isInstancedParticle',
     'isXP',
+    'isCredit',
+    'isLashTear',
+    'isAnomaly',
     'isWeapon',
     'isChest',
     'isPlayer',

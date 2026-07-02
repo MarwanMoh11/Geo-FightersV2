@@ -1,6 +1,6 @@
 <script lang="ts">
   import { uiState } from '../../core/UIState.svelte.ts';
-  import { selectUpgrade, type UpgradeOption } from '../../systems/UpgradeSystem';
+  import { selectUpgrade, rerollUpgradeChoices, banishUpgradeOption, type UpgradeOption } from '../../systems/UpgradeSystem';
   import { fade, fly } from 'svelte/transition';
   import { playLevelUp } from '../../core/audio';
   import { haptics } from '../../core/haptics';
@@ -90,7 +90,10 @@
       <div class="cards-container">
         {#each uiState.upgradeChoices as option, i}
           {@const color = getRarityColor(option.rarity)}
-          <button
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <div
+            role="button"
+            tabindex="0"
             class="upgrade-card glass"
             class:selected={selectedId === option.id}
             class:dimmed={selectedId !== null && selectedId !== option.id}
@@ -119,9 +122,27 @@
               {/if}
               <p class="item-desc">{option.description}</p>
             </div>
+            
+            {#if uiState.runBanishes > 0 && option.type !== 'health'}
+              <button class="banish-card-btn" onclick={(e) => { e.stopPropagation(); banishUpgradeOption(option.id); }} title="Banish this item from the run">
+                🚫 Banish
+              </button>
+            {/if}
+
             <div class="selection-glow"></div>
-          </button>
+          </div>
         {/each}
+      </div>
+
+      <div class="defrag-controls" in:fade={{ duration: 400, delay: 200 }}>
+        {#if uiState.runRerolls > 0}
+          <button class="reroll-btn glass" onclick={rerollUpgradeChoices}>
+            🔄 Reroll Choices ({uiState.runRerolls} Left)
+          </button>
+        {/if}
+        {#if uiState.runBanishes > 0}
+          <span class="banish-hint">🚫 {uiState.runBanishes} Banishes Left</span>
+        {/if}
       </div>
 
       <div class="key-hints" in:fade={{ duration: 400, delay: 300 }}>
@@ -393,5 +414,69 @@
     .item-info {
       padding-right: 0;
     }
+  }
+
+  .banish-card-btn {
+    all: unset;
+    cursor: pointer;
+    position: absolute;
+    bottom: 0.8rem;
+    right: 0.8rem;
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    font-weight: 700;
+    color: var(--color-secondary);
+    background: rgba(255, 61, 119, 0.1);
+    border: 1px solid rgba(255, 61, 119, 0.25);
+    border-radius: var(--r-sm);
+    padding: 0.25rem 0.6rem;
+    text-transform: uppercase;
+    transition: all var(--transition-fast);
+    z-index: 10;
+  }
+  .banish-card-btn:hover {
+    background: var(--color-secondary);
+    color: #fff;
+    box-shadow: 0 0 8px rgba(255, 61, 119, 0.4);
+  }
+
+  .defrag-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1.5rem;
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .reroll-btn {
+    all: unset;
+    cursor: pointer;
+    font-family: var(--font-body);
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--color-primary);
+    background: rgba(0, 229, 255, 0.08);
+    border: 1px solid rgba(0, 229, 255, 0.25);
+    border-radius: var(--r-md);
+    padding: 0.55rem 1.25rem;
+    transition: all var(--transition-fast);
+    pointer-events: auto !important;
+  }
+  .reroll-btn:hover {
+    background: var(--color-primary);
+    color: #04060f;
+    box-shadow: 0 0 10px rgba(0, 229, 255, 0.4);
+  }
+  .reroll-btn:active {
+    transform: scale(0.96);
+  }
+
+  .banish-hint {
+    font-family: var(--font-mono);
+    font-size: 0.64rem;
+    font-weight: 600;
+    color: var(--color-text-dim);
+    letter-spacing: 0.05em;
   }
 </style>

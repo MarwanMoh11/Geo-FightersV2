@@ -70,12 +70,30 @@
         <span class="hp-val tnum" class:low={lowHealth}>{Math.ceil(hpPercent)}</span>
       </div>
 
+      <!-- Overload Charge Core -->
+      <div class="overload" class:ready={uiState.overloadCharge >= 100} class:active={uiState.overloadActive}>
+        <div class="overload-bar">
+          <div class="overload-fill" style="width: {uiState.overloadActive ? (uiState.overloadTimer / 7 * 100) : uiState.overloadCharge}%"></div>
+        </div>
+        <div class="overload-meta">
+          {#if uiState.overloadActive}
+            <span class="overload-text active-pulse">🔥 OVERLOAD: {Math.ceil(uiState.overloadTimer)}s</span>
+          {:else if uiState.overloadCharge >= 100}
+            <span class="overload-text ready-glow">⚡ [SPACE] OVERCLOCK READY</span>
+          {:else}
+            <span class="overload-text">⚡ CHARGE: {Math.ceil(uiState.overloadCharge)}%</span>
+          {/if}
+        </div>
+      </div>
+
       <div class="meta tnum">
         <span class="lv" class:flash={levelFlash}>LV{uiState.level}</span>
         <span class="dot">·</span>
         <span class="score">{uiState.score}</span>
         <span class="dot">·</span>
         <span class="kills">{uiState.kills}<i>k</i></span>
+        <span class="dot">·</span>
+        <span class="credits">🪙 {uiState.creditsCollected}</span>
       </div>
     </div>
 
@@ -376,6 +394,10 @@
     font-style: normal;
     color: var(--color-text-faint);
   }
+  .meta .credits {
+    color: var(--color-gold);
+    font-weight: 700;
+  }
   .meta .dot {
     color: var(--color-text-faint);
   }
@@ -445,6 +467,62 @@
     .radar {
       width: 84px;
       height: 84px;
+    }
+  }
+
+  /* ---- Overload Core Meter ---- */
+  .overload {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: min(58vw, 240px);
+    margin-top: 1px;
+    align-items: center;
+  }
+  .overload-bar {
+    width: 100%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: var(--r-pill);
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.03);
+  }
+  .overload-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #0055ff, #00d5ff);
+    transition: width 0.15s linear;
+  }
+  .overload.ready .overload-fill {
+    background: linear-gradient(90deg, #00ff88, #00ffff);
+    box-shadow: 0 0 8px #00ffff;
+  }
+  .overload.active .overload-fill {
+    background: linear-gradient(90deg, #ff0055, #ffaa00);
+    box-shadow: 0 0 10px #ffaa00;
+  }
+  .overload-meta {
+    font-family: var(--font-mono);
+    font-size: 0.52rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--color-text-dim);
+  }
+  .overload-text {
+    display: inline-block;
+  }
+  .ready-glow {
+    color: #00ff88;
+    text-shadow: 0 0 8px rgba(0, 255, 136, 0.6);
+    animation: text-pulse 1s ease-in-out infinite;
+  }
+  .active-pulse {
+    color: #ffaa00;
+    text-shadow: 0 0 10px rgba(255, 170, 0, 0.8);
+    animation: text-pulse 0.6s ease-in-out infinite;
+  }
+  @keyframes text-pulse {
+    50% {
+      opacity: 0.6;
     }
   }
 </style>

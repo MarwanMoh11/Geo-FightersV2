@@ -46,6 +46,7 @@ export function spawnDamageNumber(
   position: THREE.Vector3,
   amount: number,
   variant: DamageVariant = 'enemy',
+  isCrit: boolean = false,
 ) {
   if (!layer || !shouldShowDamageNumbers()) return;
 
@@ -62,8 +63,15 @@ export function spawnDamageNumber(
   label.jitterX = (Math.random() - 0.5) * 36;
 
   const rounded = Math.max(1, Math.round(amount));
-  label.el.textContent = variant === 'player' ? `-${rounded}` : String(rounded);
-  label.el.className = `damage-number ${variant}${rounded >= 25 ? ' big' : ''}`;
+  
+  if (isCrit) {
+    label.el.textContent = `${rounded}! CRIT`;
+    label.el.className = `damage-number crit`;
+  } else {
+    label.el.textContent = variant === 'player' ? `-${rounded}` : String(rounded);
+    label.el.className = `damage-number ${variant}${rounded >= 25 ? ' big' : ''}`;
+  }
+  
   label.el.style.display = 'block';
 }
 

@@ -14,7 +14,7 @@
 
 import * as THREE from 'three';
 import { world, type Entity } from '../core/world';
-import { spawnEnemy, EnemyType } from '../core/factories';
+import { spawnEnemy, EnemyType, spawnCredit } from '../core/factories';
 import { getGameTime, LEVEL_DURATION, BOSS_SPAWN_TIME } from './ChestSystem';
 import { triggerVictory } from './GameManager';
 import { addTrauma } from './CameraSystem';
@@ -74,6 +74,17 @@ export function FinaleBossSystem(dt: number, scene: THREE.Scene) {
       dlog('[BOSS] SYSTEM CORRUPTION destroyed!');
       addTrauma(1.0);
       playExplosion();
+      
+      // Spawn 200 credits in total (5 shards of 40)
+      const px = bossEntity.position.x;
+      const pz = bossEntity.position.z;
+      for (let i = 0; i < 5; i++) {
+        const angle = (i / 5) * Math.PI * 2;
+        const xOffset = Math.cos(angle) * 1.5;
+        const zOffset = Math.sin(angle) * 1.5;
+        spawnCredit(scene, px + xOffset, pz + zOffset, 40);
+      }
+
       despawnBoss(scene);
       broadcastGameEvent('victory'); // notify multiplayer clients (no-op in single-player)
       triggerVictory();
@@ -235,7 +246,8 @@ export function FinaleBossSystem(dt: number, scene: THREE.Scene) {
     const dist = Math.sqrt(dx * dx + dz * dz);
 
     if (Math.abs(dist - currentRadius) < 0.6) {
-      if (!player.invulnTimer || player.invulnTimer <= 0) {
+      const isInvuln = (player.invulnTimer && player.invulnTimer > 0) || uiState.showUpgrade || uiState.gameState === 'PAUSED' || (uiState.overloadActive && uiState.selectedCharacter === 'lash');
+      if (!isInvuln) {
         const baseDamage = 15;
         const armor = player.stats?.armor || 0;
         const actualDamage = Math.max(1, baseDamage - armor);

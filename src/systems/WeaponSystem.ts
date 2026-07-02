@@ -54,7 +54,14 @@ export function WeaponSystem(dt: number, scene: THREE.Scene) {
       if (entity.ownerId !== player.id) continue;
       if (!entity.weapon) continue;
 
-      if (entity.weapon.cooldownTimer > 0) entity.weapon.cooldownTimer -= dt;
+      let tickDt = dt;
+      if (uiState.overloadActive && uiState.selectedCharacter === 'rail' && player.isLocalPlayer) {
+        tickDt = dt * 4;
+      }
+      if (uiState.insideOverclockZone && player.isLocalPlayer) {
+        tickDt *= 2.0;
+      }
+      if (entity.weapon.cooldownTimer > 0) entity.weapon.cooldownTimer -= tickDt;
 
       // Orbital and Global weapons auto-fire, other weapons require aim
       const isAutoFire = entity.weapon.category === 'orbit' || entity.weapon.category === 'global';
@@ -168,7 +175,10 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
   const baseDamage = weaponStats.damage || 1;
   const finalDamage = getEffectiveDamage(baseDamage, playerStats);
 
-  const finalSpeed = weaponStats.bulletSpeed * playerStats.projectileSpeed;
+  let finalSpeed = weaponStats.bulletSpeed * playerStats.projectileSpeed;
+  if (uiState.insideOverclockZone && owner.isLocalPlayer) {
+    finalSpeed *= 1.5;
+  }
   const style = weaponStats.visualStyle || 'BOLT';
   const pierce = weaponStats.bulletPierce || 1;
 

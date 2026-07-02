@@ -1,5 +1,15 @@
 import { world } from '../core/world';
 import { uiState } from '../core/UIState.svelte.ts';
+import { playOverloadTrigger } from '../core/audio';
+
+export function triggerOverload() {
+  if (uiState.overloadCharge >= 100 && !uiState.overloadActive && uiState.gameState === 'PLAYING') {
+    uiState.overloadActive = true;
+    uiState.overloadTimer = 7.0;
+    uiState.overloadCharge = 0;
+    playOverloadTrigger();
+  }
+}
 
 // --- STATE ---
 export const inputState = {
@@ -28,6 +38,9 @@ if (typeof window !== 'undefined') {
         break;
       case 'Space':
         keys.space = true;
+        if (uiState.gameState === 'PLAYING' && !uiState.isPaused && !uiState.showUpgrade) {
+          triggerOverload();
+        }
         break;
     }
   });

@@ -7,11 +7,11 @@
  * 3. Tiered visuals (color/size based on value)
  * 4. Bank delivery when threshold reached (500+ XP)
  */
-
 import { world } from '../core/world';
 import * as THREE from 'three';
 import { triggerLevelUp } from './UpgradeSystem';
-import { playCollect, playLevelUp } from '../core/audio';
+import { playCollect, playLevelUp, playCreditCollect } from '../core/audio';
+import { uiState } from '../core/UIState.svelte.ts';
 import {
   bankXP,
   XP_DESPAWN_RADIUS_SQ,
@@ -28,6 +28,11 @@ let xpInstancedMesh: THREE.InstancedMesh | null = null;
 const MAX_XP_INSTANCES = 500;
 const xpGeo = new THREE.BoxGeometry(1, 1, 1);
 const xpBaseMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+let creditInstancedMesh: THREE.InstancedMesh | null = null;
+const MAX_CREDIT_INSTANCES = 300;
+const creditGeo = new THREE.OctahedronGeometry(1);
+const creditBaseMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
 
 const COLLECT_RADIUS_SQ = 1.5 * 1.5;
 const MAGNET_FORCE = 32.0;
@@ -74,6 +79,7 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
     }
   }
 
+  // 1. UPDATE XP SHARDS
   for (const xp of world.with('isXP', 'position', 'velocity', 'xpValue')) {
     // Find closest player to this XP shard
     let closestPlayer: any = null;
@@ -110,6 +116,13 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
     if (distSq < COLLECT_RADIUS_SQ) {
       if (xp.xpValue && closestPlayer.xp !== undefined && closestPlayer.score !== undefined) {
         closestPlayer.xp += xp.xpValue;
+        
+        if (!uiState.overloadActive && closestPlayer.isLocalPlayer) {
+          const maxXp = closestPlayer.xpMax || 100;
+          const percent = (xp.xpValue / maxXp) * 100;
+          uiState.overloadCharge = Math.min(100, uiState.overloadCharge + percent * 0.2);
+        }
+
         closestPlayer.score += 1;
 
         if (closestPlayer.isLocalPlayer) {
@@ -183,22 +196,109 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
     xp.rotationX = (xp.rotationX ?? 0) + 2 * dt;
   }
 
+  // 2. UPDATE CYBER CREDITS
+  for (const credit of world.with('isCredit', 'position', 'velocity', 'creditValue')) {
+    let closestPlayer: any = null;
+    let minDistanceSq = Infinity;
+
+    for (const player of _activePlayers) {
+      const dx = player.position.x - credit.position.x;
+      const dz = player.position.z - credit.position.z;
+      const distSq = dx * dx + dz * dz;
+      if (distSq < minDistanceSq) {
+        minDistanceSq = distSq;
+        closestPlayer = player;
+      }
+    }
+
+    if (!closestPlayer) continue;
+
+    const px = closestPlayer.position.x;
+    const pz = closestPlayer.position.z;
+    const dx = px - credit.position.x;
+    const dz = pz - credit.position.z;
+    const distSq = minDistanceSq;
+
+    // A. DESPAWN CHECK
+    if (distSq > XP_DESPAWN_RADIUS_SQ) {
+      despawn(credit, scene);
+      continue;
+    }
+
+    // B. COLLECTION
+    if (distSq < COLLECT_RADIUS_SQ) {
+      const val = credit.creditValue || 1;
+      if (closestPlayer.isLocalPlayer) {
+        uiState.creditsCollected += val;
+        uiState.credits += val;
+        localStorage.setItem('geo_credits', JSON.stringify(uiState.credits));
+        playCreditCollect();
+      }
+      despawn(credit, scene);
+      continue;
+    }
+
+    // C. MAGNETISM
+    const magnetMult = closestPlayer.stats?.magnet || 1.0;
+    const effectiveMagnetRadiusSq = MAGNET_RADIUS_SQ * magnetMult * magnetMult;
+
+    if (distSq < effectiveMagnetRadiusSq) {
+      const invDist = 1.0 / Math.sqrt(distSq);
+      const nx = dx * invDist;
+      const nz = dz * invDist;
+
+      const closeness = 1 - distSq / effectiveMagnetRadiusSq;
+      const pull = closeness * closeness * (3 - 2 * closeness);
+      const force = MAGNET_FORCE * (0.25 + 0.75 * pull) * 1.3; // Credits fly slightly faster
+
+      credit.velocity.x += nx * force * dt;
+      credit.velocity.z += nz * force * dt;
+      credit.velocity.x *= 0.92;
+      credit.velocity.z *= 0.92;
+    } else {
+      credit.velocity.x *= FRICTION;
+      credit.velocity.z *= FRICTION;
+    }
+
+    // D. GRAVITY (Simple bounce)
+    if (credit.position.y > GROUND_Y) {
+      credit.velocity.y -= GRAVITY * dt;
+    } else {
+      credit.position.y = GROUND_Y;
+      if (credit.velocity.y < 0) {
+        credit.velocity.y *= -0.4;
+        if (Math.abs(credit.velocity.y) < 1) credit.velocity.y = 0;
+      }
+    }
+
+    // E. MOVE
+    credit.position.x += credit.velocity.x * dt;
+    credit.position.y += credit.velocity.y * dt;
+    credit.position.z += credit.velocity.z * dt;
+
+    // F. ROTATION
+    credit.rotationY = (credit.rotationY ?? 0) + 4 * dt;
+    credit.rotationX = (credit.rotationX ?? 0) + 3 * dt;
+  }
+
   // Scene change check: clear cached InstancedMesh if scene changes
   if (xpInstancedMesh && xpInstancedMesh.parent !== scene) {
     xpInstancedMesh = null;
   }
+  if (creditInstancedMesh && creditInstancedMesh.parent !== scene) {
+    creditInstancedMesh = null;
+  }
 
-  // G. RENDER INSTANCED XP (Direct iterator rendering, zero Array.from allocations)
-  let count = 0;
+  // G. RENDER INSTANCED XP
+  let xpCount = 0;
   for (const entity of world.with('isXP', 'particleColor')) {
-    if (count >= MAX_XP_INSTANCES) break;
+    if (xpCount >= MAX_XP_INSTANCES) break;
 
     if (!xpInstancedMesh) {
       xpInstancedMesh = new THREE.InstancedMesh(xpGeo, xpBaseMat, MAX_XP_INSTANCES);
       xpInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       xpInstancedMesh.frustumCulled = false; // Disable frustum culling
       
-      // Pre-allocate instanceColor array to maximum size
       const defaultColor = new THREE.Color(0xffffff);
       for (let i = 0; i < MAX_XP_INSTANCES; i++) {
         xpInstancedMesh.setColorAt(i, defaultColor);
@@ -207,21 +307,20 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
       scene.add(xpInstancedMesh);
     }
 
-    // Compose matrix directly from entity properties
     tempPosition.copy(entity.position);
     tempScale.setScalar(entity.size ?? 0.6);
     tempRotation.set(entity.rotationX ?? 0, entity.rotationY ?? 0, 0);
     tempQuaternion.setFromEuler(tempRotation);
     tempMatrix.compose(tempPosition, tempQuaternion, tempScale);
 
-    xpInstancedMesh.setMatrixAt(count, tempMatrix);
+    xpInstancedMesh.setMatrixAt(xpCount, tempMatrix);
     tempColor.setHex(entity.particleColor ?? 0xffffff);
-    xpInstancedMesh.setColorAt(count, tempColor);
-    count++;
+    xpInstancedMesh.setColorAt(xpCount, tempColor);
+    xpCount++;
   }
 
-  if (count > 0 && xpInstancedMesh) {
-    xpInstancedMesh.count = count;
+  if (xpCount > 0 && xpInstancedMesh) {
+    xpInstancedMesh.count = xpCount;
     xpInstancedMesh.instanceMatrix.needsUpdate = true;
     if (xpInstancedMesh.instanceColor) {
       xpInstancedMesh.instanceColor.needsUpdate = true;
@@ -231,6 +330,39 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
     if (xpInstancedMesh) {
       xpInstancedMesh.count = 0;
       xpInstancedMesh.visible = false;
+    }
+  }
+
+  // H. RENDER INSTANCED CREDITS
+  let creditCount = 0;
+  for (const entity of world.with('isCredit')) {
+    if (creditCount >= MAX_CREDIT_INSTANCES) break;
+
+    if (!creditInstancedMesh) {
+      creditInstancedMesh = new THREE.InstancedMesh(creditGeo, creditBaseMat, MAX_CREDIT_INSTANCES);
+      creditInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      creditInstancedMesh.frustumCulled = false;
+      scene.add(creditInstancedMesh);
+    }
+
+    tempPosition.copy(entity.position);
+    tempScale.setScalar(entity.size ?? 0.45);
+    tempRotation.set(entity.rotationX ?? 0, entity.rotationY ?? 0, 0);
+    tempQuaternion.setFromEuler(tempRotation);
+    tempMatrix.compose(tempPosition, tempQuaternion, tempScale);
+
+    creditInstancedMesh.setMatrixAt(creditCount, tempMatrix);
+    creditCount++;
+  }
+
+  if (creditCount > 0 && creditInstancedMesh) {
+    creditInstancedMesh.count = creditCount;
+    creditInstancedMesh.instanceMatrix.needsUpdate = true;
+    creditInstancedMesh.visible = true;
+  } else {
+    if (creditInstancedMesh) {
+      creditInstancedMesh.count = 0;
+      creditInstancedMesh.visible = false;
     }
   }
 }
