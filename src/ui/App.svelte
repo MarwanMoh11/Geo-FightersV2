@@ -10,6 +10,7 @@
   import MobileControls from './MobileControls.svelte';
   import FPSCounter from './FPSCounter.svelte';
   import PwaLayer from './PwaLayer.svelte';
+  import Toast from './Toast.svelte';
 </script>
 
 <div class="game-ui">
@@ -26,6 +27,7 @@
 
   <FPSCounter />
   <PwaLayer />
+  <Toast />
 </div>
 
 <style>

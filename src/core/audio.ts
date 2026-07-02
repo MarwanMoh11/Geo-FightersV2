@@ -47,10 +47,28 @@ export function getCtx() {
 }
 
 // --- VOLUME CONTROL ---
+// While the tab is hidden (or a portal ad is playing) the master gain is held
+// at 0; the user's chosen volume is kept in masterVolume and restored after.
+let backgroundMuted = false;
+
 export function setMasterGain(value: number): void {
   masterVolume = Math.max(0, Math.min(1, value));
-  if (masterGainNode) {
+  if (masterGainNode && !backgroundMuted) {
     masterGainNode.gain.setValueAtTime(masterVolume, ctx?.currentTime || 0);
+  }
+}
+
+export function muteForBackground(): void {
+  backgroundMuted = true;
+  if (masterGainNode && ctx) {
+    masterGainNode.gain.setValueAtTime(0, ctx.currentTime);
+  }
+}
+
+export function unmuteFromBackground(): void {
+  backgroundMuted = false;
+  if (masterGainNode && ctx) {
+    masterGainNode.gain.setValueAtTime(masterVolume, ctx.currentTime);
   }
 }
 
@@ -424,28 +442,28 @@ export function playOverloadTrigger() {
   const c = getCtx();
   if (!c || !sfxGainNode) return;
   const t = c.currentTime;
-  
+
   // Power drop bass synth sound
   const osc1 = c.createOscillator();
   const osc2 = c.createOscillator();
   const gain = c.createGain();
-  
+
   osc1.type = 'sawtooth';
   osc2.type = 'sine';
-  
+
   osc1.frequency.setValueAtTime(320, t);
   osc1.frequency.exponentialRampToValueAtTime(60, t + 0.65);
-  
+
   osc2.frequency.setValueAtTime(120, t);
   osc2.frequency.exponentialRampToValueAtTime(40, t + 0.65);
-  
+
   gain.gain.setValueAtTime(0.2, t);
   gain.gain.linearRampToValueAtTime(0, t + 0.65);
-  
+
   osc1.connect(gain);
   osc2.connect(gain);
   gain.connect(sfxGainNode);
-  
+
   osc1.start(t);
   osc2.start(t);
   osc1.stop(t + 0.65);
