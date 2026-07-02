@@ -93,6 +93,11 @@ preloadTextures(updateLoadingProgress).then(async () => {
   const { scene, camera, renderer } = await initRenderer();
   setNetworkScene(scene);
 
+  // Debug hook: expose UI state for the dev console / automated tests
+  if (DEBUG) {
+    (window as unknown as { uiState: typeof uiState }).uiState = uiState;
+  }
+
   // Renderer backend indicator (debug builds only)
   if (DEBUG) {
     const backendDebug = document.createElement('div');
