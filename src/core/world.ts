@@ -35,6 +35,7 @@ export type Entity = {
   hitList?: number[];
   isAnomaly?: boolean;
   anomalyType?: 'overclock' | 'defrag' | 'leak';
+  isVault?: boolean; // data vault greed event (crack for credits + chest)
   isWeapon?: boolean;
   isChest?: boolean;
   isOrbital?: boolean;

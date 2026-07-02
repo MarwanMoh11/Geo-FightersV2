@@ -206,7 +206,13 @@ function startGameLoop(
       shouldRunGame =
         (uiState.gameState === 'PLAYING' || uiState.gameState === 'PAUSED') && !isGameOver;
     } else {
-      shouldRunGame = isPlaying() && !isGamePaused && !isGameOver;
+      shouldRunGame =
+        isPlaying() &&
+        !isGamePaused &&
+        !isGameOver &&
+        !uiState.showVictoryChoice &&
+        !uiState.showChestCeremony &&
+        !uiState.showProtocolChoice;
     }
 
     if (!shouldRunGame) {

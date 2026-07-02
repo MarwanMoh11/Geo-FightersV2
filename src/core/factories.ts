@@ -1,12 +1,14 @@
 import * as THREE from 'three';
 import { world } from './world';
 import { getDefaultStats } from './PlayerStats';
+import { getCharacter } from './CharacterRegistry';
+import { offerProtocolChoice, selectProtocol } from './ProtocolRegistry';
+import { getDailyConfig } from './DailyManager';
 import { WEAPONS, getWeaponStatsAtLevel } from './WeaponRegistry';
 import { getTierForValue, bankXP, MAX_ACTIVE_XP } from './XPManager';
 import { createDynamicBody, isRapierInitialized } from './RapierWorld';
 import { uiState } from './UIState.svelte';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
-
 
 // Player/enemy collision radii
 const PLAYER_RADIUS = 0.8;
@@ -387,6 +389,12 @@ export function initializePlayerForRun(scene: THREE.Scene) {
   uiState.overloadCharge = 0;
   uiState.overloadActive = false;
   uiState.overloadTimer = 0;
+  uiState.endlessMode = false;
+  uiState.showVictoryChoice = false;
+  uiState.unlocksThisRun = [];
+  uiState.combo = 0;
+  uiState.bestCombo = 0;
+  uiState.activeProtocolId = '';
 
   // 1. Reset Position / Rapier Physics Translation
   player.position.set(0, 0.5, 0);
@@ -416,23 +424,12 @@ export function initializePlayerForRun(scene: THREE.Scene) {
     }
   }
 
-  // 4. Character Configurations
-  let starterWeaponId = 'pulse_repeater';
-  let charStats = { ...baseStats };
-  let baseHp = 100;
-
-  if (characterId === 'lash') {
-    starterWeaponId = 'monowire_lash';
-    baseHp = 90;
-    charStats.moveSpeed *= 1.15;
-    charStats.luck *= 1.10;
-  } else if (characterId === 'rail') {
-    starterWeaponId = 'smart_rail_needles';
-    baseHp = 120;
-    charStats.might *= 1.15;
-    charStats.moveSpeed *= 0.90;
-    charStats.armor += 1;
-  }
+  // 4. Character Configurations (data-driven — see CharacterRegistry)
+  const character = getCharacter(characterId);
+  const starterWeaponId = character.starterWeaponId;
+  const charStats = { ...baseStats };
+  const baseHp = character.baseHp;
+  character.applyStats(charStats);
 
   const finalMaxHp = baseHp + baseStats.maxHealth;
   if (player.health) {
@@ -454,16 +451,8 @@ export function initializePlayerForRun(scene: THREE.Scene) {
     const core = player.transform.getObjectByName('core') as THREE.Mesh;
     if (core && core.material) {
       const mat = core.material as THREE.MeshStandardMaterial;
-      if (characterId === 'lash') {
-        mat.color.setHex(0xff00ff);
-        mat.emissive.setHex(0xff00ff);
-      } else if (characterId === 'rail') {
-        mat.color.setHex(0x00ff88);
-        mat.emissive.setHex(0x00ff88);
-      } else {
-        mat.color.setHex(0x00d5ff);
-        mat.emissive.setHex(0x00d5ff);
-      }
+      mat.color.setHex(character.color);
+      mat.emissive.setHex(character.color);
     }
   }
 
@@ -508,6 +497,17 @@ export function initializePlayerForRun(scene: THREE.Scene) {
       bulletExplodeRadius: starterWeapon.explodeRadius,
     },
   });
+
+  // Data protocol: daily runs force the seeded protocol; normal solo runs get
+  // a pick-1-of-3 modal. Skipped in co-op (pausing would desync the party).
+  // Must run after stats/health are initialized — protocols modify both.
+  if (!uiState.isMultiplayer) {
+    if (uiState.isDailyRun) {
+      selectProtocol(getDailyConfig().protocolId);
+    } else {
+      offerProtocolChoice();
+    }
+  }
 }
 
 /**
@@ -540,7 +540,11 @@ export interface CachedGeom {
 }
 export const cachedEnemyGeometries = new Map<string, CachedGeom>();
 
-function getModelMatrix(pos: THREE.Vector3, scale: THREE.Vector3, rot?: THREE.Euler): THREE.Matrix4 {
+function getModelMatrix(
+  pos: THREE.Vector3,
+  scale: THREE.Vector3,
+  rot?: THREE.Euler,
+): THREE.Matrix4 {
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   if (rot) q.setFromEuler(rot);
@@ -548,7 +552,11 @@ function getModelMatrix(pos: THREE.Vector3, scale: THREE.Vector3, rot?: THREE.Eu
   return m;
 }
 
-function createColoredGeometry(geom: THREE.BufferGeometry, colorHex: number, matrix?: THREE.Matrix4): THREE.BufferGeometry {
+function createColoredGeometry(
+  geom: THREE.BufferGeometry,
+  colorHex: number,
+  matrix?: THREE.Matrix4,
+): THREE.BufferGeometry {
   let g = geom.clone();
   if (matrix) {
     g.applyMatrix4(matrix);
@@ -576,29 +584,29 @@ function pregenerateAllEnemyGeometries(): void {
     new THREE.Vector3(-0.05, 0.08, -0.05),
     new THREE.Vector3(0.08, 0.05, -0.08),
     new THREE.Vector3(-0.08, -0.08, 0.08),
-    new THREE.Vector3(0, 0, 0)
+    new THREE.Vector3(0, 0, 0),
   ];
-  voxelOffsets.forEach(offset => {
+  voxelOffsets.forEach((offset) => {
     glitchSolidParts.push(
       createColoredGeometry(
         boxGeometry,
         0x00ff88,
-        getModelMatrix(offset, new THREE.Vector3().setScalar(0.15))
-      )
+        getModelMatrix(offset, new THREE.Vector3().setScalar(0.15)),
+      ),
     );
   });
   const shardOffsets = [
     new THREE.Vector3(-0.1, 0.1, -0.35),
     new THREE.Vector3(0.15, -0.1, -0.45),
-    new THREE.Vector3(-0.05, -0.15, -0.55)
+    new THREE.Vector3(-0.05, -0.15, -0.55),
   ];
-  shardOffsets.forEach(offset => {
+  shardOffsets.forEach((offset) => {
     glitchSolidParts.push(
       createColoredGeometry(
         boxGeometry,
         0x00ff88,
-        getModelMatrix(offset, new THREE.Vector3(0.04, 0.04, 0.12))
-      )
+        getModelMatrix(offset, new THREE.Vector3(0.04, 0.04, 0.12)),
+      ),
     );
   });
   const glitchSolid = BufferGeometryUtils.mergeGeometries(glitchSolidParts);
@@ -608,15 +616,15 @@ function pregenerateAllEnemyGeometries(): void {
     createColoredGeometry(
       octahedronGeometry,
       0x00ff88,
-      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.45))
-    )
+      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.45)),
+    ),
   );
   glitchWireParts.push(
     createColoredGeometry(
       octahedronGeometry,
       0x00aa66,
-      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.55))
-    )
+      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.55)),
+    ),
   );
   const glitchWire = BufferGeometryUtils.mergeGeometries(glitchWireParts);
   cachedEnemyGeometries.set(EnemyType.GLITCH, { solid: glitchSolid, wire: glitchWire });
@@ -627,15 +635,15 @@ function pregenerateAllEnemyGeometries(): void {
     createColoredGeometry(
       icosahedronGeometry,
       0xff0055,
-      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.26))
-    )
+      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.26)),
+    ),
   );
   virusParts.push(
     createColoredGeometry(
       sphereGeometry,
       0x550022,
-      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.15))
-    )
+      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.15)),
+    ),
   );
 
   const virusSpikeVertices = [
@@ -652,24 +660,16 @@ function pregenerateAllEnemyGeometries(): void {
     new THREE.Vector3(-1.618, 0, 1),
     new THREE.Vector3(-1.618, 0, -1),
   ];
-  virusSpikeVertices.forEach(v => {
+  virusSpikeVertices.forEach((v) => {
     v.normalize();
     const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), v);
-    
+
     const basePos = v.clone().multiplyScalar(0.28);
-    const baseMatrix = new THREE.Matrix4().compose(
-      basePos,
-      q,
-      new THREE.Vector3(0.02, 0.16, 0.02)
-    );
+    const baseMatrix = new THREE.Matrix4().compose(basePos, q, new THREE.Vector3(0.02, 0.16, 0.02));
     virusParts.push(createColoredGeometry(cylinderYGeometry, 0x442233, baseMatrix));
 
     const tipPos = v.clone().multiplyScalar(0.37);
-    const tipMatrix = new THREE.Matrix4().compose(
-      tipPos,
-      q,
-      new THREE.Vector3().setScalar(0.04)
-    );
+    const tipMatrix = new THREE.Matrix4().compose(tipPos, q, new THREE.Vector3().setScalar(0.04));
     virusParts.push(createColoredGeometry(sphereGeometry, 0xff0088, tipMatrix));
   });
 
@@ -682,8 +682,8 @@ function pregenerateAllEnemyGeometries(): void {
       createColoredGeometry(
         sphereGeometry,
         0xff55aa,
-        getModelMatrix(pos, new THREE.Vector3().setScalar(0.03))
-      )
+        getModelMatrix(pos, new THREE.Vector3().setScalar(0.03)),
+      ),
     );
   }
   const virusSolid = BufferGeometryUtils.mergeGeometries(virusParts);
@@ -692,28 +692,56 @@ function pregenerateAllEnemyGeometries(): void {
   // 3. FIREWALL
   const firewallParts: THREE.BufferGeometry[] = [];
   firewallParts.push(
-    createColoredGeometry(boxGeometry, 0x332211, getModelMatrix(new THREE.Vector3(-0.4, 0, 0), new THREE.Vector3(0.15, 0.9, 0.15)))
+    createColoredGeometry(
+      boxGeometry,
+      0x332211,
+      getModelMatrix(new THREE.Vector3(-0.4, 0, 0), new THREE.Vector3(0.15, 0.9, 0.15)),
+    ),
   );
   firewallParts.push(
-    createColoredGeometry(boxGeometry, 0x332211, getModelMatrix(new THREE.Vector3(0.4, 0, 0), new THREE.Vector3(0.15, 0.9, 0.15)))
+    createColoredGeometry(
+      boxGeometry,
+      0x332211,
+      getModelMatrix(new THREE.Vector3(0.4, 0, 0), new THREE.Vector3(0.15, 0.9, 0.15)),
+    ),
   );
   firewallParts.push(
-    createColoredGeometry(boxGeometry, 0xffaa00, getModelMatrix(new THREE.Vector3(-0.4, 0, 0), new THREE.Vector3(0.02, 0.8, 0.16)))
+    createColoredGeometry(
+      boxGeometry,
+      0xffaa00,
+      getModelMatrix(new THREE.Vector3(-0.4, 0, 0), new THREE.Vector3(0.02, 0.8, 0.16)),
+    ),
   );
   firewallParts.push(
-    createColoredGeometry(boxGeometry, 0xffaa00, getModelMatrix(new THREE.Vector3(0.4, 0, 0), new THREE.Vector3(0.02, 0.8, 0.16)))
+    createColoredGeometry(
+      boxGeometry,
+      0xffaa00,
+      getModelMatrix(new THREE.Vector3(0.4, 0, 0), new THREE.Vector3(0.02, 0.8, 0.16)),
+    ),
   );
   firewallParts.push(
-    createColoredGeometry(sphereGeometry, 0xffaa00, getModelMatrix(new THREE.Vector3(-0.4, 0.48, 0), new THREE.Vector3().setScalar(0.06)))
+    createColoredGeometry(
+      sphereGeometry,
+      0xffaa00,
+      getModelMatrix(new THREE.Vector3(-0.4, 0.48, 0), new THREE.Vector3().setScalar(0.06)),
+    ),
   );
   firewallParts.push(
-    createColoredGeometry(sphereGeometry, 0xffaa00, getModelMatrix(new THREE.Vector3(0.4, 0.48, 0), new THREE.Vector3().setScalar(0.06)))
+    createColoredGeometry(
+      sphereGeometry,
+      0xffaa00,
+      getModelMatrix(new THREE.Vector3(0.4, 0.48, 0), new THREE.Vector3().setScalar(0.06)),
+    ),
   );
   for (let r = 0; r < 2; r++) {
     for (let c = 0; c < 3; c++) {
       const pos = new THREE.Vector3((c - 1) * 0.24, (r - 0.5) * 0.3, 0);
       firewallParts.push(
-        createColoredGeometry(boxGeometry, 0xff5500, getModelMatrix(pos, new THREE.Vector3(0.22, 0.22, 0.05)))
+        createColoredGeometry(
+          boxGeometry,
+          0xff5500,
+          getModelMatrix(pos, new THREE.Vector3(0.22, 0.22, 0.05)),
+        ),
       );
     }
   }
@@ -723,37 +751,97 @@ function pregenerateAllEnemyGeometries(): void {
   // 4. ENFORCER
   const enforcerParts: THREE.BufferGeometry[] = [];
   enforcerParts.push(
-    createColoredGeometry(cylinderYGeometry, 0x223344, getModelMatrix(new THREE.Vector3(), new THREE.Vector3(0.18, 0.38, 0.18), new THREE.Euler(Math.PI / 2, 0, 0)))
+    createColoredGeometry(
+      cylinderYGeometry,
+      0x223344,
+      getModelMatrix(
+        new THREE.Vector3(),
+        new THREE.Vector3(0.18, 0.38, 0.18),
+        new THREE.Euler(Math.PI / 2, 0, 0),
+      ),
+    ),
   );
   enforcerParts.push(
-    createColoredGeometry(boxGeometry, 0x223344, getModelMatrix(new THREE.Vector3(0, 0, 0.22), new THREE.Vector3(0.35, 0.28, 0.05)))
+    createColoredGeometry(
+      boxGeometry,
+      0x223344,
+      getModelMatrix(new THREE.Vector3(0, 0, 0.22), new THREE.Vector3(0.35, 0.28, 0.05)),
+    ),
   );
   enforcerParts.push(
-    createColoredGeometry(boxGeometry, 0x00ffcc, getModelMatrix(new THREE.Vector3(0, 0.12, 0.22), new THREE.Vector3(0.37, 0.03, 0.06)))
+    createColoredGeometry(
+      boxGeometry,
+      0x00ffcc,
+      getModelMatrix(new THREE.Vector3(0, 0.12, 0.22), new THREE.Vector3(0.37, 0.03, 0.06)),
+    ),
   );
   enforcerParts.push(
-    createColoredGeometry(boxGeometry, 0x223344, getModelMatrix(new THREE.Vector3(-0.245, 0, 0.17), new THREE.Vector3(0.16, 0.28, 0.04), new THREE.Euler(0, Math.PI / 5, 0)))
+    createColoredGeometry(
+      boxGeometry,
+      0x223344,
+      getModelMatrix(
+        new THREE.Vector3(-0.245, 0, 0.17),
+        new THREE.Vector3(0.16, 0.28, 0.04),
+        new THREE.Euler(0, Math.PI / 5, 0),
+      ),
+    ),
   );
   enforcerParts.push(
-    createColoredGeometry(boxGeometry, 0x223344, getModelMatrix(new THREE.Vector3(0.245, 0, 0.17), new THREE.Vector3(0.16, 0.28, 0.04), new THREE.Euler(0, -Math.PI / 5, 0)))
+    createColoredGeometry(
+      boxGeometry,
+      0x223344,
+      getModelMatrix(
+        new THREE.Vector3(0.245, 0, 0.17),
+        new THREE.Vector3(0.16, 0.28, 0.04),
+        new THREE.Euler(0, -Math.PI / 5, 0),
+      ),
+    ),
   );
   enforcerParts.push(
-    createColoredGeometry(cylinderZGeometry, 0x223344, getModelMatrix(new THREE.Vector3(-0.26, -0.05, 0.05), new THREE.Vector3(0.03, 0.03, 0.28)))
+    createColoredGeometry(
+      cylinderZGeometry,
+      0x223344,
+      getModelMatrix(new THREE.Vector3(-0.26, -0.05, 0.05), new THREE.Vector3(0.03, 0.03, 0.28)),
+    ),
   );
   enforcerParts.push(
-    createColoredGeometry(cylinderZGeometry, 0x223344, getModelMatrix(new THREE.Vector3(0.26, -0.05, 0.05), new THREE.Vector3(0.03, 0.03, 0.28)))
+    createColoredGeometry(
+      cylinderZGeometry,
+      0x223344,
+      getModelMatrix(new THREE.Vector3(0.26, -0.05, 0.05), new THREE.Vector3(0.03, 0.03, 0.28)),
+    ),
   );
   enforcerParts.push(
-    createColoredGeometry(cylinderYGeometry, 0x223344, getModelMatrix(new THREE.Vector3(0, -0.2, -0.05), new THREE.Vector3(0.1, 0.12, 0.1)))
+    createColoredGeometry(
+      cylinderYGeometry,
+      0x223344,
+      getModelMatrix(new THREE.Vector3(0, -0.2, -0.05), new THREE.Vector3(0.1, 0.12, 0.1)),
+    ),
   );
   enforcerParts.push(
-    createColoredGeometry(coneZGeometry, 0x00ffcc, getModelMatrix(new THREE.Vector3(0, -0.25, -0.05), new THREE.Vector3(0.06, 0.06, 0.18), new THREE.Euler(0, Math.PI, 0)))
+    createColoredGeometry(
+      coneZGeometry,
+      0x00ffcc,
+      getModelMatrix(
+        new THREE.Vector3(0, -0.25, -0.05),
+        new THREE.Vector3(0.06, 0.06, 0.18),
+        new THREE.Euler(0, Math.PI, 0),
+      ),
+    ),
   );
   enforcerParts.push(
-    createColoredGeometry(boxGeometry, 0x00ffcc, getModelMatrix(new THREE.Vector3(-0.45, 0, 0), new THREE.Vector3(0.08, 0.15, 0.02)))
+    createColoredGeometry(
+      boxGeometry,
+      0x00ffcc,
+      getModelMatrix(new THREE.Vector3(-0.45, 0, 0), new THREE.Vector3(0.08, 0.15, 0.02)),
+    ),
   );
   enforcerParts.push(
-    createColoredGeometry(boxGeometry, 0x00ffcc, getModelMatrix(new THREE.Vector3(0.45, 0, 0), new THREE.Vector3(0.08, 0.15, 0.02)))
+    createColoredGeometry(
+      boxGeometry,
+      0x00ffcc,
+      getModelMatrix(new THREE.Vector3(0.45, 0, 0), new THREE.Vector3(0.08, 0.15, 0.02)),
+    ),
   );
   const enforcerSolid = BufferGeometryUtils.mergeGeometries(enforcerParts);
   cachedEnemyGeometries.set(EnemyType.ENFORCER, { solid: enforcerSolid });
@@ -761,33 +849,85 @@ function pregenerateAllEnemyGeometries(): void {
   // 5. COLOSSUS
   const colossusParts: THREE.BufferGeometry[] = [];
   colossusParts.push(
-    createColoredGeometry(cylinderYGeometry, 0x111111, getModelMatrix(new THREE.Vector3(0, -0.2, 0), new THREE.Vector3(0.35, 0.18, 0.35)))
+    createColoredGeometry(
+      cylinderYGeometry,
+      0x111111,
+      getModelMatrix(new THREE.Vector3(0, -0.2, 0), new THREE.Vector3(0.35, 0.18, 0.35)),
+    ),
   );
   colossusParts.push(
-    createColoredGeometry(cylinderYGeometry, 0x444444, getModelMatrix(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0.26, 0.18, 0.26)))
+    createColoredGeometry(
+      cylinderYGeometry,
+      0x444444,
+      getModelMatrix(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0.26, 0.18, 0.26)),
+    ),
   );
   colossusParts.push(
-    createColoredGeometry(cylinderYGeometry, 0x111111, getModelMatrix(new THREE.Vector3(0, 0.2, 0), new THREE.Vector3(0.16, 0.18, 0.16)))
+    createColoredGeometry(
+      cylinderYGeometry,
+      0x111111,
+      getModelMatrix(new THREE.Vector3(0, 0.2, 0), new THREE.Vector3(0.16, 0.18, 0.16)),
+    ),
   );
   colossusParts.push(
-    createColoredGeometry(cylinderYGeometry, 0x111111, getModelMatrix(new THREE.Vector3(-0.08, 0.28, -0.08), new THREE.Vector3(0.03, 0.16, 0.03), new THREE.Euler(Math.PI / 6, 0, 0)))
+    createColoredGeometry(
+      cylinderYGeometry,
+      0x111111,
+      getModelMatrix(
+        new THREE.Vector3(-0.08, 0.28, -0.08),
+        new THREE.Vector3(0.03, 0.16, 0.03),
+        new THREE.Euler(Math.PI / 6, 0, 0),
+      ),
+    ),
   );
-  const smoke0Pos = new THREE.Vector3(-0.08, 0.28, -0.08).add(new THREE.Vector3(0, 0.1, -0.05).applyEuler(new THREE.Euler(Math.PI / 6, 0, 0)));
-  colossusParts.push(
-    createColoredGeometry(coneZGeometry, 0x00ff88, getModelMatrix(smoke0Pos, new THREE.Vector3(0.025, 0.025, 0.1), new THREE.Euler(Math.PI / 6, 0, 0)))
+  const smoke0Pos = new THREE.Vector3(-0.08, 0.28, -0.08).add(
+    new THREE.Vector3(0, 0.1, -0.05).applyEuler(new THREE.Euler(Math.PI / 6, 0, 0)),
   );
   colossusParts.push(
-    createColoredGeometry(cylinderYGeometry, 0x111111, getModelMatrix(new THREE.Vector3(0.08, 0.28, -0.08), new THREE.Vector3(0.03, 0.16, 0.03), new THREE.Euler(Math.PI / 6, 0, 0)))
+    createColoredGeometry(
+      coneZGeometry,
+      0x00ff88,
+      getModelMatrix(
+        smoke0Pos,
+        new THREE.Vector3(0.025, 0.025, 0.1),
+        new THREE.Euler(Math.PI / 6, 0, 0),
+      ),
+    ),
   );
-  const smoke1Pos = new THREE.Vector3(0.08, 0.28, -0.08).add(new THREE.Vector3(0, 0.1, -0.05).applyEuler(new THREE.Euler(Math.PI / 6, 0, 0)));
   colossusParts.push(
-    createColoredGeometry(coneZGeometry, 0x00ff88, getModelMatrix(smoke1Pos, new THREE.Vector3(0.025, 0.025, 0.1), new THREE.Euler(Math.PI / 6, 0, 0)))
+    createColoredGeometry(
+      cylinderYGeometry,
+      0x111111,
+      getModelMatrix(
+        new THREE.Vector3(0.08, 0.28, -0.08),
+        new THREE.Vector3(0.03, 0.16, 0.03),
+        new THREE.Euler(Math.PI / 6, 0, 0),
+      ),
+    ),
+  );
+  const smoke1Pos = new THREE.Vector3(0.08, 0.28, -0.08).add(
+    new THREE.Vector3(0, 0.1, -0.05).applyEuler(new THREE.Euler(Math.PI / 6, 0, 0)),
+  );
+  colossusParts.push(
+    createColoredGeometry(
+      coneZGeometry,
+      0x00ff88,
+      getModelMatrix(
+        smoke1Pos,
+        new THREE.Vector3(0.025, 0.025, 0.1),
+        new THREE.Euler(Math.PI / 6, 0, 0),
+      ),
+    ),
   );
   for (let i = 0; i < 4; i++) {
     const angle = (i / 4) * Math.PI * 2 + Math.PI / 4;
     const pos = new THREE.Vector3(Math.cos(angle) * 0.35, -0.16, Math.sin(angle) * 0.35);
     colossusParts.push(
-      createColoredGeometry(sphereGeometry, 0x00ff88, getModelMatrix(pos, new THREE.Vector3().setScalar(0.04)))
+      createColoredGeometry(
+        sphereGeometry,
+        0x00ff88,
+        getModelMatrix(pos, new THREE.Vector3().setScalar(0.04)),
+      ),
     );
   }
   const colossusSolid = BufferGeometryUtils.mergeGeometries(colossusParts);
@@ -796,25 +936,57 @@ function pregenerateAllEnemyGeometries(): void {
   // 6. WARDEN
   const wardenParts: THREE.BufferGeometry[] = [];
   wardenParts.push(
-    createColoredGeometry(octahedronGeometry, 0xff00cc, getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.24)))
+    createColoredGeometry(
+      octahedronGeometry,
+      0xff00cc,
+      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.24)),
+    ),
   );
   wardenParts.push(
-    createColoredGeometry(sphereGeometry, 0x00ffff, getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.12)))
+    createColoredGeometry(
+      sphereGeometry,
+      0x00ffff,
+      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.12)),
+    ),
   );
   wardenParts.push(
-    createColoredGeometry(torusGeometry, 0x00ffff, getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.42), new THREE.Euler(Math.PI / 2, 0, 0)))
+    createColoredGeometry(
+      torusGeometry,
+      0x00ffff,
+      getModelMatrix(
+        new THREE.Vector3(),
+        new THREE.Vector3().setScalar(0.42),
+        new THREE.Euler(Math.PI / 2, 0, 0),
+      ),
+    ),
   );
   wardenParts.push(
-    createColoredGeometry(torusGeometry, 0x00ffff, getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.38), new THREE.Euler(0, Math.PI / 2, 0)))
+    createColoredGeometry(
+      torusGeometry,
+      0x00ffff,
+      getModelMatrix(
+        new THREE.Vector3(),
+        new THREE.Vector3().setScalar(0.38),
+        new THREE.Euler(0, Math.PI / 2, 0),
+      ),
+    ),
   );
   wardenParts.push(
-    createColoredGeometry(torusGeometry, 0x00ffff, getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.46)))
+    createColoredGeometry(
+      torusGeometry,
+      0x00ffff,
+      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.46)),
+    ),
   );
   for (let i = 0; i < 4; i++) {
     const angle = (i / 4) * Math.PI * 2;
     const pos = new THREE.Vector3(Math.cos(angle) * 0.52, 0, Math.sin(angle) * 0.52);
     wardenParts.push(
-      createColoredGeometry(octahedronGeometry, 0xff00cc, getModelMatrix(pos, new THREE.Vector3().setScalar(0.05)))
+      createColoredGeometry(
+        octahedronGeometry,
+        0xff00cc,
+        getModelMatrix(pos, new THREE.Vector3().setScalar(0.05)),
+      ),
     );
   }
   const wardenSolid = BufferGeometryUtils.mergeGeometries(wardenParts);
@@ -823,28 +995,80 @@ function pregenerateAllEnemyGeometries(): void {
   // 7. HYDRA
   const hydraParts: THREE.BufferGeometry[] = [];
   hydraParts.push(
-    createColoredGeometry(icosahedronGeometry, 0xff0033, getModelMatrix(new THREE.Vector3(-0.26, 0, 0), new THREE.Vector3().setScalar(0.15)))
+    createColoredGeometry(
+      icosahedronGeometry,
+      0xff0033,
+      getModelMatrix(new THREE.Vector3(-0.26, 0, 0), new THREE.Vector3().setScalar(0.15)),
+    ),
   );
   hydraParts.push(
-    createColoredGeometry(torusGeometry, 0x00ffcc, getModelMatrix(new THREE.Vector3(-0.26, 0, 0), new THREE.Vector3().setScalar(0.2), new THREE.Euler(Math.PI / 2, 0, 0)))
+    createColoredGeometry(
+      torusGeometry,
+      0x00ffcc,
+      getModelMatrix(
+        new THREE.Vector3(-0.26, 0, 0),
+        new THREE.Vector3().setScalar(0.2),
+        new THREE.Euler(Math.PI / 2, 0, 0),
+      ),
+    ),
   );
   hydraParts.push(
-    createColoredGeometry(icosahedronGeometry, 0xff0033, getModelMatrix(new THREE.Vector3(0, 0.08, 0), new THREE.Vector3().setScalar(0.18)))
+    createColoredGeometry(
+      icosahedronGeometry,
+      0xff0033,
+      getModelMatrix(new THREE.Vector3(0, 0.08, 0), new THREE.Vector3().setScalar(0.18)),
+    ),
   );
   hydraParts.push(
-    createColoredGeometry(torusGeometry, 0x00ffcc, getModelMatrix(new THREE.Vector3(0, 0.08, 0), new THREE.Vector3().setScalar(0.24), new THREE.Euler(0, Math.PI / 2, 0)))
+    createColoredGeometry(
+      torusGeometry,
+      0x00ffcc,
+      getModelMatrix(
+        new THREE.Vector3(0, 0.08, 0),
+        new THREE.Vector3().setScalar(0.24),
+        new THREE.Euler(0, Math.PI / 2, 0),
+      ),
+    ),
   );
   hydraParts.push(
-    createColoredGeometry(icosahedronGeometry, 0xff0033, getModelMatrix(new THREE.Vector3(0.26, 0, 0), new THREE.Vector3().setScalar(0.15)))
+    createColoredGeometry(
+      icosahedronGeometry,
+      0xff0033,
+      getModelMatrix(new THREE.Vector3(0.26, 0, 0), new THREE.Vector3().setScalar(0.15)),
+    ),
   );
   hydraParts.push(
-    createColoredGeometry(torusGeometry, 0x00ffcc, getModelMatrix(new THREE.Vector3(0.26, 0, 0), new THREE.Vector3().setScalar(0.2), new THREE.Euler(Math.PI / 2, 0, 0)))
+    createColoredGeometry(
+      torusGeometry,
+      0x00ffcc,
+      getModelMatrix(
+        new THREE.Vector3(0.26, 0, 0),
+        new THREE.Vector3().setScalar(0.2),
+        new THREE.Euler(Math.PI / 2, 0, 0),
+      ),
+    ),
   );
   hydraParts.push(
-    createColoredGeometry(cylinderYGeometry, 0x00ffcc, getModelMatrix(new THREE.Vector3(-0.13, 0.04, 0), new THREE.Vector3(0.02, 0.26, 0.02), new THREE.Euler(0, 0, Math.PI / 2)))
+    createColoredGeometry(
+      cylinderYGeometry,
+      0x00ffcc,
+      getModelMatrix(
+        new THREE.Vector3(-0.13, 0.04, 0),
+        new THREE.Vector3(0.02, 0.26, 0.02),
+        new THREE.Euler(0, 0, Math.PI / 2),
+      ),
+    ),
   );
   hydraParts.push(
-    createColoredGeometry(cylinderYGeometry, 0x00ffcc, getModelMatrix(new THREE.Vector3(0.13, 0.04, 0), new THREE.Vector3(0.02, 0.26, 0.02), new THREE.Euler(0, 0, Math.PI / 2)))
+    createColoredGeometry(
+      cylinderYGeometry,
+      0x00ffcc,
+      getModelMatrix(
+        new THREE.Vector3(0.13, 0.04, 0),
+        new THREE.Vector3(0.02, 0.26, 0.02),
+        new THREE.Euler(0, 0, Math.PI / 2),
+      ),
+    ),
   );
   const hydraSolid = BufferGeometryUtils.mergeGeometries(hydraParts);
   cachedEnemyGeometries.set(EnemyType.HYDRA, { solid: hydraSolid });
@@ -852,26 +1076,50 @@ function pregenerateAllEnemyGeometries(): void {
   // 8. OVERSEER
   const overseerParts: THREE.BufferGeometry[] = [];
   overseerParts.push(
-    createColoredGeometry(sphereGeometry, 0xff00ff, getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.18)))
+    createColoredGeometry(
+      sphereGeometry,
+      0xff00ff,
+      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.18)),
+    ),
   );
   overseerParts.push(
-    createColoredGeometry(boxGeometry, 0xff00ff, getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.32)))
+    createColoredGeometry(
+      boxGeometry,
+      0xff00ff,
+      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.32)),
+    ),
   );
   overseerParts.push(
-    createColoredGeometry(octahedronGeometry, 0xff00ff, getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.44)))
+    createColoredGeometry(
+      octahedronGeometry,
+      0xff00ff,
+      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.44)),
+    ),
   );
   overseerParts.push(
-    createColoredGeometry(icosahedronGeometry, 0xff00ff, getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.54)))
+    createColoredGeometry(
+      icosahedronGeometry,
+      0xff00ff,
+      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.54)),
+    ),
   );
   for (let i = 0; i < 4; i++) {
     const angle = (i / 4) * Math.PI * 2;
     const pos = new THREE.Vector3(Math.cos(angle) * 0.65, 0, Math.sin(angle) * 0.65);
     overseerParts.push(
-      createColoredGeometry(cylinderZGeometry, 0x111111, getModelMatrix(pos, new THREE.Vector3(0.04, 0.04, 0.15)))
+      createColoredGeometry(
+        cylinderZGeometry,
+        0x111111,
+        getModelMatrix(pos, new THREE.Vector3(0.04, 0.04, 0.15)),
+      ),
     );
     const glowPos = pos.clone().add(new THREE.Vector3(0, 0, 0.08));
     overseerParts.push(
-      createColoredGeometry(sphereGeometry, 0xff00ff, getModelMatrix(glowPos, new THREE.Vector3().setScalar(0.025)))
+      createColoredGeometry(
+        sphereGeometry,
+        0xff00ff,
+        getModelMatrix(glowPos, new THREE.Vector3().setScalar(0.025)),
+      ),
     );
   }
   const overseerSolid = BufferGeometryUtils.mergeGeometries(overseerParts);
@@ -887,14 +1135,31 @@ export function getEnemySolidMaterial(type: EnemyType): THREE.MeshStandardMateri
   if (!mat) {
     let emissiveColor = 0x000000;
     let emissiveIntensity = 0.0;
-    if (type === EnemyType.GLITCH) { emissiveColor = 0x00ff88; emissiveIntensity = 0.4; }
-    else if (type === EnemyType.VIRUS) { emissiveColor = 0xff0055; emissiveIntensity = 0.4; }
-    else if (type === EnemyType.FIREWALL) { emissiveColor = 0xff5500; emissiveIntensity = 0.4; }
-    else if (type === EnemyType.ENFORCER) { emissiveColor = 0x00ffcc; emissiveIntensity = 0.4; }
-    else if (type === EnemyType.COLOSSUS) { emissiveColor = 0xffaa00; emissiveIntensity = 0.4; }
-    else if (type === EnemyType.WARDEN) { emissiveColor = 0xd900ff; emissiveIntensity = 0.4; }
-    else if (type === EnemyType.HYDRA) { emissiveColor = 0x00ffff; emissiveIntensity = 0.4; }
-    else if (type === EnemyType.OVERSEER) { emissiveColor = 0xff0055; emissiveIntensity = 0.4; }
+    if (type === EnemyType.GLITCH) {
+      emissiveColor = 0x00ff88;
+      emissiveIntensity = 0.4;
+    } else if (type === EnemyType.VIRUS) {
+      emissiveColor = 0xff0055;
+      emissiveIntensity = 0.4;
+    } else if (type === EnemyType.FIREWALL) {
+      emissiveColor = 0xff5500;
+      emissiveIntensity = 0.4;
+    } else if (type === EnemyType.ENFORCER) {
+      emissiveColor = 0x00ffcc;
+      emissiveIntensity = 0.4;
+    } else if (type === EnemyType.COLOSSUS) {
+      emissiveColor = 0xffaa00;
+      emissiveIntensity = 0.4;
+    } else if (type === EnemyType.WARDEN) {
+      emissiveColor = 0xd900ff;
+      emissiveIntensity = 0.4;
+    } else if (type === EnemyType.HYDRA) {
+      emissiveColor = 0x00ffff;
+      emissiveIntensity = 0.4;
+    } else if (type === EnemyType.OVERSEER) {
+      emissiveColor = 0xff0055;
+      emissiveIntensity = 0.4;
+    }
 
     mat = new THREE.MeshStandardMaterial({
       vertexColors: true,
@@ -971,6 +1236,12 @@ export function spawnEnemy(
   const group = new THREE.Group();
   group.position.set(x, 0, z);
 
+  // Corruption hardens enemies (+15% HP per level); endless mode keeps
+  // scaling them after the 10:00 victory.
+  const corruptionHp = 1 + uiState.corruption * 0.15;
+  const endlessHp = uiState.endlessMode ? 1 + Math.max(0, uiState.gameTime - 600) / 180 : 1;
+  const maxHp = Math.round(stats.hp * corruptionHp * endlessHp);
+
   // 1. Build and attach the custom 3D model
   const enemyMesh = buildEnemyMesh(type, stats.size);
   group.add(enemyMesh);
@@ -988,7 +1259,7 @@ export function spawnEnemy(
     enemyType: type,
     position: group.position,
     velocity: new THREE.Vector3(0, 0, 0),
-    health: { current: stats.hp, max: stats.hp },
+    health: { current: maxHp, max: maxHp },
     moveSpeed: stats.speed,
     transform: group,
     size: stats.size,

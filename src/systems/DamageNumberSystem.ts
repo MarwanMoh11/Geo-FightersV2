@@ -63,7 +63,7 @@ export function spawnDamageNumber(
   label.jitterX = (Math.random() - 0.5) * 36;
 
   const rounded = Math.max(1, Math.round(amount));
-  
+
   if (isCrit) {
     label.el.textContent = `${rounded}! CRIT`;
     label.el.className = `damage-number crit`;
@@ -71,7 +71,7 @@ export function spawnDamageNumber(
     label.el.textContent = variant === 'player' ? `-${rounded}` : String(rounded);
     label.el.className = `damage-number ${variant}${rounded >= 25 ? ' big' : ''}`;
   }
-  
+
   label.el.style.display = 'block';
 }
 
