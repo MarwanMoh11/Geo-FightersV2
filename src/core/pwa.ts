@@ -43,8 +43,22 @@ export function applyUpdate() {
   }
 }
 
+/** True when the game runs inside an iframe (e.g. embedded on a game portal). */
+function isEmbedded(): boolean {
+  try {
+    return window.self !== window.top;
+  } catch {
+    return true; // cross-origin parent → definitely embedded
+  }
+}
+
 export function initPWA() {
   if (typeof window === 'undefined') return;
+
+  // Portals embed the game in a cross-origin iframe where install prompts
+  // never fire and a service worker would fight the portal's own caching —
+  // skip the whole PWA layer there.
+  if (isEmbedded()) return;
 
   uiState.isStandalone = isStandalone();
 
@@ -71,7 +85,7 @@ export function initPWA() {
   if ('serviceWorker' in navigator && import.meta.env.PROD) {
     window.addEventListener('load', () => {
       navigator.serviceWorker
-        .register('/sw.js')
+        .register(`${import.meta.env.BASE_URL}sw.js`)
         .then((reg) => {
           // A new worker is installing while the page is already controlled → update available.
           reg.addEventListener('updatefound', () => {

@@ -4,14 +4,17 @@ import { initRenderer } from './core/renderer';
 import { setNetworkScene, sendClientUpdate, sendHostUpdate } from './core/network';
 
 import { spawnPlayer, initializePlayerForRun } from './core/factories';
-import { getCtx, startMusic } from './core/audio';
-import { isPlaying, onStateChange } from './core/GameState';
+import { getCtx, startMusic, muteForBackground, unmuteFromBackground } from './core/audio';
+import { isPlaying, onStateChange, setGameState } from './core/GameState';
 import { uiState } from './core/UIState.svelte.ts';
 import { DEBUG, dlog } from './core/debug';
 import { initPWA } from './core/pwa';
+import { initPortal, portalLoadingFinished } from './core/portal';
 
 // Register service worker + install-prompt brokering as early as possible.
 initPWA();
+// Portal SDK (CrazyGames etc.) — no-op outside portal embeds.
+initPortal();
 
 // Systems
 import { InputSystem } from './systems/InputSystem';
@@ -130,6 +133,7 @@ preloadTextures(updateLoadingProgress).then(async () => {
   initMinimap(); // Initialize minimap canvas (now that Svelte has rendered it)
 
   hideLoadingScreen();
+  portalLoadingFinished();
 
   startGameLoop(scene, camera, renderer);
 });
@@ -160,18 +164,24 @@ function startGameLoop(
     });
   }
 
-  // Auto-pause temporarily disabled for multiplayer parallel tab testing
-  /*
+  // Auto-pause when the tab/window loses focus (required by web game portals).
+  // Multiplayer sessions are exempt: the host must keep simulating for the
+  // other players, and clients would desync if they froze.
   const autoPause = () => {
+    if (uiState.isMultiplayer) return;
     if (isPlaying() && !isGamePaused && !isGameOver && !uiState.showUpgrade) {
       setGameState('PAUSED');
     }
   };
   window.addEventListener('blur', autoPause);
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) autoPause();
+    if (document.hidden) {
+      autoPause();
+      muteForBackground(); // silence music/SFX in every state, incl. the menu
+    } else {
+      unmuteFromBackground();
+    }
   });
-  */
 
   // --- GAME LOOP ---
   const clock = new THREE.Clock();

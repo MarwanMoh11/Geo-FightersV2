@@ -120,4 +120,12 @@ export const uiState = $state({
   canInstall: false,
   isStandalone: false,
   needsRefresh: false,
+
+  // Transient notification banner (replaces alert(), which cross-origin
+  // iframe embeds — i.e. game portals — silently block)
+  toast: '' as string,
 });
+
+export function showToast(message: string): void {
+  uiState.toast = message;
+}

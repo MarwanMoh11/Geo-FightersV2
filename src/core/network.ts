@@ -1,7 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import * as THREE from 'three';
 import { world } from './world';
-import { uiState } from './UIState.svelte';
+import { uiState, showToast } from './UIState.svelte';
 import { setGameState } from './GameState';
 import { spawnPlayer, spawnEnemy, spawnXP } from './factories';
 import { spawnChest } from '../systems/ChestSystem';
@@ -165,7 +165,7 @@ function setupSocketListeners() {
   });
 
   socket.on('join-error', ({ message }) => {
-    alert(`Failed to join room: ${message}`);
+    showToast(`Failed to join room: ${message}`);
     disconnectNetwork();
   });
 
@@ -199,7 +199,7 @@ function setupSocketListeners() {
   });
 
   socket.on('host-disconnected', () => {
-    alert('Host disconnected. Returning to Main Menu.');
+    showToast('Host disconnected. Returning to Main Menu.');
     disconnectNetwork();
     setGameState('MENU');
   });
