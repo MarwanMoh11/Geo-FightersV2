@@ -21,8 +21,11 @@ let ctx: AudioContext | null = null;
 let masterGainNode: GainNode | null = null;
 let compressor: DynamicsCompressorNode | null = null;
 
+const MUSIC_BUS_GAIN = 1.6;
+
 let musicGainNode: GainNode | null = null;
 let musicBus: GainNode | null = null;
+let ceremonyBus: GainNode | null = null;
 let duckFilter: BiquadFilterNode | null = null;
 let padPump: GainNode | null = null;
 let arpPump: GainNode | null = null;
@@ -106,8 +109,15 @@ export function getCtx() {
     // mastering compressor catches the sum, so the game sits at a healthy
     // loudness instead of whisper-quiet.
     musicBus = ctx.createGain();
-    musicBus.gain.value = 1.6;
+    musicBus.gain.value = MUSIC_BUS_GAIN;
     musicBus.connect(duckFilter);
+
+    // Ceremony bus: the chest-fanfare's own channel. It bypasses musicBus so
+    // the main soundtrack can be ducked underneath it, but still sits behind
+    // the music volume setting.
+    ceremonyBus = ctx.createGain();
+    ceremonyBus.gain.value = 1.7;
+    ceremonyBus.connect(musicGainNode);
 
     // Sidechain pump targets (kick dips these, base gain is always 1).
     padPump = ctx.createGain();
@@ -1097,6 +1107,139 @@ export function playVictory() {
   if (gate('victory', 1) === 0) return;
   chimeRun([69, 73, 76, 81, 85, 88], 0.11, 0.09, 0.45);
   setTimeout(() => chimeRun([81, 85, 88], 0.0, 0.07, 0.5), 750);
+}
+
+// =========================================================================
+// CHEST CEREMONY FANFARE — the reveal gets its own music
+// =========================================================================
+// A bright C-lydian harp loop, completely distinct from the dark A-minor
+// soundtrack (which ducks underneath it). Jackpots add a driving pulse and
+// an octave-doubled sparkle layer. Closing plays a gliss + resolving chord.
+
+const CEREMONY_BPM = 150;
+const CEREMONY_SIXTEENTH = 60 / CEREMONY_BPM / 4;
+// C5 E5 G5 B5 D6 B5 G5 E5 — lydian shimmer, loops seamlessly
+const CEREMONY_ARP = [72, 76, 79, 83, 86, 83, 79, 76];
+const CEREMONY_BELLS = [88, 86, 91, 84, 93, 88]; // sparse top-line pool
+
+let ceremonyTimer: ReturnType<typeof setInterval> | null = null;
+let ceremonyStep = 0;
+let ceremonyNextTime = 0;
+let ceremonyJackpot = false;
+
+function ceremonyPluck(t: number, midi: number, vol: number, bright = false): void {
+  const c = ctx!;
+  const gain = c.createGain();
+  gain.gain.setValueAtTime(0, t);
+  gain.gain.linearRampToValueAtTime(vol, t + 0.005);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + (bright ? 0.5 : 0.28));
+  const lp = c.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(bright ? 6000 : 4200, t);
+  lp.frequency.exponentialRampToValueAtTime(1200, t + 0.25);
+  lp.connect(gain);
+  gain.connect(ceremonyBus!);
+  for (const det of [-4, 4]) {
+    const osc = c.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.value = midiHz(midi);
+    osc.detune.value = det;
+    osc.connect(lp);
+    osc.start(t);
+    osc.stop(t + 0.55);
+  }
+  // Bell partial an octave up gives the "treasure" glint.
+  if (bright) {
+    const sparkle = c.createOscillator();
+    sparkle.frequency.value = midiHz(midi + 12);
+    const sGain = c.createGain();
+    sGain.gain.setValueAtTime(vol * 0.3, t);
+    sGain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+    sparkle.connect(sGain);
+    sGain.connect(ceremonyBus!);
+    sparkle.start(t);
+    sparkle.stop(t + 0.45);
+  }
+}
+
+function ceremonyPulse(t: number, vol: number): void {
+  const c = ctx!;
+  const osc = c.createOscillator();
+  osc.frequency.setValueAtTime(98, t); // G2 — dominant pedal under C lydian
+  const gain = c.createGain();
+  gain.gain.setValueAtTime(vol, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+  osc.connect(gain);
+  gain.connect(ceremonyBus!);
+  osc.start(t);
+  osc.stop(t + 0.16);
+}
+
+/** Start the ceremony loop and duck the main soundtrack underneath it. */
+export function startChestFanfare(jackpot: boolean): void {
+  const c = getCtx();
+  if (!c || !ceremonyBus || !musicBus || ceremonyTimer) return;
+  ceremonyJackpot = jackpot;
+  ceremonyStep = 0;
+  ceremonyNextTime = c.currentTime + 0.05;
+
+  musicBus.gain.setTargetAtTime(MUSIC_BUS_GAIN * 0.15, c.currentTime, 0.12);
+
+  // Opening flourish: fast rising strum into the loop.
+  [72, 76, 79, 84].forEach((m, i) => ceremonyPluck(c.currentTime + i * 0.045, m, 0.09, true));
+
+  ceremonyTimer = setInterval(() => {
+    if (!ctx || ctx.state !== 'running') return;
+    if (ceremonyNextTime < ctx.currentTime - 0.25) {
+      ceremonyNextTime = ctx.currentTime + 0.05;
+    }
+    while (ceremonyNextTime < ctx.currentTime + 0.3) {
+      const step = ceremonyStep;
+      const t = ceremonyNextTime;
+      // Harp arp on every 16th
+      ceremonyPluck(t, CEREMONY_ARP[step % CEREMONY_ARP.length], step % 8 === 0 ? 0.075 : 0.05);
+      // Sparse bell top-line on offbeats every other bar
+      if (step % 16 === 10 || (ceremonyJackpot && step % 16 === 4)) {
+        ceremonyPluck(t, CEREMONY_BELLS[(step >> 4) % CEREMONY_BELLS.length], 0.06, true);
+      }
+      // Jackpot: driving pulse under the shimmer
+      if (ceremonyJackpot && step % 4 === 0) {
+        ceremonyPulse(t, 0.16);
+      }
+      ceremonyNextTime += CEREMONY_SIXTEENTH;
+      ceremonyStep++;
+    }
+  }, 40);
+}
+
+/** Stop the loop with a resolving gliss + chord, and restore the soundtrack. */
+export function endChestFanfare(): void {
+  const c = getCtx();
+  if (!c || !ceremonyBus || !musicBus) return;
+  if (ceremonyTimer) {
+    clearInterval(ceremonyTimer);
+    ceremonyTimer = null;
+  }
+
+  const t0 = c.currentTime;
+  // Rising gliss…
+  [72, 76, 79, 83, 84, 88, 91, 96].forEach((m, i) => {
+    ceremonyPluck(t0 + i * 0.035, m, 0.055);
+  });
+  // …into a held C-major chord with sparkle.
+  [84, 88, 91].forEach((m) => ceremonyPluck(t0 + 0.32, m, 0.08, true));
+
+  musicBus.gain.setTargetAtTime(MUSIC_BUS_GAIN, t0 + 0.5, 0.3);
+}
+
+/** Per-item reveal hit: a quick 3-note strum that climbs with each item. */
+export function playRevealStrum(index: number): void {
+  const c = getCtx();
+  if (!c || !ceremonyBus) return;
+  const base = 76 + index * 3; // each reveal starts higher
+  [0, 4, 7].forEach((iv, i) => {
+    ceremonyPluck(c.currentTime + i * 0.04, base + iv, 0.085, i === 2);
+  });
 }
 
 /** Defeat: slow descending minor motif, dark and final. */
