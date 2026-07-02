@@ -13,7 +13,7 @@ import { world } from '../core/world';
 import { scanForEvolutions, selectEvolution } from '../core/EvolutionRegistry';
 import { WEAPONS, getWeaponStatsAtLevel } from '../core/WeaponRegistry';
 import { triggerLevelUp } from './UpgradeSystem';
-import { playLevelUp } from '../core/audio';
+import { playChestOpen } from '../core/audio';
 import { haptics } from '../core/haptics';
 import { dlog } from '../core/debug';
 
@@ -123,7 +123,7 @@ export function ChestSystem(dt: number, scene: THREE.Scene) {
  * Collect chest and resolve rewards
  */
 function collectChest(chest: any, player: any, scene: THREE.Scene) {
-  playLevelUp();
+  playChestOpen();
   haptics.reward();
 
   // 1. EVOLUTION SCAN (only if time >= threshold)

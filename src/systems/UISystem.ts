@@ -1,5 +1,6 @@
 import { world } from '../core/world';
 import { uiState } from '../core/UIState.svelte.ts';
+import { setMusicIntensity } from '../core/audio';
 import { getGameTime } from './ChestSystem';
 import { isGamePaused as _isPauseGlobal } from './UpgradeSystem';
 import { isGameOver as _isGameOverGlobal } from './GameManager';
@@ -29,6 +30,12 @@ export function UISystem() {
   }
   uiState.isPaused = _isPauseGlobal;
   uiState.isGameOver = _isGameOverGlobal;
+
+  // Soundtrack builds over the run: half-strength at spawn, everything in by
+  // the boss at 8:00 (480s).
+  if (uiState.gameState === 'PLAYING') {
+    setMusicIntensity(0.55 + 0.45 * Math.min(1, uiState.gameTime / 480));
+  }
 
   // Safety Check for player
   if (!player || !player.health) return;

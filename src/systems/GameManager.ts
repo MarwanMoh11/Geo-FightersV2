@@ -1,7 +1,7 @@
 import { world } from '../core/world';
 import { setGameState } from '../core/GameState';
 import { uiState } from '../core/UIState.svelte.ts';
-import { stopMusic, playExplosion } from '../core/audio';
+import { stopMusic, playExplosion, playGameOver, playVictory } from '../core/audio';
 import { addTrauma } from './CameraSystem';
 import { dlog } from '../core/debug';
 
@@ -21,10 +21,11 @@ export function triggerGameOver() {
   captureFinalStats();
   uiState.isVictory = false;
 
-  // Let the death land: explosion + heavy shake, music cuts out
+  // Let the death land: explosion + heavy shake, music cuts out, somber sting
   addTrauma(1.0);
   playExplosion();
   stopMusic();
+  playGameOver();
 
   // Drive the Svelte GameOverModal via the state machine
   setGameState('GAME_OVER');
@@ -37,6 +38,7 @@ export function triggerVictory() {
 
   captureFinalStats();
   uiState.isVictory = true;
+  playVictory();
   setGameState('GAME_OVER');
 
   dlog('[VICTORY] Player survived the corruption!');

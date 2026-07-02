@@ -10,6 +10,7 @@
  */
 
 import * as THREE from 'three';
+import { setMusicDucked } from '../core/audio';
 import { world } from '../core/world';
 import type { WeaponSlot, PassiveSlot } from '../core/world';
 import { WEAPONS, getWeaponStatsAtLevel, canLevelUp, getBaseWeapons } from '../core/WeaponRegistry';
@@ -79,6 +80,7 @@ export function triggerLevelUp() {
   }
 
   isGamePaused = true;
+  setMusicDucked(true);
   const choices = selectWeightedChoices(options, UPGRADE_CHOICES);
   uiState.upgradeChoices = choices;
   uiState.showUpgrade = true;
@@ -243,6 +245,7 @@ export function selectUpgrade(option: UpgradeOption) {
     uiState.showUpgrade = true;
   } else {
     isGamePaused = false;
+    setMusicDucked(false);
     uiState.showUpgrade = false;
   }
 }
