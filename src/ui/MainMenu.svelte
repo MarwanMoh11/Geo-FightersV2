@@ -244,32 +244,28 @@
           </span>
         </button>
 
-        <button class="btn" onclick={() => (showShop = true)}>
-          <span class="label">Shop</span>
-          <span class="sub">Upgrades</span>
-        </button>
+        <!-- Secondary destinations: compact two-column grid keeps the menu short -->
+        <div class="menu-grid">
+          <button class="btn compact" onclick={() => (showShop = true)}>
+            <span class="label">Shop</span>
+          </button>
+          <button class="btn compact" onclick={openRecords}>
+            <span class="label">Records</span>
+          </button>
+          <button class="btn compact" onclick={() => (uiState.showGrimoire = true)}>
+            <span class="label">Evolutions</span>
+          </button>
+          <button class="btn compact" onclick={() => (showMpOptions = true)}>
+            <span class="label">Co-op</span>
+          </button>
+        </div>
 
-        <button class="btn" onclick={openRecords}>
-          <span class="label">Records</span>
-          <span class="sub">Unlocks & Quests</span>
-        </button>
-
-        <button class="btn" onclick={() => (uiState.showGrimoire = true)}>
-          <span class="label">Evolutions</span>
-          <span class="sub">Recipe Guide</span>
-        </button>
-
-        <button class="btn" onclick={() => (showMpOptions = true)}>
-          <span class="label">Co-op</span>
-          <span class="sub">Online</span>
-        </button>
-
-        <button class="btn" onclick={openSettings}>
+        <button class="btn slim" onclick={openSettings}>
           <span class="label">Settings</span>
         </button>
 
         {#if uiState.canInstall}
-          <button class="btn ghost" onclick={handleInstall}>
+          <button class="btn ghost slim" onclick={handleInstall}>
             <span class="label install">Install app</span>
           </button>
         {/if}
@@ -574,6 +570,35 @@
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--color-text-dim);
+  }
+
+  /* Secondary destinations packed two-up */
+  .menu-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.65rem;
+  }
+  .btn.compact {
+    justify-content: center;
+    padding: 0.8rem 0.5rem;
+  }
+  .btn.compact .label {
+    font-size: 0.82rem;
+  }
+
+  /* Tertiary rows (settings/install) stay quiet */
+  .btn.slim {
+    justify-content: center;
+    padding: 0.6rem;
+    background: transparent;
+  }
+  .btn.slim .label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--color-text-dim);
+  }
+  .btn.slim:hover .label {
+    color: var(--color-text-main);
   }
 
   .btn.primary {
@@ -939,13 +964,15 @@
   }
 
   /* ---- Character Select ---- */
+  /* Two columns on phones, four on wide screens — cards stay card-shaped
+     instead of stretching into full-width slabs or 8-up slivers. */
   .char-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 0.8rem;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.7rem;
     width: 100%;
-    max-width: 540px;
-    margin: auto;
+    max-width: 560px;
+    margin: 0 auto;
   }
 
   .char-card {
@@ -955,12 +982,12 @@
     background: rgba(255, 255, 255, 0.025);
     border: 1px solid var(--color-border);
     border-radius: var(--r-md);
-    padding: 1.25rem;
+    padding: 0.95rem 0.75rem;
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
-    text-align: left;
-    gap: 0.4rem;
+    align-items: center;
+    text-align: center;
+    gap: 0.35rem;
     transition: all var(--transition-fast);
   }
   .char-card:hover {
@@ -973,31 +1000,30 @@
   }
 
   .char-icon {
-    font-size: 1.8rem;
-    margin-bottom: 0.2rem;
+    font-size: 1.6rem;
   }
 
   .char-name {
     font-family: var(--font-heading);
-    font-size: 1.2rem;
+    font-size: 0.95rem;
     font-weight: 800;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.05em;
     color: var(--color-text-main);
     margin: 0;
   }
 
   .char-weapon {
     font-family: var(--font-mono);
-    font-size: 0.62rem;
+    font-size: 0.56rem;
     font-weight: 600;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--color-primary);
     margin: 0;
   }
 
   .char-desc {
-    font-size: 0.74rem;
+    font-size: 0.62rem;
     color: var(--color-text-dim);
     margin: 0;
     line-height: 1.35;
@@ -1006,12 +1032,14 @@
   .char-stats {
     display: flex;
     flex-direction: row;
-    gap: 0.8rem;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.3rem;
     font-family: var(--font-mono);
-    font-size: 0.58rem;
+    font-size: 0.52rem;
     font-weight: 600;
     color: var(--color-text-dim);
-    margin-top: 0.4rem;
+    margin-top: 0.3rem;
   }
 
   .char-stats span {
@@ -1047,7 +1075,15 @@
     border-radius: var(--r-md);
     border: 1px solid rgba(255, 61, 119, 0.35);
     background: rgba(255, 61, 119, 0.05);
-    margin-bottom: 0.8rem;
+    margin: 0 auto 0.8rem;
+    width: 100%;
+    max-width: 560px;
+  }
+
+  @media (min-width: 720px) {
+    .corruption-row {
+      max-width: 780px;
+    }
   }
 
   .corruption-info {
@@ -1114,16 +1150,11 @@
     opacity: 0.6;
   }
 
-  /* Responsive wide styling for character cards */
-  @media (min-width: 600px) {
+  /* Wide screens: four cards per row */
+  @media (min-width: 720px) {
     .char-grid {
-      flex-direction: row;
-      max-width: 900px;
-    }
-    .char-card {
-      flex: 1;
-      min-height: 260px;
-      justify-content: flex-start;
+      grid-template-columns: repeat(4, 1fr);
+      max-width: 780px;
     }
   }
 </style>

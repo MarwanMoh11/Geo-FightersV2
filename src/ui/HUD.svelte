@@ -3,6 +3,9 @@
   import { setGameState } from '../core/GameState';
   import { fly } from 'svelte/transition';
 
+  const isTouchDevice =
+    typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+
   let hpPercent = $derived(
     Math.max(0, Math.min(100, (uiState.health.current / uiState.health.max) * 100)),
   );
@@ -104,23 +107,24 @@
               : uiState.overloadCharge}%"
           ></div>
         </div>
-        <div class="overload-meta">
-          {#if uiState.overloadActive}
-            <span class="overload-text active-pulse"
-              >🔥 OVERLOAD: {Math.ceil(uiState.overloadTimer)}s</span
-            >
-          {:else if uiState.overloadCharge >= 100}
-            <span class="overload-text ready-glow">⚡ [SPACE] OVERCLOCK READY</span>
-          {:else}
-            <span class="overload-text">⚡ CHARGE: {Math.ceil(uiState.overloadCharge)}%</span>
-          {/if}
-        </div>
+        <!-- Label only when it matters — the filling bar speaks for itself -->
+        {#if uiState.overloadActive || uiState.overloadCharge >= 100}
+          <div class="overload-meta">
+            {#if uiState.overloadActive}
+              <span class="overload-text active-pulse"
+                >🔥 OVERLOAD: {Math.ceil(uiState.overloadTimer)}s</span
+              >
+            {:else}
+              <span class="overload-text ready-glow"
+                >⚡ OVERCLOCK READY{isTouchDevice ? '' : ' — SPACE'}</span
+              >
+            {/if}
+          </div>
+        {/if}
       </div>
 
       <div class="meta tnum">
         <span class="lv" class:flash={levelFlash}>LV{uiState.level}</span>
-        <span class="dot">·</span>
-        <span class="score">{uiState.score}</span>
         <span class="dot">·</span>
         <span class="kills">{uiState.kills}<i>k</i></span>
         <span class="dot">·</span>
@@ -417,9 +421,6 @@
   }
   .meta .lv.flash {
     text-shadow: 0 0 10px var(--color-gold);
-  }
-  .meta .score {
-    color: var(--color-primary);
   }
   .meta .kills i {
     font-style: normal;
