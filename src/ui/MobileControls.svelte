@@ -73,23 +73,13 @@
   }
 
   function updatePos(x: number, y: number) {
-    let dx = x - joyCenterX;
-    let dy = y - joyCenterY;
-    let distance = Math.sqrt(dx * dx + dy * dy);
-
-    // Trailing origin: when the finger drags past the stick's rim, the whole
-    // stick follows. Reversing direction then reacts instantly instead of
-    // needing a long drag back across the original touch point.
-    if (distance > maxRadius) {
-      const excess = distance - maxRadius;
-      joyCenterX += (dx / distance) * excess;
-      joyCenterY += (dy / distance) * excess;
-      dx = x - joyCenterX;
-      dy = y - joyCenterY;
-      distance = maxRadius;
-    }
-
+    // Fixed origin: the stick stays planted where the touch began (a trailing
+    // origin was tried and felt disorienting — reverted by design).
+    const dx = x - joyCenterX;
+    const dy = y - joyCenterY;
+    const distance = Math.min(Math.sqrt(dx * dx + dy * dy), maxRadius);
     const angle = Math.atan2(dy, dx);
+
     knobX = Math.cos(angle) * distance;
     knobY = Math.sin(angle) * distance;
 
