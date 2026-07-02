@@ -73,11 +73,23 @@
   }
 
   function updatePos(x: number, y: number) {
-    const dx = x - joyCenterX;
-    const dy = y - joyCenterY;
-    const distance = Math.min(Math.sqrt(dx * dx + dy * dy), maxRadius);
-    const angle = Math.atan2(dy, dx);
+    let dx = x - joyCenterX;
+    let dy = y - joyCenterY;
+    let distance = Math.sqrt(dx * dx + dy * dy);
 
+    // Trailing origin: when the finger drags past the stick's rim, the whole
+    // stick follows. Reversing direction then reacts instantly instead of
+    // needing a long drag back across the original touch point.
+    if (distance > maxRadius) {
+      const excess = distance - maxRadius;
+      joyCenterX += (dx / distance) * excess;
+      joyCenterY += (dy / distance) * excess;
+      dx = x - joyCenterX;
+      dy = y - joyCenterY;
+      distance = maxRadius;
+    }
+
+    const angle = Math.atan2(dy, dx);
     knobX = Math.cos(angle) * distance;
     knobY = Math.sin(angle) * distance;
 
@@ -143,20 +155,14 @@
     opacity: 1;
   }
 
+  /* Touch anywhere to steer: the whole screen is the joystick zone and the
+     stick spawns under the finger. UI buttons (pause, overload, modals) live
+     on higher layers, so they still win their taps. */
   .joystick-zone {
     position: absolute;
-    left: 0;
-    bottom: 0;
-    top: auto;
-    width: 50%;
-    height: 75%;
+    inset: 0;
     pointer-events: auto;
-  }
-
-  /* Inverted controls: move the steering zone to the right edge */
-  :global(body.inverted-controls) .joystick-zone {
-    left: auto;
-    right: 0;
+    z-index: 1;
   }
 
   .joystick-base {
@@ -187,6 +193,7 @@
   .overload-btn {
     all: unset;
     position: absolute;
+    z-index: 2; /* above the full-screen steering zone */
     right: calc(1.1rem + var(--safe-right, 0px));
     bottom: calc(7.5rem + var(--safe-bottom, 0px));
     width: 4.2rem;
