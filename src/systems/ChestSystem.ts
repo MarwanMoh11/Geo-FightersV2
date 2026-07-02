@@ -38,6 +38,63 @@ export function getGameTime(): number {
   return gameTime;
 }
 
+// --- CHEST DROP GOVERNOR ---
+// Standard elites (firewalls especially) spawn in packs late game; without a
+// governor every kill drops a chest and the ceremony modal spams. Instead:
+// at most one elite chest per cooldown window — denied drops pay credits so
+// the kill still feels rewarding. Guaranteed drops (mini-bosses, vaults)
+// bypass the gate but reset the clock so trash chests don't stack on top.
+const ELITE_CHEST_COOLDOWN = 20; // seconds between standard-elite chests
+
+let lastChestDropTime = -999;
+
+/**
+ * Rarity scales with run time (fewer chests late, but better ones) and is
+ * nudged by luck and corruption. Early: mostly common. Past 6:00: mostly
+ * rare with a real epic chance.
+ */
+export function rollChestRarity(luck: number = 1): 'common' | 'rare' | 'epic' {
+  const t = gameTime;
+  // Base odds per phase: [epic, rare] thresholds, remainder = common.
+  let epicChance: number;
+  let rareChance: number;
+  if (t < 180) {
+    epicChance = 0.02;
+    rareChance = 0.18;
+  } else if (t < 360) {
+    epicChance = 0.08;
+    rareChance = 0.32;
+  } else {
+    epicChance = 0.18;
+    rareChance = 0.42;
+  }
+  // Luck (1.0 = neutral) and corruption sweeten the odds.
+  const bonus = (luck - 1) * 0.1 + uiState.corruption * 0.02;
+  epicChance += bonus;
+  rareChance += bonus;
+
+  const roll = Math.random();
+  if (roll < epicChance) return 'epic';
+  if (roll < epicChance + rareChance) return 'rare';
+  return 'common';
+}
+
+/**
+ * Gated chest drop for standard elites. Returns true if a chest dropped;
+ * callers should pay a small credit consolation when it returns false.
+ */
+export function tryDropEliteChest(scene: THREE.Scene, x: number, z: number, luck = 1): boolean {
+  if (gameTime - lastChestDropTime < ELITE_CHEST_COOLDOWN) return false;
+  lastChestDropTime = gameTime;
+  spawnChest(scene, x, z, rollChestRarity(luck));
+  return true;
+}
+
+/** Mark that a guaranteed chest (boss/vault) just dropped — resets the gate. */
+export function registerGuaranteedChestDrop(): void {
+  lastChestDropTime = gameTime;
+}
+
 // --- SHARED RESOURCES ---
 const chestGeometry = new THREE.BoxGeometry(0.8, 0.6, 0.5);
 // Brighter rarity colors that read instantly against the dark ground
