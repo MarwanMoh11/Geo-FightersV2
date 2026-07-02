@@ -297,7 +297,11 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
   // Initialize shadow instances if needed
   if (!shadowInstances) {
     const shadowGeo = new THREE.CircleGeometry(0.4, 16);
-    const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4 });
+    const shadowMat = new THREE.MeshBasicMaterial({
+      color: 0x000000,
+      transparent: true,
+      opacity: 0.4,
+    });
     shadowInstances = new THREE.InstancedMesh(shadowGeo, shadowMat, MAX_ENEMY_INSTANCES * 4);
     shadowInstances.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     shadowInstances.frustumCulled = false; // Disable frustum culling to prevent culling outside the origin
@@ -322,12 +326,12 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
           solidMesh.castShadow = true;
           solidMesh.receiveShadow = false; // Disable shadow receiving to prevent solid black shadow maps on enemies
           solidMesh.frustumCulled = false; // Disable frustum culling
-          
+
           const white = new THREE.Color(0xffffff);
           for (let j = 0; j < MAX_ENEMY_INSTANCES; j++) {
             solidMesh.setColorAt(j, white);
           }
-          
+
           scene.add(solidMesh);
           enemySolidInstances.set(type, solidMesh);
         }
@@ -342,12 +346,12 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
           wireMesh = new THREE.InstancedMesh(geomData.wire, mat, MAX_ENEMY_INSTANCES);
           wireMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
           wireMesh.frustumCulled = false; // Disable frustum culling
-          
+
           const white = new THREE.Color(0xffffff);
           for (let j = 0; j < MAX_ENEMY_INSTANCES; j++) {
             wireMesh.setColorAt(j, white);
           }
-          
+
           scene.add(wireMesh);
           enemyWireInstances.set(type, wireMesh);
         }
@@ -356,7 +360,7 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
       // Compose instance matrix
       const size = entity.size ?? entity.transform!.scale.x ?? 1.0;
       _tempPos.copy(entity.position);
-      
+
       // Gentle floating hover
       const hoverFreq = 3;
       const hoverAmp = 0.05;
@@ -410,7 +414,7 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
   // 3. Mark instanced buffers for GPU update
   for (const type of Object.values(EnemyType)) {
     const count = counts.get(type) ?? 0;
-    
+
     const solidMesh = enemySolidInstances.get(type);
     if (solidMesh) {
       solidMesh.count = count;

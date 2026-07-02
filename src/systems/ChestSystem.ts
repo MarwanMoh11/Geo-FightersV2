@@ -12,8 +12,11 @@ import * as THREE from 'three';
 import { world } from '../core/world';
 import { scanForEvolutions, selectEvolution } from '../core/EvolutionRegistry';
 import { WEAPONS, getWeaponStatsAtLevel } from '../core/WeaponRegistry';
-import { triggerLevelUp } from './UpgradeSystem';
+import { applyRandomChestRewards } from './UpgradeSystem';
 import { playChestOpen } from '../core/audio';
+import { recordChestOpened, recordEvolution } from '../core/ProgressManager';
+import { uiState } from '../core/UIState.svelte.ts';
+import { spawnCredit } from '../core/factories';
 import { haptics } from '../core/haptics';
 import { dlog } from '../core/debug';
 
@@ -125,6 +128,7 @@ export function ChestSystem(dt: number, scene: THREE.Scene) {
 function collectChest(chest: any, player: any, scene: THREE.Scene) {
   playChestOpen();
   haptics.reward();
+  recordChestOpened();
 
   // 1. EVOLUTION SCAN (only if time >= threshold)
   const candidates = scanForEvolutions(
@@ -138,13 +142,39 @@ function collectChest(chest: any, player: any, scene: THREE.Scene) {
     const selected = selectEvolution(candidates);
     if (selected) {
       performEvolution(player, selected.weaponSlotIndex, selected.evolution.evolvedWeaponId, scene);
+      recordEvolution();
       despawnChest(chest, scene);
       return;
     }
   }
 
-  // 2. FALLBACK: Grant upgrade selection
-  triggerLevelUp();
+  // 2. CHEST CEREMONY: jackpot roll of 1/3/5 instant upgrades (VS-style —
+  // the chest picks for you, the modal reveals them one by one).
+  const rarity: 'common' | 'rare' | 'epic' = chest.chestRarity || 'common';
+  const luck = player.stats?.luck || 1;
+  const jackpotBoost = (luck - 1) * 0.1; // luck nudges the good rolls
+  const roll = Math.random();
+  let count = 1;
+  if (rarity === 'epic') {
+    count = roll < 0.25 + jackpotBoost ? 5 : 3;
+  } else if (rarity === 'rare') {
+    count = roll < 0.08 + jackpotBoost ? 5 : roll < 0.4 + jackpotBoost ? 3 : 1;
+  } else {
+    count = roll < 0.03 + jackpotBoost ? 5 : roll < 0.18 + jackpotBoost ? 3 : 1;
+  }
+
+  const rewards = applyRandomChestRewards(count);
+  if (rewards.length > 0) {
+    uiState.chestRewards = rewards;
+    uiState.chestRarity = rarity;
+    uiState.showChestCeremony = true;
+  } else {
+    // Build is fully maxed — pay out credits instead so chests never whiff.
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      spawnCredit(scene, chest.position.x + Math.cos(a), chest.position.z + Math.sin(a), 5);
+    }
+  }
 
   despawnChest(chest, scene);
 }

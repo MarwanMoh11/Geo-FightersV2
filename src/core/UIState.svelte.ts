@@ -33,7 +33,7 @@ export const uiState = $state({
   // Persistent Progression & Customization
   credits: getLocalVal('geo_credits', 0),
   creditsCollected: 0,
-  selectedCharacter: getLocalVal<'cypher' | 'lash' | 'rail'>('geo_selected_character', 'cypher'),
+  selectedCharacter: getLocalVal<string>('geo_selected_character', 'cypher'),
   permanentUpgrades: getUpgradeDefaults(),
   showShop: false,
   showGrimoire: false,
@@ -116,6 +116,37 @@ export const uiState = $state({
   insideDefragZone: false,
   insideLeakZone: false,
 
+  // Progression & unlocks
+  unlocksThisRun: [] as string[], // achievement ids earned during the current run
+  showRecords: false, // achievements/stats modal
+
+  // Corruption dial (0-5 risk/reward, persisted)
+  corruption: getLocalVal('geo_corruption', 0),
+
+  // Data protocol (run modifier picked at run start)
+  activeProtocolId: '' as string,
+  showProtocolChoice: false,
+  protocolChoices: [] as string[], // protocol ids offered
+
+  // Kill combo + callouts
+  combo: 0,
+  comboTimer: 0,
+  bestCombo: 0,
+  callout: '', // transient HUD announcement ("COMBO x100", "BOSS INBOUND")
+  calloutSeq: 0, // increments to restart the animation
+
+  // Chest ceremony
+  showChestCeremony: false,
+  chestRewards: [] as { name: string; icon: string; detail: string }[],
+  chestRarity: 'common' as 'common' | 'rare' | 'epic',
+
+  // Endless mode (after victory)
+  showVictoryChoice: false,
+  endlessMode: false,
+
+  // Daily run
+  isDailyRun: false,
+
   // PWA / install
   canInstall: false,
   isStandalone: false,
@@ -128,4 +159,10 @@ export const uiState = $state({
 
 export function showToast(message: string): void {
   uiState.toast = message;
+}
+
+/** Flash a big HUD callout ("COMBO x100", "VAULT DETECTED"). */
+export function announce(text: string): void {
+  uiState.callout = text;
+  uiState.calloutSeq++;
 }

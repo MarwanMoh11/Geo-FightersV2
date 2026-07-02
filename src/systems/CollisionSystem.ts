@@ -15,10 +15,11 @@ import { addTrauma } from './CameraSystem';
 import { WEAPONS } from '../core/WeaponRegistry';
 import { spawnXP, spawnCredit } from '../core/factories';
 import { triggerGameOver } from './GameManager';
-import { playExplosion, playHurt } from '../core/audio';
+import { playExplosion, playHurt, playCollect } from '../core/audio';
 import { reportDamageTaken, reportKill } from '../core/FlowStateManager';
+import { recordKill, recordDamage, recordVaultCracked } from '../core/ProgressManager';
 import { spawnChest } from './ChestSystem';
-import { uiState } from '../core/UIState.svelte.ts';
+import { uiState, announce } from '../core/UIState.svelte.ts';
 import { spawnDamageNumber } from './DamageNumberSystem';
 import { haptics } from '../core/haptics';
 import { dlog } from '../core/debug';
@@ -64,7 +65,7 @@ export function CollisionSystem(scene: THREE.Scene) {
 
       if (distSq < 1.4 * 1.4) {
         if (tear.hitList) tear.hitList.push(enemy.id || 0);
-        
+
         const pushDir = new THREE.Vector3(dx, 0, dz).normalize();
         applyDamage(enemy, 90, pushDir, 6, scene);
       }
@@ -192,7 +193,10 @@ function handleEnemyPlayerCollision(enemy: any, player: any, _scene: THREE.Scene
   // INVULNERABILITY: ignore contact while player is in a menu or in Lash's invuln overload state
   if (
     player.isUpgrading ||
-    (player.isLocalPlayer && (uiState.showUpgrade || uiState.gameState === 'PAUSED' || (uiState.overloadActive && uiState.selectedCharacter === 'lash')))
+    (player.isLocalPlayer &&
+      (uiState.showUpgrade ||
+        uiState.gameState === 'PAUSED' ||
+        (uiState.overloadActive && uiState.selectedCharacter === 'lash')))
   ) {
     return;
   }
@@ -248,7 +252,10 @@ function handleEnemyProjectilePlayerCollision(bullet: any, player: any, scene: T
   // INVULNERABILITY: ignore contact while player is in a menu or in Lash's invuln overload state
   if (
     player.isUpgrading ||
-    (player.isLocalPlayer && (uiState.showUpgrade || uiState.gameState === 'PAUSED' || (uiState.overloadActive && uiState.selectedCharacter === 'lash')))
+    (player.isLocalPlayer &&
+      (uiState.showUpgrade ||
+        uiState.gameState === 'PAUSED' ||
+        (uiState.overloadActive && uiState.selectedCharacter === 'lash')))
   ) {
     return;
   }
@@ -311,6 +318,7 @@ function applyDamage(
   const critChance = 0.05 * luckMult;
   const isCrit = Math.random() < critChance;
   const finalDamage = isCrit ? Math.round(dmg * 2.5) : dmg;
+  recordDamage(finalDamage);
 
   if (enemy.isBoss) {
     // Boss takes real damage and can now be killed. Death/cleanup is owned by
@@ -339,9 +347,55 @@ function applyDamage(
   }
 }
 
-export function handleEnemyDeath(enemy: any, scene: THREE.Scene, weaponId = '', bulletColor = 0xb0b0b0) {
+// Kill-combo chain: kills within the window extend the chain; callouts fire
+// at escalating thresholds (the "something every 5 seconds" dopamine rule).
+const COMBO_WINDOW_MS = 2000;
+const COMBO_MILESTONES = [25, 50, 100, 250, 500, 1000];
+let comboExpiresAt = 0;
+
+export function tickCombo(): void {
+  if (uiState.combo > 0 && performance.now() > comboExpiresAt) {
+    uiState.combo = 0;
+  }
+}
+
+function chainCombo(): void {
+  const now = performance.now();
+  uiState.combo = now > comboExpiresAt ? 1 : uiState.combo + 1;
+  comboExpiresAt = now + COMBO_WINDOW_MS;
+  if (uiState.combo > uiState.bestCombo) uiState.bestCombo = uiState.combo;
+  if (COMBO_MILESTONES.includes(uiState.combo)) {
+    announce(`COMBO ×${uiState.combo}`);
+    playCollect(1 + COMBO_MILESTONES.indexOf(uiState.combo) * 0.15);
+  }
+}
+
+export function handleEnemyDeath(
+  enemy: any,
+  scene: THREE.Scene,
+  weaponId = '',
+  bulletColor = 0xb0b0b0,
+) {
   reportKill();
   uiState.kills++;
+  recordKill();
+  chainCombo();
+
+  // Data vault greed event: cracking it showers credits + guarantees a chest.
+  if (enemy.isVault) {
+    recordVaultCracked();
+    announce('VAULT CRACKED');
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      spawnCredit(
+        scene,
+        enemy.position.x + Math.cos(a) * 1.2,
+        enemy.position.z + Math.sin(a) * 1.2,
+        2,
+      );
+    }
+    spawnChest(scene, enemy.position.x, enemy.position.z, Math.random() < 0.3 ? 'epic' : 'rare');
+  }
   spawnImpactFX(enemy.position, scene, weaponId, bulletColor, 6);
   spawnXP(scene, enemy.position.x, enemy.position.z, enemy.xpValue || 10);
 
@@ -359,13 +413,19 @@ export function handleEnemyDeath(enemy: any, scene: THREE.Scene, weaponId = '', 
       const halfSize = (zone.size || 6.0) / 2;
       const zx = zone.position.x;
       const zz = zone.position.z;
-      if (px >= zx - halfSize && px <= zx + halfSize && pz >= zz - halfSize && pz <= zz + halfSize) {
+      if (
+        px >= zx - halfSize &&
+        px <= zx + halfSize &&
+        pz >= zz - halfSize &&
+        pz <= zz + halfSize
+      ) {
         insideLeakZone = true;
         break;
       }
     }
   }
-  const creditMultiplier = insideLeakZone ? 5 : 1;
+  const scavengerMult = uiState.activeProtocolId === 'scavenger_daemon' ? 3 : 1;
+  const creditMultiplier = (insideLeakZone ? 5 : 1) * scavengerMult;
 
   // Basic: 5% * luck chance to drop 1 Credit
   if (Math.random() < 0.05 * luckMult) {

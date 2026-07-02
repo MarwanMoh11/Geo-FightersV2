@@ -1,5 +1,6 @@
 <script lang="ts">
   import { uiState } from '../../core/UIState.svelte.ts';
+  import { getNearestLocked, ACHIEVEMENTS } from '../../core/ProgressManager';
   import { fade, fly } from 'svelte/transition';
 
   let leaving = $state(false);
@@ -9,6 +10,12 @@
     leaving = true;
     setTimeout(() => location.reload(), 250);
   }
+
+  // The "one more run" tease: what was earned + what's almost earned.
+  let earned = $derived(
+    uiState.unlocksThisRun.map((id) => ACHIEVEMENTS.find((a) => a.id === id)).filter((a) => !!a),
+  );
+  let nearest = $derived(uiState.gameState === 'GAME_OVER' ? getNearestLocked(3) : []);
 
   let minutes = $derived(
     Math.floor(uiState.gameTime / 60)
@@ -56,10 +63,42 @@
           <span class="value cyan">{uiState.kills}</span>
         </div>
         <div class="stat-card">
-          <span class="label">DATA RECOVERED</span>
-          <span class="value pink">{uiState.score}</span>
+          <span class="label">BEST COMBO</span>
+          <span class="value pink">×{uiState.bestCombo}</span>
         </div>
       </div>
+
+      {#if earned.length > 0}
+        <div class="unlock-section">
+          {#each earned as a (a.id)}
+            <div class="unlock-row earned">
+              <span class="unlock-icon">🏆</span>
+              <span class="unlock-text"
+                >{a.name}{a.unlock ? ` — ${a.unlock.label} UNLOCKED` : ''}</span
+              >
+            </div>
+          {/each}
+        </div>
+      {/if}
+
+      {#if nearest.length > 0}
+        <div class="unlock-section">
+          <div class="unlock-heading">NEXT UNLOCKS</div>
+          {#each nearest as n (n.def.id)}
+            <div class="unlock-row">
+              <div class="unlock-info">
+                <span class="unlock-text">{n.def.description}</span>
+                {#if n.def.unlock}
+                  <span class="unlock-target">→ {n.def.unlock.label}</span>
+                {/if}
+              </div>
+              <div class="unlock-bar">
+                <div class="unlock-fill" style="width: {Math.round(n.pct * 100)}%"></div>
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
 
       <button class="reboot-btn" onclick={restart}>
         <span class="btn-text">{uiState.isVictory ? 'RUN IT BACK' : 'INITIATE REBOOT'}</span>
@@ -203,5 +242,57 @@
     letter-spacing: 0.12em;
     text-transform: uppercase;
     opacity: 0.7;
+  }
+
+  /* --- Unlock teases --- */
+  .unlock-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    text-align: left;
+  }
+  .unlock-heading {
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    color: var(--color-text-dim);
+  }
+  .unlock-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+  .unlock-row.earned {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.5rem;
+    color: #ffd75e;
+  }
+  .unlock-info {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+  .unlock-text {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--color-text-main);
+  }
+  .unlock-target {
+    font-size: 0.62rem;
+    font-weight: 700;
+    color: var(--color-primary);
+    white-space: nowrap;
+  }
+  .unlock-bar {
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+  }
+  .unlock-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--color-primary);
   }
 </style>

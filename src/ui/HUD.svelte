@@ -46,6 +46,26 @@
     <div class="vignette" class:low={lowHealth} class:flash={uiState.damageFlash > 0}></div>
   {/key}
 
+  <!-- Kill combo chain (appears from ×5 so it feels earned) -->
+  {#if uiState.combo >= 5}
+    <div class="combo" class:hot={uiState.combo >= 50} class:blazing={uiState.combo >= 100}>
+      <span class="combo-count">×{uiState.combo}</span>
+      <span class="combo-label">COMBO</span>
+    </div>
+  {/if}
+
+  <!-- Big transient callout ("COMBO ×100", "VAULT DETECTED") -->
+  {#if uiState.callout}
+    {#key uiState.calloutSeq}
+      <div class="callout">{uiState.callout}</div>
+    {/key}
+  {/if}
+
+  <!-- Endless mode badge -->
+  {#if uiState.endlessMode}
+    <div class="endless-badge">∞ ENDLESS</div>
+  {/if}
+
   <!-- XP rail: hairline across the very top edge -->
   <div class="xp-rail">
     <div class="xp-fill" class:flash={levelFlash} style="width: {xpPercent}%"></div>
@@ -71,13 +91,24 @@
       </div>
 
       <!-- Overload Charge Core -->
-      <div class="overload" class:ready={uiState.overloadCharge >= 100} class:active={uiState.overloadActive}>
+      <div
+        class="overload"
+        class:ready={uiState.overloadCharge >= 100}
+        class:active={uiState.overloadActive}
+      >
         <div class="overload-bar">
-          <div class="overload-fill" style="width: {uiState.overloadActive ? (uiState.overloadTimer / 7 * 100) : uiState.overloadCharge}%"></div>
+          <div
+            class="overload-fill"
+            style="width: {uiState.overloadActive
+              ? (uiState.overloadTimer / 7) * 100
+              : uiState.overloadCharge}%"
+          ></div>
         </div>
         <div class="overload-meta">
           {#if uiState.overloadActive}
-            <span class="overload-text active-pulse">🔥 OVERLOAD: {Math.ceil(uiState.overloadTimer)}s</span>
+            <span class="overload-text active-pulse"
+              >🔥 OVERLOAD: {Math.ceil(uiState.overloadTimer)}s</span
+            >
           {:else if uiState.overloadCharge >= 100}
             <span class="overload-text ready-glow">⚡ [SPACE] OVERCLOCK READY</span>
           {:else}
@@ -524,5 +555,97 @@
     50% {
       opacity: 0.6;
     }
+  }
+
+  /* --- Kill combo chain --- */
+  .combo {
+    position: absolute;
+    top: calc(var(--safe-top) + 120px);
+    right: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    pointer-events: none;
+    animation: combo-pop 0.15s ease-out;
+  }
+  @keyframes combo-pop {
+    from {
+      transform: scale(1.25);
+    }
+    to {
+      transform: scale(1);
+    }
+  }
+  .combo-count {
+    font-family: var(--font-heading);
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--color-primary);
+    text-shadow: 0 0 12px rgba(0, 213, 255, 0.6);
+    font-variant-numeric: tabular-nums;
+  }
+  .combo-label {
+    font-size: 0.52rem;
+    font-weight: 800;
+    letter-spacing: 0.24em;
+    color: var(--color-text-dim);
+  }
+  .combo.hot .combo-count {
+    color: #ffaa00;
+    text-shadow: 0 0 14px rgba(255, 170, 0, 0.7);
+  }
+  .combo.blazing .combo-count {
+    color: #ff3355;
+    text-shadow: 0 0 18px rgba(255, 51, 85, 0.8);
+    animation: text-pulse 0.4s ease-in-out infinite;
+  }
+
+  /* --- Big transient callout --- */
+  .callout {
+    position: absolute;
+    top: 28%;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--font-heading);
+    font-size: clamp(1.1rem, 4vw, 1.8rem);
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    color: var(--color-text-main);
+    text-shadow: 0 0 20px rgba(0, 213, 255, 0.5);
+    pointer-events: none;
+    white-space: nowrap;
+    animation: callout-cycle 2.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  @keyframes callout-cycle {
+    0% {
+      opacity: 0;
+      transform: translateX(-50%) scale(1.4);
+    }
+    12% {
+      opacity: 1;
+      transform: translateX(-50%) scale(1);
+    }
+    80% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+      transform: translateX(-50%) scale(0.96);
+    }
+  }
+
+  /* --- Endless badge --- */
+  .endless-badge {
+    position: absolute;
+    top: calc(var(--safe-top) + 64px);
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.6rem;
+    font-weight: 800;
+    letter-spacing: 0.22em;
+    color: #3cffaa;
+    text-shadow: 0 0 10px rgba(60, 255, 170, 0.6);
+    pointer-events: none;
+    animation: text-pulse 1.6s ease-in-out infinite;
   }
 </style>

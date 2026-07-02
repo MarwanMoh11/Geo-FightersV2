@@ -11,6 +11,7 @@ import { world } from '../core/world';
 import * as THREE from 'three';
 import { triggerLevelUp } from './UpgradeSystem';
 import { playCollect, playLevelUp, playCreditCollect } from '../core/audio';
+import { recordCredits } from '../core/ProgressManager';
 import { uiState } from '../core/UIState.svelte.ts';
 import {
   bankXP,
@@ -115,8 +116,9 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
     // B. COLLECTION (Early check)
     if (distSq < COLLECT_RADIUS_SQ) {
       if (xp.xpValue && closestPlayer.xp !== undefined && closestPlayer.score !== undefined) {
-        closestPlayer.xp += xp.xpValue;
-        
+        // Corruption pays out: +20% XP per level.
+        closestPlayer.xp += Math.ceil(xp.xpValue * (1 + uiState.corruption * 0.2));
+
         if (!uiState.overloadActive && closestPlayer.isLocalPlayer) {
           const maxXp = closestPlayer.xpMax || 100;
           const percent = (xp.xpValue / maxXp) * 100;
@@ -227,10 +229,12 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
 
     // B. COLLECTION
     if (distSq < COLLECT_RADIUS_SQ) {
-      const val = credit.creditValue || 1;
+      // Corruption pays out: +25% credits per level (rounded up).
+      const val = Math.ceil((credit.creditValue || 1) * (1 + uiState.corruption * 0.25));
       if (closestPlayer.isLocalPlayer) {
         uiState.creditsCollected += val;
         uiState.credits += val;
+        recordCredits(val);
         localStorage.setItem('geo_credits', JSON.stringify(uiState.credits));
         playCreditCollect();
       }
@@ -298,12 +302,12 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
       xpInstancedMesh = new THREE.InstancedMesh(xpGeo, xpBaseMat, MAX_XP_INSTANCES);
       xpInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       xpInstancedMesh.frustumCulled = false; // Disable frustum culling
-      
+
       const defaultColor = new THREE.Color(0xffffff);
       for (let i = 0; i < MAX_XP_INSTANCES; i++) {
         xpInstancedMesh.setColorAt(i, defaultColor);
       }
-      
+
       scene.add(xpInstancedMesh);
     }
 
