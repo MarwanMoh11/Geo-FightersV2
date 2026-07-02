@@ -11,12 +11,16 @@
     uiState.showSettings = true;
   }
 
+  function openGrimoire() {
+    uiState.showGrimoire = true;
+  }
+
   function backToMenu() {
     location.reload();
   }
 </script>
 
-{#if uiState.gameState === 'PAUSED' && !uiState.showSettings}
+{#if uiState.gameState === 'PAUSED' && !uiState.showSettings && !uiState.showGrimoire}
   <div id="pause-modal" transition:fade={{ duration: 180 }}>
     <div class="sheet glass" transition:scale={{ duration: 240, start: 0.94 }}>
       <h2 class="title">Paused</h2>
@@ -24,6 +28,9 @@
         <button class="action-btn primary" onclick={resume}>
           <span class="btn-text">Resume</span>
           <span class="btn-hint">ESC</span>
+        </button>
+        <button class="action-btn" onclick={openGrimoire}>
+          <span class="btn-text">Evolutions</span>
         </button>
         <button class="action-btn" onclick={openSettings}>
           <span class="btn-text">Settings</span>

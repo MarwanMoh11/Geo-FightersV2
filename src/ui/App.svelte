@@ -6,6 +6,7 @@
   import PauseModal from './modals/PauseModal.svelte';
   import UpgradeModal from './modals/UpgradeModal.svelte';
   import GameOverModal from './modals/GameOverModal.svelte';
+  import GrimoireModal from './modals/GrimoireModal.svelte';
   import MobileControls from './MobileControls.svelte';
   import FPSCounter from './FPSCounter.svelte';
   import PwaLayer from './PwaLayer.svelte';
@@ -21,6 +22,7 @@
   <SettingsModal />
   <UpgradeModal />
   <GameOverModal />
+  <GrimoireModal />
 
   <FPSCounter />
   <PwaLayer />

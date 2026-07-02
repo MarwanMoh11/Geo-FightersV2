@@ -150,6 +150,13 @@ html {
   color: var(--color-secondary);
 }
 
+.damage-number.crit {
+  font-size: 1.75rem;
+  color: #ffaa00;
+  text-shadow: 0 0 8px rgba(255, 170, 0, 0.7);
+  -webkit-text-stroke: 4px rgba(4, 6, 15, 0.9);
+}
+
 @media (max-width: 600px) {
   .damage-number {
     font-size: 0.9rem;
@@ -159,5 +166,8 @@ html {
   }
   .damage-number.player {
     font-size: 1.15rem;
+  }
+  .damage-number.crit {
+    font-size: 1.35rem;
   }
 }

@@ -1,5 +1,6 @@
 import { world } from '../core/world';
 import * as THREE from 'three';
+import { uiState } from '../core/UIState.svelte.ts';
 
 const BASE_PLAYER_SPEED = 5.5;
 const KNOCKBACK_DECAY = 7.0; // higher = recovers control faster
@@ -20,7 +21,17 @@ export function PlayerControlSystem(dt: number) {
     _inputVector.set(entity.input.x, 0, entity.input.y);
 
     // Apply Speed with passive bonus
-    const speedMult = entity.stats?.moveSpeed || 1.0;
+    let speedMult = entity.stats?.moveSpeed || 1.0;
+    if (uiState.overloadActive) {
+      if (uiState.selectedCharacter === 'rail') {
+        speedMult = 0;
+      } else if (uiState.selectedCharacter === 'lash') {
+        speedMult *= 1.5;
+      }
+    }
+    if (uiState.insideDefragZone) {
+      speedMult *= 1.3;
+    }
     entity.velocity.copy(_inputVector.multiplyScalar(BASE_PLAYER_SPEED * speedMult));
 
     // Layer decaying knockback on top of input so hits physically push the

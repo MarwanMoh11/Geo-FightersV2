@@ -24,6 +24,7 @@ import type { PlayerStats } from '../core/PlayerStats';
 import { uiState } from '../core/UIState.svelte.ts';
 import { getWeaponIcon, getPassiveIcon } from '../ui/icons';
 import { dlog } from '../core/debug';
+import { haptics } from '../core/haptics';
 
 // --- CONSTANTS ---
 const MAX_WEAPON_SLOTS = 6;
@@ -175,7 +176,7 @@ function generateUpgradePool(player: any): UpgradeOption[] {
     rarity: 'common',
   });
 
-  return pool;
+  return pool.filter((opt) => !uiState.bannedUpgradeIds.includes(opt.id));
 }
 
 // --- WEIGHTED SELECTION ---
@@ -414,4 +415,33 @@ function getWeaponLevelUpDesc(weaponId: string, currentLevel: number): string {
   }
 
   return changes.join(', ') || 'Improve stats';
+}
+
+export function rerollUpgradeChoices() {
+  if (uiState.runRerolls <= 0) return;
+  uiState.runRerolls--;
+
+  const player = world.with('isLocalPlayer', 'weaponSlots', 'passiveSlots', 'stats').first;
+  if (!player) return;
+
+  const options = generateUpgradePool(player);
+  const choices = selectWeightedChoices(options, UPGRADE_CHOICES);
+  uiState.upgradeChoices = choices;
+  haptics.select();
+}
+
+export function banishUpgradeOption(optionId: string) {
+  if (uiState.runBanishes <= 0) return;
+  uiState.runBanishes--;
+
+  uiState.bannedUpgradeIds.push(optionId);
+
+  // Trigger a free reroll to refresh the choices
+  const player = world.with('isLocalPlayer', 'weaponSlots', 'passiveSlots', 'stats').first;
+  if (!player) return;
+
+  const options = generateUpgradePool(player);
+  const choices = selectWeightedChoices(options, UPGRADE_CHOICES);
+  uiState.upgradeChoices = choices;
+  haptics.select();
 }

@@ -13,7 +13,7 @@ import { world } from '../core/world';
 import * as THREE from 'three';
 import { addTrauma } from './CameraSystem';
 import { WEAPONS } from '../core/WeaponRegistry';
-import { spawnXP } from '../core/factories';
+import { spawnXP, spawnCredit } from '../core/factories';
 import { triggerGameOver } from './GameManager';
 import { playExplosion, playHurt } from '../core/audio';
 import { reportDamageTaken, reportKill } from '../core/FlowStateManager';
@@ -49,6 +49,26 @@ export function CollisionSystem(scene: THREE.Scene) {
     });
   } catch {
     // Fail silently if physics not yet initialized
+  }
+
+  // 2. LASH SPATIAL TEARS DAMAGE SWEEP
+  for (const tear of world.with('isLashTear', 'position', 'hitList')) {
+    const tearPos = tear.position;
+    for (const enemy of world.with('isEnemy', 'position', 'health')) {
+      if (!enemy.health || enemy.health.current <= 0) continue;
+      if (tear.hitList && tear.hitList.includes(enemy.id || 0)) continue;
+
+      const dx = enemy.position.x - tearPos.x;
+      const dz = enemy.position.z - tearPos.z;
+      const distSq = dx * dx + dz * dz;
+
+      if (distSq < 1.4 * 1.4) {
+        if (tear.hitList) tear.hitList.push(enemy.id || 0);
+        
+        const pushDir = new THREE.Vector3(dx, 0, dz).normalize();
+        applyDamage(enemy, 90, pushDir, 6, scene);
+      }
+    }
   }
 }
 
@@ -169,10 +189,10 @@ function handleEnemyPlayerCollision(enemy: any, player: any, _scene: THREE.Scene
   // I-FRAMES: ignore contact while the post-hit window is active
   if (player.invulnTimer && player.invulnTimer > 0) return;
 
-  // INVULNERABILITY: ignore contact while player is in a menu (paused/upgrading)
+  // INVULNERABILITY: ignore contact while player is in a menu or in Lash's invuln overload state
   if (
     player.isUpgrading ||
-    (player.isLocalPlayer && (uiState.showUpgrade || uiState.gameState === 'PAUSED'))
+    (player.isLocalPlayer && (uiState.showUpgrade || uiState.gameState === 'PAUSED' || (uiState.overloadActive && uiState.selectedCharacter === 'lash')))
   ) {
     return;
   }
@@ -225,10 +245,10 @@ function handleEnemyProjectilePlayerCollision(bullet: any, player: any, scene: T
   // I-FRAMES: ignore contact while the post-hit window is active
   if (player.invulnTimer && player.invulnTimer > 0) return;
 
-  // INVULNERABILITY: ignore contact while player is in a menu (paused/upgrading)
+  // INVULNERABILITY: ignore contact while player is in a menu or in Lash's invuln overload state
   if (
     player.isUpgrading ||
-    (player.isLocalPlayer && (uiState.showUpgrade || uiState.gameState === 'PAUSED'))
+    (player.isLocalPlayer && (uiState.showUpgrade || uiState.gameState === 'PAUSED' || (uiState.overloadActive && uiState.selectedCharacter === 'lash')))
   ) {
     return;
   }
@@ -284,19 +304,27 @@ function applyDamage(
 ) {
   if (!enemy.health) return;
 
+  const player = world.with('isLocalPlayer', 'stats').first;
+  const luckMult = player?.stats?.luck || 1.0;
+
+  // Roll for Critical Hit (base 5% chance, scaled by luck)
+  const critChance = 0.05 * luckMult;
+  const isCrit = Math.random() < critChance;
+  const finalDamage = isCrit ? Math.round(dmg * 2.5) : dmg;
+
   if (enemy.isBoss) {
     // Boss takes real damage and can now be killed. Death/cleanup is owned by
     // FinaleBossSystem (it manages the boss entity, rapier body and victory
     // trigger), so we only apply the damage here — no knockback/stun, and no
     // generic enemy death/XP/chest handling.
-    enemy.health.current -= dmg;
-    spawnDamageNumber(enemy.position, dmg, variant);
+    enemy.health.current -= finalDamage;
+    spawnDamageNumber(enemy.position, finalDamage, variant, isCrit);
     enemy.hitFlashTimer = 0.1;
     return;
   }
 
-  enemy.health.current -= dmg;
-  spawnDamageNumber(enemy.position, dmg, variant);
+  enemy.health.current -= finalDamage;
+  spawnDamageNumber(enemy.position, finalDamage, variant, isCrit);
 
   // Juice
   enemy.hitFlashTimer = 0.1;
@@ -307,48 +335,88 @@ function applyDamage(
 
   // Death
   if (enemy.health.current <= 0) {
-    reportKill();
-    uiState.kills++;
-    spawnImpactFX(enemy.position, scene, weaponId, bulletColor, 6);
-    spawnXP(scene, enemy.position.x, enemy.position.z, enemy.xpValue || 10);
-
-    // === CHEST DROPS BY ENEMY TYPE ===
-    const type = enemy.enemyType;
-    const px = enemy.position.x;
-    const pz = enemy.position.z;
-
-    // Standard elite (1 chest)
-    if (type === 'firewall' || type === 'enforcer' || type === 'warden') {
-      const roll = Math.random();
-      const rarity = roll < 0.7 ? 'common' : roll < 0.95 ? 'rare' : 'epic';
-      spawnChest(scene, px, pz, rarity as 'common' | 'rare' | 'epic');
-      dlog(`[Chest] ${type} dropped ${rarity} chest`);
-    }
-    // Mid-tier elite (1 rare chest)
-    else if (type === 'colossus') {
-      spawnChest(scene, px, pz, 'rare');
-      dlog(`[Chest] ${type} dropped rare chest`);
-    }
-    // Mini-boss HYDRA (3 chests)
-    else if (type === 'hydra') {
-      for (let i = 0; i < 3; i++) {
-        const offset = (i - 1) * 1.5;
-        spawnChest(scene, px + offset, pz, 'rare');
-      }
-      dlog(`[Chest] HYDRA dropped 3 rare chests!`);
-    }
-    // Major boss OVERSEER (5 chests)
-    else if (type === 'overseer') {
-      for (let i = 0; i < 5; i++) {
-        const angle = (i / 5) * Math.PI * 2;
-        const dist = 2;
-        spawnChest(scene, px + Math.cos(angle) * dist, pz + Math.sin(angle) * dist, 'epic');
-      }
-      dlog(`[Chest] OVERSEER dropped 5 epic chests!`);
-    }
-
-    despawn(enemy, scene);
+    handleEnemyDeath(enemy, scene, weaponId, bulletColor);
   }
+}
+
+export function handleEnemyDeath(enemy: any, scene: THREE.Scene, weaponId = '', bulletColor = 0xb0b0b0) {
+  reportKill();
+  uiState.kills++;
+  spawnImpactFX(enemy.position, scene, weaponId, bulletColor, 6);
+  spawnXP(scene, enemy.position.x, enemy.position.z, enemy.xpValue || 10);
+
+  const type = enemy.enemyType;
+  const px = enemy.position.x;
+  const pz = enemy.position.z;
+
+  const player = world.with('isLocalPlayer', 'stats').first;
+  const luckMult = player?.stats?.luck || 1.0;
+
+  // === CREDIT DROPS ===
+  let insideLeakZone = false;
+  for (const zone of world.with('isAnomaly', 'anomalyType', 'size', 'position')) {
+    if (zone.anomalyType === 'leak') {
+      const halfSize = (zone.size || 6.0) / 2;
+      const zx = zone.position.x;
+      const zz = zone.position.z;
+      if (px >= zx - halfSize && px <= zx + halfSize && pz >= zz - halfSize && pz <= zz + halfSize) {
+        insideLeakZone = true;
+        break;
+      }
+    }
+  }
+  const creditMultiplier = insideLeakZone ? 5 : 1;
+
+  // Basic: 5% * luck chance to drop 1 Credit
+  if (Math.random() < 0.05 * luckMult) {
+    spawnCredit(scene, px, pz, 1 * creditMultiplier);
+  }
+
+  // Elites & Mini-bosses drop credits 100% of the time
+  if (type === 'firewall' || type === 'enforcer' || type === 'warden') {
+    const amt = (Math.floor(Math.random() * 6) + 5) * creditMultiplier; // 5-10 base
+    spawnCredit(scene, px, pz, amt);
+  } else if (type === 'colossus') {
+    const amt = (Math.floor(Math.random() * 11) + 20) * creditMultiplier; // 20-30 base
+    spawnCredit(scene, px, pz, amt);
+  } else if (type === 'hydra') {
+    spawnCredit(scene, px, pz, 50 * creditMultiplier);
+  } else if (type === 'overseer') {
+    spawnCredit(scene, px, pz, 100 * creditMultiplier);
+  }
+
+  // === CHEST DROPS BY ENEMY TYPE ===
+  // Standard elite (1 chest)
+  if (type === 'firewall' || type === 'enforcer' || type === 'warden') {
+    const roll = Math.random();
+    const rarity = roll < 0.7 ? 'common' : roll < 0.95 ? 'rare' : 'epic';
+    spawnChest(scene, px, pz, rarity as 'common' | 'rare' | 'epic');
+    dlog(`[Chest] ${type} dropped ${rarity} chest`);
+  }
+  // Mid-tier elite (1 rare chest)
+  else if (type === 'colossus') {
+    spawnChest(scene, px, pz, 'rare');
+    dlog(`[Chest] ${type} dropped rare chest`);
+  }
+  // Mini-boss HYDRA (3 chests)
+  else if (type === 'hydra') {
+    for (let i = 0; i < 3; i++) {
+      const offset = (i - 1) * 1.5;
+      spawnChest(scene, px + offset, pz, 'rare');
+    }
+    dlog(`[Chest] HYDRA dropped 3 rare chests!`);
+  }
+  // Major boss OVERSEER (5 chests)
+  else if (type === 'overseer') {
+    for (let i = 0; i < 5; i++) {
+      const angle = (i / 5) * Math.PI * 2;
+      const dist = 2;
+      spawnChest(scene, px + Math.cos(angle) * dist, pz + Math.sin(angle) * dist, 'epic');
+    }
+    dlog(`[Chest] OVERSEER dropped 5 epic chests!`);
+  }
+
+  despawn(enemy, scene);
 }
 
 function spawnImpactFX(

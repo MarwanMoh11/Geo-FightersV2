@@ -3,9 +3,9 @@ import * as THREE from 'three';
 import { initRenderer } from './core/renderer';
 import { setNetworkScene, sendClientUpdate, sendHostUpdate } from './core/network';
 
-import { spawnPlayer } from './core/factories';
+import { spawnPlayer, initializePlayerForRun } from './core/factories';
 import { getCtx, startMusic } from './core/audio';
-import { isPlaying } from './core/GameState';
+import { isPlaying, onStateChange } from './core/GameState';
 import { uiState } from './core/UIState.svelte.ts';
 import { DEBUG, dlog } from './core/debug';
 import { initPWA } from './core/pwa';
@@ -34,6 +34,8 @@ import { isGameOver } from './systems/GameManager';
 import { FinaleBossSystem } from './systems/FinaleBoss';
 import { PassiveEffectsSystem } from './systems/PassiveEffectsSystem';
 import { OrbitalSystem } from './systems/OrbitalSystem';
+import { OverloadSystem } from './systems/OverloadSystem';
+import { AnomalySystem } from './systems/AnomalySystem';
 import { updateFPS } from './systems/MainMenuSystem';
 import { initLevel } from './systems/LevelSystem';
 import { initMinimap, MinimapSystem } from './systems/MinimapSystem';
@@ -115,6 +117,12 @@ preloadTextures(updateLoadingProgress).then(async () => {
   // --- INITIAL SETUP ---
   spawnPlayer(scene);
   initDamageNumbers();
+
+  onStateChange((newState, oldState) => {
+    if (newState === 'PLAYING' && oldState === 'MENU') {
+      initializePlayerForRun(scene);
+    }
+  });
 
   const { mount } = await import('svelte');
   const App = (await import('./ui/App.svelte')).default;
@@ -228,6 +236,8 @@ function startGameLoop(
     LootSystem(dt, scene);
     PassiveEffectsSystem(dt); // Apply health regen, etc.
     OrbitalSystem(dt); // Update orbital weapon projectiles
+    OverloadSystem(dt, scene);
+    AnomalySystem(dt, scene);
 
     if (!isMultiplayer || isHost) {
       ChestSystem(dt, scene);

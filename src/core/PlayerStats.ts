@@ -1,3 +1,5 @@
+import { uiState } from './UIState.svelte';
+
 /**
  * PlayerStats - Global stat pool for Vampire Survivors-style scaling
  *
@@ -49,9 +51,10 @@ export const STAT_CAPS = {
 
 // --- DEFAULT STATS ---
 export function getDefaultStats(): PlayerStats {
+  const up = uiState.permanentUpgrades || { might: 0, maxHealth: 0, armor: 0, moveSpeed: 0, magnet: 0, luck: 0 };
   return {
     // Offensive (all start at 1.0 = no bonus)
-    might: 1.0,
+    might: 1.0 + up.might * 0.1, // +10% per level
     area: 1.0,
     cooldown: 0.0, // 0% reduction
     projectileSpeed: 1.0,
@@ -59,14 +62,14 @@ export function getDefaultStats(): PlayerStats {
     amount: 0,
 
     // Defensive
-    armor: 0,
-    maxHealth: 0,
+    armor: up.armor * 1, // +1 Armor per level
+    maxHealth: up.maxHealth * 10, // +10 Max Health per level
     recovery: 0,
 
     // Utility
-    moveSpeed: 1.0,
-    magnet: 1.0,
-    luck: 1.0,
+    moveSpeed: 1.0 + up.moveSpeed * 0.05, // +5% speed per level
+    magnet: 1.0 + up.magnet * 0.2, // +20% pickup area per level
+    luck: 1.0 + up.luck * 0.1, // +10% luck per level
 
     // Difficulty
     curse: 1.0,

@@ -306,10 +306,6 @@ export function spawnPlayer(
   playerGroup.add(shadow);
 
   // 1. CREATE PLAYER with VS-style inventory
-  const starterWeaponId = 'pulse_repeater';
-  const starterWeapon = WEAPONS[starterWeaponId];
-  const starterStats = getWeaponStatsAtLevel(starterWeaponId, 1)!;
-
   const player = world.add({
     isPlayer: true,
     isLocalPlayer: isLocal,
@@ -328,7 +324,7 @@ export function spawnPlayer(
     modifiers: { damageAdd: 0, fireRateMult: 1.0, speedMult: 1.0 },
 
     // VS-style inventory
-    weaponSlots: [{ weaponId: starterWeaponId, level: 1 }],
+    weaponSlots: [{ weaponId: 'pulse_repeater', level: 1 }],
     passiveSlots: [],
     stats: getDefaultStats(),
   });
@@ -340,7 +336,11 @@ export function spawnPlayer(
     player.collider = collider;
   }
 
-  // 2. EQUIP STARTER WEAPON from registry
+  // 2. EQUIP STARTER WEAPON from registry (will be overridden on run start via initializePlayerForRun)
+  const starterWeaponId = 'pulse_repeater';
+  const starterWeapon = WEAPONS[starterWeaponId];
+  const starterStats = getWeaponStatsAtLevel(starterWeaponId, 1)!;
+
   world.add({
     isWeapon: true,
     weaponId: starterWeaponId,
@@ -367,6 +367,168 @@ export function spawnPlayer(
       bulletPierce: starterStats.pierce,
       bulletExplodeRadius: starterWeapon.explodeRadius,
     },
+  });
+}
+
+/**
+ * Initialize (or reset) the player and their starting stats/weapons at the start of a run.
+ */
+export function initializePlayerForRun(scene: THREE.Scene) {
+  const player = world.with('isLocalPlayer', 'transform', 'health').first;
+  if (!player) return;
+
+  const characterId = uiState.selectedCharacter;
+  const baseStats = getDefaultStats(); // Includes permanent upgrades bought from Shop
+
+  // Initialize active run-specific states
+  uiState.runRerolls = uiState.permanentUpgrades.rerolls || 0;
+  uiState.runBanishes = uiState.permanentUpgrades.banishes || 0;
+  uiState.bannedUpgradeIds = [];
+  uiState.overloadCharge = 0;
+  uiState.overloadActive = false;
+  uiState.overloadTimer = 0;
+
+  // 1. Reset Position / Rapier Physics Translation
+  player.position.set(0, 0.5, 0);
+  if (player.transform) {
+    player.transform.position.copy(player.position);
+    player.transform.rotation.set(0, 0, 0);
+  }
+  if (player.rigidBody) {
+    player.rigidBody.setTranslation({ x: 0, y: 0.5, z: 0 }, true);
+    player.rigidBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
+  }
+
+  // 2. Clear Existing Weapons Owned by This Player
+  const oldWeapons = Array.from(world.with('isWeapon', 'ownerId'));
+  for (const w of oldWeapons) {
+    if (w.ownerId === player.id) {
+      world.remove(w);
+    }
+  }
+
+  // 3. Clear Existing Orbitals Owned by This Player
+  const oldOrbitals = Array.from(world.with('isOrbital', 'orbitalData'));
+  for (const orb of oldOrbitals) {
+    if (orb.orbitalData?.ownerId === player.id) {
+      if (orb.transform) scene.remove(orb.transform);
+      world.remove(orb);
+    }
+  }
+
+  // 4. Character Configurations
+  let starterWeaponId = 'pulse_repeater';
+  let charStats = { ...baseStats };
+  let baseHp = 100;
+
+  if (characterId === 'lash') {
+    starterWeaponId = 'monowire_lash';
+    baseHp = 90;
+    charStats.moveSpeed *= 1.15;
+    charStats.luck *= 1.10;
+  } else if (characterId === 'rail') {
+    starterWeaponId = 'smart_rail_needles';
+    baseHp = 120;
+    charStats.might *= 1.15;
+    charStats.moveSpeed *= 0.90;
+    charStats.armor += 1;
+  }
+
+  const finalMaxHp = baseHp + baseStats.maxHealth;
+  if (player.health) {
+    player.health.max = finalMaxHp;
+    player.health.current = finalMaxHp;
+  }
+
+  player.level = 1;
+  player.xp = 0;
+  player.xpMax = 100;
+  player.score = 0;
+  player.stats = charStats;
+
+  player.weaponSlots = [{ weaponId: starterWeaponId, level: 1 }];
+  player.passiveSlots = [];
+
+  // Update visual core color based on character
+  if (player.transform) {
+    const core = player.transform.getObjectByName('core') as THREE.Mesh;
+    if (core && core.material) {
+      const mat = core.material as THREE.MeshStandardMaterial;
+      if (characterId === 'lash') {
+        mat.color.setHex(0xff00ff);
+        mat.emissive.setHex(0xff00ff);
+      } else if (characterId === 'rail') {
+        mat.color.setHex(0x00ff88);
+        mat.emissive.setHex(0x00ff88);
+      } else {
+        mat.color.setHex(0x00d5ff);
+        mat.emissive.setHex(0x00d5ff);
+      }
+    }
+  }
+
+  // Sync Svelte uiState
+  uiState.health = { current: finalMaxHp, max: finalMaxHp };
+  uiState.level = 1;
+  uiState.xp = 0;
+  uiState.xpMax = 100;
+  uiState.score = 0;
+  uiState.kills = 0;
+  uiState.creditsCollected = 0;
+  uiState.weaponSlots = player.weaponSlots;
+  uiState.passiveSlots = player.passiveSlots;
+
+  // Equip Starter Weapon
+  const starterWeapon = WEAPONS[starterWeaponId];
+  const starterStats = getWeaponStatsAtLevel(starterWeaponId, 1)!;
+  world.add({
+    isWeapon: true,
+    weaponId: starterWeaponId,
+    ownerId: player.id,
+    position: new THREE.Vector3(),
+    velocity: new THREE.Vector3(),
+
+    weapon: {
+      cooldownTimer: 0,
+      fireRate: starterStats.cooldown,
+      damage: starterStats.damage,
+      bulletSpeed: starterWeapon.baseSpeed,
+      bulletColor: starterWeapon.color,
+      bulletLifetime: starterWeapon.baseLifetime,
+      category: starterWeapon.category,
+
+      bulletWidth: starterWeapon.bulletWidth,
+      bulletLength: starterWeapon.bulletLength,
+      visualStyle: starterWeapon.visualStyle,
+
+      bulletCount: starterStats.projectiles,
+      bulletSpread: starterWeapon.baseSpread,
+      knockback: starterWeapon.baseKnockback,
+      bulletPierce: starterStats.pierce,
+      bulletExplodeRadius: starterWeapon.explodeRadius,
+    },
+  });
+}
+
+/**
+ * Spawn a physical cyber credit item
+ */
+export function spawnCredit(_scene: THREE.Scene, x: number, z: number, value: number = 1) {
+  // Determine size based on value
+  const size = value >= 50 ? 0.9 : value >= 10 ? 0.65 : 0.45;
+
+  return world.add({
+    isCredit: true,
+    position: new THREE.Vector3(x, 0.3, z),
+    velocity: new THREE.Vector3(
+      (Math.random() - 0.5) * 4,
+      Math.random() * 5 + 3, // upward pop
+      (Math.random() - 0.5) * 4,
+    ),
+    creditValue: value,
+    size,
+    rotationX: Math.random() * Math.PI,
+    rotationY: Math.random() * Math.PI,
   });
 }
 
