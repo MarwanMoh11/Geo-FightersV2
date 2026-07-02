@@ -5,7 +5,14 @@ import { getGameState, setGameState, onStateChange } from '../core/GameState';
 import type { GameStateType } from '../core/GameState';
 import type { GameSettings } from '../core/SettingsManager';
 import { getSettings, loadSettings, onSettingsChange } from '../core/SettingsManager';
-import { setMasterGain, setMusicGain, setSFXGain, resumeMusic } from '../core/audio';
+import {
+  setMasterGain,
+  setMusicGain,
+  setSFXGain,
+  resumeMusic,
+  setMusicIntensity,
+  setMusicDucked,
+} from '../core/audio';
 
 import { uiState } from '../core/UIState.svelte.ts';
 
@@ -42,9 +49,15 @@ function handleStateChange(newState: GameStateType, _oldState: GameStateType): v
   // Handle music based on state
   if (newState === 'PLAYING' && getSettings().musicEnabled) {
     resumeMusic();
-  } else if (newState === 'MENU' || newState === 'PAUSED') {
-    // Keep music playing in menu/pause, just don't start it
   }
+
+  // Menu plays a stripped ambient bed; UISystem ramps intensity during a run.
+  if (newState === 'MENU') {
+    setMusicIntensity(0.2);
+  }
+
+  // Muffle (don't stop) the soundtrack while paused.
+  setMusicDucked(newState === 'PAUSED');
 }
 
 // --- MENU LISTENERS ---
