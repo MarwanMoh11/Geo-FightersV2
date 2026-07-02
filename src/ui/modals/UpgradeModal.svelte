@@ -1,8 +1,13 @@
 <script lang="ts">
   import { uiState } from '../../core/UIState.svelte.ts';
-  import { selectUpgrade, rerollUpgradeChoices, banishUpgradeOption, type UpgradeOption } from '../../systems/UpgradeSystem';
+  import {
+    selectUpgrade,
+    rerollUpgradeChoices,
+    banishUpgradeOption,
+    type UpgradeOption,
+  } from '../../systems/UpgradeSystem';
   import { fade, fly } from 'svelte/transition';
-  import { playLevelUp } from '../../core/audio';
+  import { playUpgradeSelect } from '../../core/audio';
   import { haptics } from '../../core/haptics';
 
   let selectedId: string | null = $state(null);
@@ -19,7 +24,7 @@
   function handleSelect(option: UpgradeOption) {
     if (selectedId) return; // a pick is already being committed
     selectedId = option.id;
-    playLevelUp();
+    playUpgradeSelect();
     haptics.select();
 
     // Let the selection flash play before applying + resuming the game
@@ -122,9 +127,16 @@
               {/if}
               <p class="item-desc">{option.description}</p>
             </div>
-            
+
             {#if uiState.runBanishes > 0 && option.type !== 'health'}
-              <button class="banish-card-btn" onclick={(e) => { e.stopPropagation(); banishUpgradeOption(option.id); }} title="Banish this item from the run">
+              <button
+                class="banish-card-btn"
+                onclick={(e) => {
+                  e.stopPropagation();
+                  banishUpgradeOption(option.id);
+                }}
+                title="Banish this item from the run"
+              >
                 🚫 Banish
               </button>
             {/if}

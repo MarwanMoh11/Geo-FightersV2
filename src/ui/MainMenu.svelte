@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { uiState } from '../core/UIState.svelte.ts';
+  import { uiState, showToast } from '../core/UIState.svelte.ts';
   import { setGameState } from '../core/GameState';
-  import { resumeAudioContext, playMenuBuy } from '../core/audio';
+  import { resumeAudioContext, playMenuBuy, playMenuClick } from '../core/audio';
   import { hostRoom, joinRoom, disconnectNetwork } from '../core/network';
   import { promptInstall } from '../core/pwa';
   import { haptics } from '../core/haptics';
@@ -13,51 +13,110 @@
   let showShop = $state(false);
 
   const UPGRADES_LIST = [
-    { id: 'might', name: 'Output Wattage (Might)', desc: '+10% Damage Output per level', max: 5, baseCost: 150, costScale: 2.0 },
-    { id: 'maxHealth', name: 'Armor Shell (HP)', desc: '+10 Max HP per level', max: 5, baseCost: 100, costScale: 1.8 },
-    { id: 'armor', name: 'Reinforced Core (Armor)', desc: '+1 Damage Reduction per level', max: 5, baseCost: 200, costScale: 2.2 },
-    { id: 'moveSpeed', name: 'Overclocked Thrusters (Speed)', desc: '+5% Speed per level', max: 5, baseCost: 120, costScale: 1.9 },
-    { id: 'magnet', name: 'Tractor Beam (Magnet)', desc: '+20% Magnet Range per level', max: 5, baseCost: 80, costScale: 1.7 },
-    { id: 'luck', name: 'Precision Luck', desc: '+10% Critical & Rarity Chance', max: 5, baseCost: 150, costScale: 2.0 },
-    { id: 'rerolls', name: 'Defrag Reroll', desc: '+1 Level-Up Reroll per run', max: 3, baseCost: 200, costScale: 2.2 },
-    { id: 'banishes', name: 'System Banish', desc: '+1 Level-Up Banish per run', max: 3, baseCost: 250, costScale: 2.5 },
+    {
+      id: 'might',
+      name: 'Output Wattage (Might)',
+      desc: '+10% Damage Output per level',
+      max: 5,
+      baseCost: 150,
+      costScale: 2.0,
+    },
+    {
+      id: 'maxHealth',
+      name: 'Armor Shell (HP)',
+      desc: '+10 Max HP per level',
+      max: 5,
+      baseCost: 100,
+      costScale: 1.8,
+    },
+    {
+      id: 'armor',
+      name: 'Reinforced Core (Armor)',
+      desc: '+1 Damage Reduction per level',
+      max: 5,
+      baseCost: 200,
+      costScale: 2.2,
+    },
+    {
+      id: 'moveSpeed',
+      name: 'Overclocked Thrusters (Speed)',
+      desc: '+5% Speed per level',
+      max: 5,
+      baseCost: 120,
+      costScale: 1.9,
+    },
+    {
+      id: 'magnet',
+      name: 'Tractor Beam (Magnet)',
+      desc: '+20% Magnet Range per level',
+      max: 5,
+      baseCost: 80,
+      costScale: 1.7,
+    },
+    {
+      id: 'luck',
+      name: 'Precision Luck',
+      desc: '+10% Critical & Rarity Chance',
+      max: 5,
+      baseCost: 150,
+      costScale: 2.0,
+    },
+    {
+      id: 'rerolls',
+      name: 'Defrag Reroll',
+      desc: '+1 Level-Up Reroll per run',
+      max: 3,
+      baseCost: 200,
+      costScale: 2.2,
+    },
+    {
+      id: 'banishes',
+      name: 'System Banish',
+      desc: '+1 Level-Up Banish per run',
+      max: 3,
+      baseCost: 250,
+      costScale: 2.5,
+    },
   ];
 
-  function getUpgradeCost(up: typeof UPGRADES_LIST[0], level: number) {
+  function getUpgradeCost(up: (typeof UPGRADES_LIST)[0], level: number) {
     return Math.floor(up.baseCost * Math.pow(up.costScale, level));
   }
 
   function buyUpgrade(upId: string) {
-    const up = UPGRADES_LIST.find(u => u.id === upId);
+    const up = UPGRADES_LIST.find((u) => u.id === upId);
     if (!up) return;
     const currentLvl = uiState.permanentUpgrades[upId] || 0;
     if (currentLvl >= up.max) return;
-    
+
     const cost = getUpgradeCost(up, currentLvl);
     if (uiState.credits >= cost) {
       uiState.credits -= cost;
       uiState.permanentUpgrades[upId] = currentLvl + 1;
-      
+
       // Save to localStorage
       localStorage.setItem('geo_credits', JSON.stringify(uiState.credits));
       localStorage.setItem('geo_permanent_upgrades', JSON.stringify(uiState.permanentUpgrades));
-      
+
       playMenuBuy();
       haptics.select();
     }
   }
 
   async function handleInstall() {
+    playMenuClick();
     haptics.select();
     await promptInstall();
   }
 
   function handlePlaySolo() {
+    playMenuClick();
     haptics.select();
     showCharacterSelect = true;
   }
 
   function selectCharacter(charId: 'cypher' | 'lash' | 'rail') {
+    playMenuClick();
     uiState.selectedCharacter = charId;
     localStorage.setItem('geo_selected_character', JSON.stringify(charId));
     showCharacterSelect = false;
@@ -72,25 +131,29 @@
   }
 
   async function handleHost() {
+    playMenuClick();
     await resumeAudioContext();
     hostRoom();
   }
 
   async function handleJoin() {
     if (!roomCodeInput.trim()) {
-      alert('Please enter a room code.');
+      showToast('Please enter a room code.');
       return;
     }
+    playMenuClick();
     await resumeAudioContext();
     joinRoom(roomCodeInput.trim().toUpperCase());
   }
 
   function handleCancelMp() {
+    playMenuClick();
     disconnectNetwork();
     showMpOptions = false;
   }
 
   function openSettings() {
+    playMenuClick();
     uiState.showSettings = true;
   }
 
@@ -233,7 +296,11 @@
                   <span class="level-text">LV {level}/{up.max}</span>
                 </div>
               </div>
-              <button class="buy-btn" class:disabled={maxed || uiState.credits < cost} onclick={() => buyUpgrade(up.id)}>
+              <button
+                class="buy-btn"
+                class:disabled={maxed || uiState.credits < cost}
+                onclick={() => buyUpgrade(up.id)}
+              >
                 {#if maxed}
                   MAXED
                 {:else}
@@ -263,7 +330,9 @@
           <div class="char-icon core-cyan">💠</div>
           <h3 class="char-name">CYPHER</h3>
           <p class="char-weapon">MK-1 Pulse Repeater</p>
-          <p class="char-desc">Fires directional energy bolts. Extremely balanced and reliable for long deployments.</p>
+          <p class="char-desc">
+            Fires directional energy bolts. Extremely balanced and reliable for long deployments.
+          </p>
           <div class="char-stats">
             <span>HP: 100</span>
             <span>SPD: 100%</span>
@@ -276,7 +345,10 @@
           <div class="char-icon core-magenta">🧬</div>
           <h3 class="char-name">LASH</h3>
           <p class="char-weapon">Monowire Lash</p>
-          <p class="char-desc">Swift and agile combatant using slicing filaments. High speed and critical hits, but lower protection.</p>
+          <p class="char-desc">
+            Swift and agile combatant using slicing filaments. High speed and critical hits, but
+            lower protection.
+          </p>
           <div class="char-stats">
             <span>HP: 90</span>
             <span class="green">SPD: 115%</span>
@@ -289,7 +361,10 @@
           <div class="char-icon core-green">⚙️</div>
           <h3 class="char-name">RAIL</h3>
           <p class="char-weapon">Smart Rail Needles</p>
-          <p class="char-desc">Heavily armored defensive platform deploying rail Needles. Slow velocity, but high destruction.</p>
+          <p class="char-desc">
+            Heavily armored defensive platform deploying rail Needles. Slow velocity, but high
+            destruction.
+          </p>
           <div class="char-stats">
             <span class="green">HP: 120</span>
             <span class="red">SPD: 90%</span>
@@ -299,7 +374,9 @@
         </button>
       </div>
 
-      <button class="btn back-btn" onclick={() => (showCharacterSelect = false)}>Back to Menu</button>
+      <button class="btn back-btn" onclick={() => (showCharacterSelect = false)}
+        >Back to Menu</button
+      >
     </div>
   {/if}
 </div>
@@ -821,7 +898,7 @@
     font-size: 1.8rem;
     margin-bottom: 0.2rem;
   }
-  
+
   .char-name {
     font-family: var(--font-heading);
     font-size: 1.2rem;
@@ -858,13 +935,13 @@
     color: var(--color-text-dim);
     margin-top: 0.4rem;
   }
-  
+
   .char-stats span {
     background: rgba(255, 255, 255, 0.04);
     padding: 0.15rem 0.4rem;
     border-radius: var(--r-sm);
   }
-  
+
   .char-stats span.green {
     color: var(--color-accent);
     background: rgba(0, 255, 85, 0.06);
