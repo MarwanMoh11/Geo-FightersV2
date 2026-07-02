@@ -101,20 +101,6 @@
           <div class="panel">
             <div class="setting-item">
               <div class="info">
-                <label for="shakeToggle">SCREEN SHAKE</label>
-              </div>
-              <button
-                id="shakeToggle"
-                class="toggle"
-                class:checked={settings.screenShake}
-                onclick={() => updateSetting('screenShake', !settings.screenShake)}
-                aria-label="Toggle Screen Shake"
-              >
-                <div class="thumb"></div>
-              </button>
-            </div>
-            <div class="setting-item">
-              <div class="info">
                 <label for="fpsToggle">SHOW FPS</label>
               </div>
               <button
@@ -161,7 +147,7 @@
             </div>
             <div class="setting-item">
               <div class="info">
-                <label for="invertToggle">INVERT CONTROLS (L/R)</label>
+                <label for="invertToggle">ABILITY BUTTON ON LEFT</label>
               </div>
               <button
                 id="invertToggle"
