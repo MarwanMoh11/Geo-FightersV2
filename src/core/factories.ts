@@ -324,7 +324,6 @@ export function spawnPlayer(
     xpMax: 100,
     score: 0,
     health: { current: 100, max: 100 },
-    modifiers: { damageAdd: 0, fireRateMult: 1.0, speedMult: 1.0 },
 
     // VS-style inventory
     weaponSlots: [{ weaponId: 'pulse_repeater', level: 1 }],
