@@ -1,7 +1,12 @@
 import './style.css';
 import * as THREE from 'three';
 import { initRenderer } from './core/renderer';
-import { setNetworkScene, sendClientUpdate, sendHostUpdate } from './core/network';
+import {
+  setNetworkScene,
+  sendClientUpdate,
+  sendHostUpdate,
+  NetSmoothingSystem,
+} from './core/network';
 
 import { spawnPlayer, initializePlayerForRun } from './core/factories';
 import { getCtx, startMusic, muteForBackground, unmuteFromBackground } from './core/audio';
@@ -47,6 +52,7 @@ import { DebugSystem } from './systems/DebugSystem';
 import { initParticleComputeSystem, ParticleComputeSystem } from './systems/ParticleComputeSystem';
 import { initEnemyComputeSystem, EnemyComputeSystem } from './systems/EnemyComputeSystem';
 import { initDamageNumbers, DamageNumberSystem } from './systems/DamageNumberSystem';
+import { CoopSystem } from './systems/CoopSystem';
 
 // --- AUDIO UNLOCK & MUSIC START ---
 const unlockAudio = () => {
@@ -261,8 +267,13 @@ function startGameLoop(
     EnemyComputeSystem(dt, renderer);
 
     ParticleSystem(dt, scene);
-    LootSystem(dt, scene);
-    PassiveEffectsSystem(dt); // Apply health regen, etc.
+    // Loot (XP/credit collection + leveling) is HOST-authoritative in co-op:
+    // clients running it locally double-collected the synced XP mirrors and
+    // triggered duplicate level-ups on top of the host's.
+    if (!isMultiplayer || isHost) {
+      LootSystem(dt, scene);
+    }
+    PassiveEffectsSystem(dt); // Apply health regen, etc. (host/solo only inside)
     OrbitalSystem(dt); // Update orbital weapon projectiles
     OverloadSystem(dt, scene);
     AnomalySystem(dt, scene);
@@ -270,6 +281,10 @@ function startGameLoop(
     if (!isMultiplayer || isHost) {
       ChestSystem(dt, scene);
       FinaleBossSystem(dt, scene);
+      CoopSystem(dt); // Ghost downs + proximity revives (co-op host)
+    } else {
+      // Client: ease remote players/enemies/boss toward their net targets
+      NetSmoothingSystem(dt);
     }
 
     // Sync network states (throttled to 30Hz to prevent packet flooding)

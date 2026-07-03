@@ -56,6 +56,9 @@ export function WeaponSystem(dt: number, scene: THREE.Scene) {
     // - Host runs firing logic for ALL players.
     if (!isLocal && !isHost) continue;
 
+    // Ghosts don't shoot: dead players roam as spectators until revived
+    if (player.health && player.health.current <= 0) continue;
+
     for (const entity of world.with('weapon', 'ownerId')) {
       if (entity.ownerId !== player.id) continue;
       if (!entity.weapon) continue;
@@ -251,6 +254,7 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
     const projectile = world.add({
       isProjectile: true,
       weaponId: weaponEntity.weaponId,
+      ownerConnId: owner.connectionId, // kill credit (co-op scoreboard)
       position: mesh.position,
       velocity: velocity,
       lifeTimer: 0,

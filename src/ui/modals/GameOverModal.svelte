@@ -17,6 +17,13 @@
   );
   let nearest = $derived(uiState.gameState === 'GAME_OVER' ? getNearestLocked(3) : []);
 
+  // Co-op scoreboard: everyone in the party, top fragger first
+  let scoreboard = $derived(
+    uiState.isMultiplayer && uiState.party.length > 1
+      ? [...uiState.party].sort((a, b) => b.kills - a.kills)
+      : [],
+  );
+
   let minutes = $derived(
     Math.floor(uiState.gameTime / 60)
       .toString()
@@ -67,6 +74,20 @@
           <span class="value pink">×{uiState.bestCombo}</span>
         </div>
       </div>
+
+      {#if scoreboard.length > 0}
+        <div class="squad-board">
+          <div class="squad-heading">SQUAD SCOREBOARD</div>
+          {#each scoreboard as p, i (p.connectionId)}
+            <div class="squad-row" class:me={p.isLocal}>
+              <span class="squad-rank tnum">#{i + 1}</span>
+              <span class="squad-name">{p.name}{p.isLocal ? ' (YOU)' : ''}</span>
+              <span class="squad-kills tnum">☠ {p.kills}</span>
+              <span class="squad-lv tnum">LV{p.level}</span>
+            </div>
+          {/each}
+        </div>
+      {/if}
 
       {#if earned.length > 0}
         <div class="unlock-section">
@@ -242,6 +263,56 @@
     letter-spacing: 0.12em;
     text-transform: uppercase;
     opacity: 0.7;
+  }
+
+  /* --- Squad scoreboard (co-op) --- */
+  .squad-board {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    text-align: left;
+  }
+  .squad-heading {
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    color: var(--color-text-dim);
+  }
+  .squad-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.45rem 0.7rem;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    font-size: 0.72rem;
+  }
+  .squad-row.me {
+    border-color: var(--color-border-bright);
+    background: rgba(54, 230, 255, 0.07);
+  }
+  .squad-rank {
+    flex: 0 0 auto;
+    font-weight: 800;
+    color: var(--color-text-dim);
+  }
+  .squad-name {
+    flex: 1;
+    font-weight: 700;
+    color: var(--color-text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .squad-kills {
+    flex: 0 0 auto;
+    font-weight: 700;
+    color: var(--color-primary);
+  }
+  .squad-lv {
+    flex: 0 0 auto;
+    color: var(--color-text-dim);
   }
 
   /* --- Unlock teases --- */

@@ -1,5 +1,6 @@
 import { world } from '../core/world';
 import { setGameState } from '../core/GameState';
+import { broadcastGameEvent } from '../core/network';
 import { uiState, announce } from '../core/UIState.svelte.ts';
 import { stopMusic, playExplosion, playGameOver, playVictory } from '../core/audio';
 import { addTrauma } from './CameraSystem';
@@ -19,6 +20,10 @@ function captureFinalStats() {
 export function triggerGameOver() {
   if (isGameOver || isVictory) return; // Prevent double trigger
   isGameOver = true;
+
+  // Co-op: the host decides the run is over (all players down) and tells
+  // every client so their game-over screens open in sync. No-op otherwise.
+  broadcastGameEvent('game-over');
 
   captureFinalStats();
   // Dying in endless mode still counts as a victory — the 10:00 win already
@@ -47,7 +52,9 @@ export function triggerVictory() {
   // First victory moment: offer to stay in the system (endless mode) instead
   // of ending immediately. The choice modal pauses via the same flag the
   // upgrade screen uses; resolveVictoryChoice() continues or ends the run.
-  if (!uiState.endlessMode) {
+  // Co-op skips the choice — one player picking endless while others wait
+  // would desync the party, so a shared win extracts everyone together.
+  if (!uiState.endlessMode && !uiState.isMultiplayer) {
     uiState.showVictoryChoice = true;
     return;
   }

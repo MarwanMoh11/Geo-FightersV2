@@ -1,14 +1,17 @@
 import { io, Socket } from 'socket.io-client';
 import * as THREE from 'three';
 import { world } from './world';
-import { uiState, showToast } from './UIState.svelte';
+import { uiState, showToast, announce } from './UIState.svelte';
 import { setGameState } from './GameState';
 import { spawnPlayer, spawnEnemy, spawnXP } from './factories';
-import { spawnChest } from '../systems/ChestSystem';
+import { spawnChest, openChestLocally } from '../systems/ChestSystem';
 import { spawnClientBoss, removeClientBoss } from '../systems/FinaleBoss';
 import { removeBody } from './RapierWorld';
-import { playLevelUp } from './audio';
+import { playLevelUp, playChestOpen } from './audio';
 import { triggerLevelUp } from '../systems/UpgradeSystem';
+import { getCharacter } from './CharacterRegistry';
+import { WEAPONS, getWeaponStatsAtLevel } from './WeaponRegistry';
+import type { WeaponSlot } from './world';
 
 let socket: Socket | null = null;
 let activeScene: THREE.Scene | null = null;
@@ -16,8 +19,8 @@ let activeScene: THREE.Scene | null = null;
 // Map to track remote player entities: connectionId -> entity
 export const remotePlayers = new Map<string, any>();
 
-// Rebuild the live party roster (used by the co-op teammate HUD) from a host/client
-// players payload. Each entry: { c: connId, n: name, h: hp, m: maxHp, l: level }.
+// Rebuild the live party roster (co-op teammate HUD + end-of-run scoreboard)
+// from a host players payload. Entry fields: { c, n, h, m, l, k, d, r, ch }.
 function rebuildPartyFromPayload(players: any[]) {
   uiState.party = players.map((p: any) => ({
     connectionId: p.c,
@@ -25,6 +28,10 @@ function rebuildPartyFromPayload(players: any[]) {
     hp: Math.round(p.h ?? 0),
     maxHp: Math.round(p.m ?? 100),
     level: p.l || 1,
+    kills: p.k || 0,
+    dead: p.d === 1,
+    revivePct: Math.round((p.r || 0) * 100),
+    character: p.ch || 'cypher',
     isLocal: p.c === socket?.id,
   }));
 }
@@ -60,7 +67,13 @@ export function getSocket(): Socket | null {
   return socket;
 }
 
-// 1. Host Creates Room
+export function getLocalConnectionId(): string | undefined {
+  return socket?.id;
+}
+
+// --- PARTY / LOBBY API ---
+
+// 1. Host creates a lobby
 export function hostRoom() {
   uiState.networkStatus = 'connecting';
 
@@ -69,10 +82,13 @@ export function hostRoom() {
     setupSocketListeners();
   }
 
-  socket.emit('host-create-room');
+  socket.emit('host-create-room', {
+    name: uiState.playerName || 'HOST',
+    character: uiState.selectedCharacter,
+  });
 }
 
-// 2. Client Joins Room
+// 2. Client joins a lobby
 export function joinRoom(roomCode: string) {
   uiState.networkStatus = 'connecting';
 
@@ -81,7 +97,24 @@ export function joinRoom(roomCode: string) {
     setupSocketListeners();
   }
 
-  socket.emit('client-join-room', { roomCode, name: uiState.playerName });
+  socket.emit('client-join-room', {
+    roomCode,
+    name: uiState.playerName || 'PLAYER',
+    character: uiState.selectedCharacter,
+  });
+}
+
+/** Toggle own ready state / change character while in the lobby. */
+export function setLobbyState(update: { ready?: boolean; character?: string; name?: string }) {
+  if (!socket || socket.disconnected) return;
+  if (update.character) uiState.selectedCharacter = update.character;
+  socket.emit('lobby-set', { roomCode: uiState.roomCode, ...update });
+}
+
+/** Host: start the run for the whole party (server enforces all-ready). */
+export function startPartyGame() {
+  if (!socket || socket.disconnected || !uiState.isHost) return;
+  socket.emit('start-game', { roomCode: uiState.roomCode });
 }
 
 // 3. Disconnect from room/server
@@ -101,6 +134,7 @@ export function disconnectNetwork() {
   uiState.roomCode = '';
   uiState.networkStatus = 'disconnected';
   uiState.party = [];
+  uiState.lobby = { players: [], started: false };
   remotePlayers.clear();
 }
 
@@ -126,6 +160,102 @@ function removeRemotePlayer(connId: string) {
   uiState.remotePlayersCount = remotePlayers.size;
 }
 
+/** Tint a player avatar's core to their chosen character color. */
+function applyCharacterTint(entity: any, characterId: string) {
+  entity.character = characterId;
+  const character = getCharacter(characterId);
+  const core = entity.transform?.getObjectByName('core') as THREE.Mesh | undefined;
+  if (core && core.material) {
+    const mat = core.material as THREE.MeshStandardMaterial;
+    mat.color.setHex(character.color);
+    if (mat.emissive) mat.emissive.setHex(character.color);
+  }
+}
+
+/** Spawn (or fetch) a remote player avatar by connection id. */
+function ensureRemotePlayer(connId: string, x: number, z: number, name?: string, ch?: string): any {
+  let player = remotePlayers.get(connId);
+  if (!player && activeScene) {
+    spawnPlayer(activeScene, false, connId, x, z);
+    player = Array.from(world.with('isPlayer')).find((e: any) => e.connectionId === connId);
+    if (player) {
+      player.playerName = name || 'PLAYER';
+      player.kills = 0;
+      if (ch) applyCharacterTint(player, ch);
+      remotePlayers.set(connId, player);
+      uiState.remotePlayersCount = remotePlayers.size;
+    }
+  }
+  return player;
+}
+
+/**
+ * HOST: make a remote player's weapon entities match their reported weaponSlots.
+ * The host simulates every player's weapons authoritatively — without this,
+ * upgrades a client picks never exist host-side and deal zero damage.
+ */
+function reconcileRemoteWeapons(player: any, slots: WeaponSlot[]) {
+  const owned = new Map<string, any>();
+  for (const w of world.with('isWeapon', 'ownerId', 'weapon')) {
+    if (w.ownerId === player.id) owned.set(w.weaponId || '', w);
+  }
+
+  const slotIds = new Set(slots.map((s) => s.weaponId));
+
+  for (const slot of slots) {
+    const def = WEAPONS[slot.weaponId];
+    const stats = getWeaponStatsAtLevel(slot.weaponId, slot.level);
+    if (!def || !stats) continue;
+
+    const existing = owned.get(slot.weaponId);
+    if (existing) {
+      // Level/evolution changes: refresh numbers in place
+      existing.weapon.fireRate = stats.cooldown;
+      existing.weapon.damage = stats.damage;
+      existing.weapon.bulletCount = stats.projectiles;
+      existing.weapon.bulletPierce = stats.pierce;
+    } else {
+      world.add({
+        isWeapon: true,
+        weaponId: slot.weaponId,
+        ownerId: player.id,
+        position: new THREE.Vector3(),
+        velocity: new THREE.Vector3(),
+        weapon: {
+          cooldownTimer: 0.5,
+          fireRate: stats.cooldown,
+          damage: stats.damage,
+          bulletSpeed: def.baseSpeed,
+          bulletColor: def.color,
+          bulletLifetime: def.baseLifetime,
+          category: def.category,
+          bulletWidth: def.bulletWidth,
+          bulletLength: def.bulletLength,
+          visualStyle: def.visualStyle,
+          bulletCount: stats.projectiles,
+          bulletSpread: def.baseSpread,
+          knockback: def.baseKnockback,
+          bulletPierce: stats.pierce,
+          bulletExplodeRadius: def.explodeRadius,
+        },
+      });
+    }
+  }
+
+  // Remove host-side weapons the client no longer has (evolution replaced them)
+  for (const [weaponId, entity] of owned) {
+    if (!slotIds.has(weaponId)) {
+      world.remove(entity);
+      // Clear that weapon's orbitals too
+      for (const orbital of world.with('isOrbital', 'orbitalData')) {
+        if (orbital.orbitalData?.ownerId === player.id && orbital.weaponId === weaponId) {
+          orbital.lifeTimer = -1;
+        }
+      }
+    }
+  }
+}
+
 function setupSocketListeners() {
   if (!socket) return;
 
@@ -137,10 +267,9 @@ function setupSocketListeners() {
     uiState.isMultiplayer = true;
     uiState.isHost = true;
     uiState.roomCode = roomCode;
-    uiState.networkStatus = 'waiting_for_players';
+    uiState.networkStatus = 'in_lobby';
     console.log(`[Network] Room created: ${roomCode} (Hosting)`);
 
-    // Set local player connection ID to socket ID
     const local = world.with('isLocalPlayer').first;
     if (local && socket) {
       local.connectionId = socket.id;
@@ -151,17 +280,53 @@ function setupSocketListeners() {
     uiState.isMultiplayer = true;
     uiState.isHost = false;
     uiState.roomCode = roomCode;
-    uiState.networkStatus = 'connected';
-    console.log(`[Network] Joined room: ${roomCode} (Client)`);
+    uiState.networkStatus = 'in_lobby';
+    console.log(`[Network] Joined lobby: ${roomCode} (Client)`);
 
-    // Set local player connection ID to socket ID
     const local = world.with('isLocalPlayer').first;
     if (local && socket) {
       local.connectionId = socket.id;
     }
+  });
 
-    // Start game for client
+  // Lobby roster changed (join/leave/ready/character)
+  socket.on('lobby-state', (lobby: any) => {
+    uiState.lobby = {
+      players: lobby.players,
+      started: lobby.started,
+    };
+  });
+
+  // Host pressed START — the whole party begins simultaneously
+  socket.on('game-started', (lobby: any) => {
+    uiState.lobby = { players: lobby.players, started: true };
+    uiState.networkStatus = 'connected';
+
+    // Host spawns remote avatars now, spread around the spawn point, tinted
+    // by each player's chosen character.
+    if (uiState.isHost && activeScene) {
+      let i = 1;
+      for (const p of lobby.players) {
+        if (p.connectionId === socket?.id) continue;
+        const angle = (i / Math.max(1, lobby.players.length - 1)) * Math.PI * 2;
+        const player = ensureRemotePlayer(
+          p.connectionId,
+          Math.cos(angle) * 3,
+          Math.sin(angle) * 3,
+          p.name,
+          p.character,
+        );
+        if (player) player.playerName = p.name;
+        i++;
+      }
+    }
+
     setGameState('PLAYING');
+    announce('PARTY DEPLOYED');
+  });
+
+  socket.on('start-rejected', ({ message }) => {
+    showToast(message || 'Cannot start yet.');
   });
 
   socket.on('join-error', ({ message }) => {
@@ -169,32 +334,10 @@ function setupSocketListeners() {
     disconnectNetwork();
   });
 
-  socket.on('player-joined', ({ playerId, name }) => {
-    console.log(`[Network] Player joined: ${playerId} (${name || 'PLAYER'})`);
-    uiState.networkStatus = 'connected';
-
-    // Spawn player avatar on host side
-    if (activeScene) {
-      // Spawn at offset from center
-      const offsetPos = (remotePlayers.size + 1) * 3;
-      spawnPlayer(activeScene, false, playerId, offsetPos, offsetPos);
-      // Wait, spawnPlayer returns nothing, but it adds it to world. Let's find it.
-      const playerEntity = Array.from(world.with('isPlayer')).find(
-        (e: any) => e.connectionId === playerId,
-      );
-      if (playerEntity) {
-        playerEntity.playerName = name || 'PLAYER';
-        remotePlayers.set(playerId, playerEntity);
-        uiState.remotePlayersCount = remotePlayers.size;
-      }
-    }
-
-    // Start game for host
-    setGameState('PLAYING');
-  });
-
   socket.on('player-left', ({ playerId }) => {
     console.log(`[Network] Player left: ${playerId}`);
+    const p = remotePlayers.get(playerId);
+    if (p?.playerName) showToast(`${p.playerName} left the party`);
     removeRemotePlayer(playerId);
   });
 
@@ -206,54 +349,66 @@ function setupSocketListeners() {
 
   // Client updates on Host
   socket.on('client-state-update', ({ playerId, state }) => {
-    let player = remotePlayers.get(playerId);
-    if (!player) {
-      // If we somehow missed the join event, spawn them now
-      if (activeScene) {
-        spawnPlayer(activeScene, false, playerId, state.position.x, state.position.z);
-        player = Array.from(world.with('isPlayer')).find((e: any) => e.connectionId === playerId);
-        if (player) {
-          remotePlayers.set(playerId, player);
-          uiState.remotePlayersCount = remotePlayers.size;
-        }
+    const player = ensureRemotePlayer(
+      playerId,
+      state.position?.x ?? 0,
+      state.position?.z ?? 0,
+      state.name,
+      state.character,
+    );
+    if (!player) return;
+
+    // Dead players are host-authoritative: ignore client-reported position
+    // while dead so the ghost stays where it fell for revives... actually
+    // ghosts may roam; accept position but never health.
+    if (player.position) {
+      player.position.set(state.position.x, 0.5, state.position.z);
+      if (player.transform) {
+        player.transform.position.copy(player.position);
       }
     }
+    if (player.velocity) {
+      player.velocity.set(state.velocity.x, 0, state.velocity.z);
+    }
+    if (player.aimTarget) {
+      player.aimTarget.set(state.aimTarget.x, 0.5, state.aimTarget.z);
+    }
+    if (player.input) {
+      player.input.x = state.input.x;
+      player.input.y = state.input.y;
+      player.input.isShooting = state.input.isShooting;
+    }
+    player.facingRight = state.facingRight;
+    // NOTE: CURRENT health is HOST-authoritative in co-op (the host simulates
+    // all damage; accepting client HP would let a lagging client "undo" hits).
+    // MAX health is build-derived (protocols/shop), so the client reports it.
+    if (player.health && typeof state.healthMax === 'number' && state.healthMax > 0) {
+      if (player.health.max !== state.healthMax) {
+        const wasFull = player.health.current >= player.health.max;
+        player.health.max = state.healthMax;
+        player.health.current = wasFull
+          ? state.healthMax
+          : Math.min(player.health.current, state.healthMax);
+      }
+    }
+    player.level = state.level;
+    player.score = state.score;
+    player.isUpgrading = state.isUpgrading;
+    if (state.name) player.playerName = state.name;
+    if (state.character && player.character !== state.character) {
+      applyCharacterTint(player, state.character);
+    }
+    if (state.stats) {
+      player.stats = state.stats;
+    }
 
-    if (player) {
-      // Update inputs, aiming targets, and stats
-      if (player.position) {
-        player.position.set(state.position.x, 0.5, state.position.z);
-        if (player.transform) {
-          player.transform.position.copy(player.position);
-        }
-      }
-      if (player.velocity) {
-        player.velocity.set(state.velocity.x, 0, state.velocity.z);
-      }
-      if (player.aimTarget) {
-        player.aimTarget.set(state.aimTarget.x, 0.5, state.aimTarget.z);
-      }
-      if (player.input) {
-        player.input.x = state.input.x;
-        player.input.y = state.input.y;
-        player.input.isShooting = state.input.isShooting;
-      }
-      player.facingRight = state.facingRight;
-      if (player.health) {
-        player.health.current = state.health.current;
-        player.health.max = state.health.max;
-      }
-      player.level = state.level;
-      player.score = state.score;
-      player.isUpgrading = state.isUpgrading;
-      if (state.name) player.playerName = state.name;
-      if (state.stats) {
-        player.stats = state.stats;
-      }
-
-      // Update inventory weapon slots
-      if (state.weaponSlots) {
+    // Reconcile the client's build so their upgrades actually fire host-side
+    if (state.weaponSlots) {
+      const sig = state.weaponSlots.map((s: WeaponSlot) => `${s.weaponId}:${s.level}`).join(';');
+      if (player._weaponSig !== sig) {
+        player._weaponSig = sig;
         player.weaponSlots = state.weaponSlots;
+        reconcileRemoteWeapons(player, state.weaponSlots);
       }
     }
   });
@@ -273,18 +428,21 @@ function setupSocketListeners() {
       const pScore = pData.s;
 
       if (pConnId === socket?.id) {
-        // This is the local player on the client: update health/XP from Host authoritative state
+        // Local player on a client: host is authoritative for health/XP/level
         const local = world.with('isLocalPlayer', 'health', 'level').first;
         if (local) {
           if (local.health) {
             local.health.current = pHealth.current;
             local.health.max = pHealth.max;
           }
+          // XP bar mirrors the host's tally (clients don't collect XP locally)
+          if (pData.x !== undefined) local.xp = pData.x;
+          if (pData.xm !== undefined) local.xpMax = pData.xm;
+          local.kills = pData.k || 0;
+          uiState.kills = local.kills ?? 0;
           if (pLevel > (local.level || 1)) {
-            // Host determined this client leveled up! Trigger local Svelte upgrade modal.
+            // Host says we leveled — open the local upgrade modal
             local.level = pLevel;
-            local.xp = 0;
-            local.xpMax = Math.floor((local.xpMax || 100) * 1.2);
             playLevelUp();
             triggerLevelUp();
           }
@@ -292,19 +450,12 @@ function setupSocketListeners() {
         return;
       }
 
-      // Remote player on client
-      let player = remotePlayers.get(pConnId);
-      if (!player) {
-        spawnPlayer(activeScene!, false, pConnId, pPos.x, pPos.z);
-        player = Array.from(world.with('isPlayer')).find((e: any) => e.connectionId === pConnId);
-        if (player) {
-          remotePlayers.set(pConnId, player);
-          uiState.remotePlayersCount = remotePlayers.size;
-        }
-      }
-
+      // Remote player on client — smooth toward the host position instead of
+      // snapping at network rate (NetSmoothingSystem lerps every frame)
+      const player = ensureRemotePlayer(pConnId, pPos.x, pPos.z, pData.n, pData.ch);
       if (player) {
-        player.position.set(pPos.x, 0.5, pPos.z);
+        player.netX = pPos.x;
+        player.netZ = pPos.z;
         player.velocity.set(pVel.x, 0, pVel.z);
         player.facingRight = pFacingRight;
         if (player.health) {
@@ -313,6 +464,8 @@ function setupSocketListeners() {
         }
         player.level = pLevel;
         player.score = pScore;
+        player.kills = pData.k || 0;
+        if (pData.ch && player.character !== pData.ch) applyCharacterTint(player, pData.ch);
       }
     });
 
@@ -325,9 +478,7 @@ function setupSocketListeners() {
     }
 
     // 2. Sync Enemies
-    // Skip the boss here — it is flagged `isEnemy` but synced separately (section 2b).
-    // Without this guard the boss would never match a host enemy entry and would be
-    // despawned as "obsolete" on every frame.
+    // Skip the boss here — it is flagged `isEnemy` but synced separately (2b).
     const enemyMap = new Map<number, any>();
     for (const e of world.with('isEnemy')) {
       if (e.isBoss) continue;
@@ -344,26 +495,24 @@ function setupSocketListeners() {
 
       let enemy = enemyMap.get(eId);
       if (!enemy) {
-        // Spawn local representation
+        // Spawn local representation at the reported spot (no lerp-in from 0,0)
         enemy = spawnEnemy(activeScene!, ePos.x, ePos.z, eType);
         if (enemy) {
           enemy.id = eId;
+          enemy.position.set(ePos.x, 0.5, ePos.z);
         }
       }
 
       if (enemy) {
-        enemy.position.set(ePos.x, 0.5, ePos.z);
-        if (enemy.transform) {
-          enemy.transform.position.copy(enemy.position);
-        }
+        // Smooth toward host position rather than snapping at 30Hz
+        enemy.netX = ePos.x;
+        enemy.netZ = ePos.z;
         if (enemy.health) {
           enemy.health.current = eHealth.current;
           enemy.health.max = eHealth.max;
         }
         enemy.facingRight = eFacingRight;
         enemy.hitFlashTimer = eHitFlashTimer;
-
-        // Remove from tracking map so we know it was handled
         enemyMap.delete(eId);
       }
     });
@@ -383,15 +532,14 @@ function setupSocketListeners() {
       const boss =
         existingBoss ?? spawnClientBoss(activeScene!, bx, bz, state.boss.h, state.boss.m);
       if (boss) {
-        boss.position.set(bx, 0, bz);
-        if (boss.transform) boss.transform.position.copy(boss.position);
+        boss.netX = bx;
+        boss.netZ = bz;
         if (boss.health) {
           boss.health.current = state.boss.h;
           boss.health.max = state.boss.m;
         }
       }
     } else if (existingBoss) {
-      // Host no longer reports a boss (killed or escaped) — remove the mirror.
       removeClientBoss(activeScene!, existingBoss);
     }
 
@@ -463,7 +611,7 @@ function setupSocketListeners() {
     uiState.gameTime = state.gameTime;
     uiState.bossHealth = state.bossHealth;
 
-    // 6. Party roster (names + health) for the co-op teammate HUD
+    // 6. Party roster (names, health, kills, dead/revive) for HUD + scoreboard
     rebuildPartyFromPayload(state.players);
   });
 
@@ -471,15 +619,10 @@ function setupSocketListeners() {
   socket.on('remote-shoot', (pData: any) => {
     if (!activeScene) return;
 
-    // The host already simulates every player's weapons authoritatively (it owns the
-    // real projectiles + damage), so rendering remote-shoot visuals there would just
-    // double every client's bullets. Only non-host clients need these visuals.
+    // The host already simulates every player's weapons authoritatively; only
+    // non-host clients need these visuals.
     if (uiState.isHost) return;
 
-    // Match the shooter strictly by connectionId. Entity `id`s are assigned per-client
-    // and collide across machines (every player's local avatar tends to be id 1), so the
-    // old `|| e.id === pData.ownerId` fallback frequently matched the WRONG entity (often
-    // our own local player) — which is why teammates' bullets never appeared.
     const shooterConnId = pData.connectionId;
     if (!shooterConnId || shooterConnId === socket?.id) return; // ignore our own shots
 
@@ -488,21 +631,39 @@ function setupSocketListeners() {
     );
     if (!remoteEntity) return; // avatar not synced yet; drop this shot
 
-    // Import dynamically to avoid circular references
     import('../systems/WeaponSystem').then(({ fireWeaponRemote }) => {
       fireWeaponRemote(activeScene!, remoteEntity, pData.weaponId, pData.dir);
     });
   });
 
-  // Game events (loot collection, boss spawns, victory/gameover)
-  socket.on('game-event', ({ eventType }) => {
-    if (eventType === 'game-over') {
-      setGameState('GAME_OVER');
-      uiState.isGameOver = true;
-    } else if (eventType === 'victory') {
-      setGameState('GAME_OVER');
-      uiState.isGameOver = true;
-      uiState.isVictory = true;
+  // Game events: run ending, chest ceremonies, revives, deaths
+  socket.on('game-event', ({ eventType, data }) => {
+    switch (eventType) {
+      case 'game-over':
+        setGameState('GAME_OVER');
+        uiState.isGameOver = true;
+        break;
+      case 'victory':
+        setGameState('GAME_OVER');
+        uiState.isGameOver = true;
+        uiState.isVictory = true;
+        break;
+      case 'chest-opened':
+        // Targeted at THIS client: you touched the chest — roll your rewards
+        playChestOpen();
+        openChestLocally(data?.rarity || 'common', activeScene ?? undefined);
+        break;
+      case 'chest-toast':
+        if (data?.name && data.connectionId !== socket?.id) {
+          showToast(`📦 ${data.name} opened a ${data.rarity || ''} chest`);
+        }
+        break;
+      case 'player-down':
+        if (data?.name) announce(`${data.name} IS DOWN`);
+        break;
+      case 'player-revived':
+        if (data?.name) announce(`${data.name} REVIVED`);
+        break;
     }
   });
 }
@@ -543,13 +704,11 @@ export function sendClientUpdate() {
           isShooting: localPlayer.input?.isShooting || false,
         },
         facingRight: localPlayer.facingRight,
-        health: {
-          current: localPlayer.health?.current || 100,
-          max: localPlayer.health?.max || 100,
-        },
+        healthMax: localPlayer.health?.max || 100,
         level: localPlayer.level || 1,
         score: localPlayer.score || 0,
         name: uiState.playerName,
+        character: uiState.selectedCharacter,
         weaponSlots: localPlayer.weaponSlots || [],
         isUpgrading: uiState.showUpgrade || uiState.gameState === 'PAUSED',
         stats: localPlayer.stats,
@@ -563,16 +722,12 @@ export function sendHostUpdate() {
   if (!socket || socket.disconnected || !uiState.isHost) return;
 
   // Gather players info
-  // NOTE: `facingRight` is intentionally NOT part of this query. It is an optional
-  // field that is never assigned on entities (3D models face via transform.rotation),
-  // and world.with() requires every listed component to be defined. Including it here
-  // filtered out ALL players, so the host transmitted an empty player list and clients
-  // never saw the host or other players.
+  // NOTE: `facingRight` is intentionally NOT part of this query — it is never
+  // assigned on 3D entities and world.with() requires defined components.
   const players = Array.from(
     world.with('isPlayer', 'position', 'velocity', 'health', 'level', 'score'),
   ).map((p: any) => ({
     c: p.connectionId,
-    // Host's own name lives in uiState; remote players carry it on the entity.
     n: p.isLocalPlayer ? uiState.playerName || 'HOST' : p.playerName || 'PLAYER',
     p: [Math.round(p.position.x * 10) / 10, Math.round(p.position.z * 10) / 10],
     v: [Math.round(p.velocity.x * 10) / 10, Math.round(p.velocity.z * 10) / 10],
@@ -581,17 +736,18 @@ export function sendHostUpdate() {
     m: Math.round(p.health?.max || 100),
     l: p.level || 1,
     s: p.score || 0,
+    k: p.kills || 0,
+    d: p.health && p.health.current <= 0 ? 1 : 0,
+    r: Math.round((p.reviveProgress || 0) * 100) / 100,
+    x: Math.round(p.xp || 0),
+    xm: Math.round(p.xpMax || 100),
+    ch: p.isLocalPlayer ? uiState.selectedCharacter : p.character || 'cypher',
   }));
 
   // Keep the host's own party roster in sync from the same data it broadcasts.
   rebuildPartyFromPayload(players);
 
-  // Gather active enemies
-  // NOTE: `facingRight` is intentionally NOT part of this query (see players note above).
-  // Including it filtered out ALL enemies, so the host sent an empty enemy list and the
-  // joining client never saw any enemies.
-  // The boss is also flagged `isEnemy`, but it has no `enemyType` and a bespoke model,
-  // so it is excluded here and synced separately via the `boss` field below.
+  // Gather active enemies (boss excluded — synced separately below)
   const enemies = Array.from(world.with('isEnemy', 'position', 'health'))
     .filter((e: any) => !e.isBoss)
     .map((e: any) => ({
@@ -657,12 +813,55 @@ export function broadcastShoot(projectileData: {
   });
 }
 
-// 7. Broadcast game ending events
-export function broadcastGameEvent(eventType: 'game-over' | 'victory', data: any = {}) {
+// 7. Broadcast game events to the whole room (host only)
+export function broadcastGameEvent(
+  eventType: 'game-over' | 'victory' | 'chest-toast' | 'player-down' | 'player-revived',
+  data: any = {},
+) {
   if (!socket || socket.disconnected || !uiState.isHost) return;
   socket.emit('sync-game-event', {
     roomCode: uiState.roomCode,
     eventType,
     data,
   });
+}
+
+// 8. Targeted event: host → one specific client (chest ceremonies etc.)
+export function sendDirectEvent(targetConnId: string, eventType: string, data: any = {}) {
+  if (!socket || socket.disconnected || !uiState.isHost) return;
+  socket.emit('direct-event', {
+    roomCode: uiState.roomCode,
+    targetId: targetConnId,
+    eventType,
+    data,
+  });
+}
+
+// --- NETWORK SMOOTHING (clients) ---
+// Remote entities receive positions at ~30Hz; snapping them there looks
+// stuttery. Instead updates write netX/netZ targets and this system eases
+// positions toward them every frame.
+const NET_LERP_RATE = 12; // higher = snappier, lower = floatier
+
+export function NetSmoothingSystem(dt: number) {
+  if (!uiState.isMultiplayer || uiState.isHost) return;
+  const t = Math.min(1, dt * NET_LERP_RATE);
+
+  for (const e of world.with('netX', 'position')) {
+    const dx = (e.netX ?? e.position.x) - e.position.x;
+    const dz = (e.netZ ?? e.position.z) - e.position.z;
+    // Teleport if desync is huge (spawn, knockback burst) — lerping across
+    // the map reads worse than a snap.
+    if (dx * dx + dz * dz > 15 * 15) {
+      e.position.x = e.netX ?? e.position.x;
+      e.position.z = e.netZ ?? e.position.z;
+    } else {
+      e.position.x += dx * t;
+      e.position.z += dz * t;
+    }
+    if (e.transform) {
+      e.transform.position.x = e.position.x;
+      e.transform.position.z = e.position.z;
+    }
+  }
 }

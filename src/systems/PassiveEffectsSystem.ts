@@ -1,25 +1,30 @@
 /**
- * PassiveEffectsSystem - Applies passive stat bonuses to the player
+ * PassiveEffectsSystem - Applies passive stat bonuses to players
  *
  * Handles:
- * - Health recovery (HP regen per second)
- * - Max health bonus (applied once when passive is acquired)
+ * - Health recovery (HP regen per second) for EVERY player, using each
+ *   player's own synced stats (previously only the first player regenerated)
+ * - Skipped on multiplayer clients: the host is authoritative for health and
+ *   already applies each player's recovery stat host-side
  */
 
 import { world } from '../core/world';
+import { uiState } from '../core/UIState.svelte.ts';
 
 export function PassiveEffectsSystem(dt: number) {
-  const player = world.with('isPlayer', 'health', 'stats').first;
-  if (!player || !player.health || !player.stats) return;
+  if (uiState.isMultiplayer && !uiState.isHost) return;
 
-  // 1. Health Recovery (HP Regen)
-  const recovery = player.stats.recovery || 0;
-  if (recovery > 0 && player.health.current < player.health.max) {
-    const healAmount = recovery * dt;
-    player.health.current = Math.min(player.health.max, player.health.current + healAmount);
+  for (const player of world.with('isPlayer', 'health', 'stats')) {
+    const health = player.health;
+    const stats = player.stats;
+    if (!health || !stats) continue;
+
+    // Ghosts don't regenerate — they need a teammate revive
+    if (health.current <= 0) continue;
+
+    const recovery = stats.recovery || 0;
+    if (recovery > 0 && health.current < health.max) {
+      health.current = Math.min(health.max, health.current + recovery * dt);
+    }
   }
-
-  // 2. Max Health Bonus (additive)
-  // This is applied incrementally in UpgradeSystem when passive is acquired
-  // We don't need to re-apply it every frame
 }
