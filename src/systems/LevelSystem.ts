@@ -5,6 +5,8 @@ import * as THREE from 'three';
 import { getCurrentLevel, type Obstacle, type LevelConfig } from '../core/LevelData';
 import { createStaticCuboid, isRapierInitialized } from '../core/RapierWorld';
 import { dlog } from '../core/debug';
+import { getQualityProfile } from '../core/quality';
+import { onSettingsChange } from '../core/SettingsManager';
 
 // Store references for cleanup
 let groundMesh: THREE.Mesh | null = null;
@@ -220,28 +222,40 @@ function spawnObstacle(scene: THREE.Scene, obstacle: Obstacle): void {
 }
 
 /**
- * Add neon lighting to enhance cyberpunk atmosphere
+ * Add neon lighting to enhance cyberpunk atmosphere.
+ * Point lights are expensive per-fragment on old GPUs, so the whole set is
+ * toggled off on the Low quality tier (live, when the setting changes).
  */
+const neonLights: THREE.PointLight[] = [];
+
 function addNeonLighting(scene: THREE.Scene): void {
   // Cyan accent light (Neon Courtyard area) - boosted
   const cyanLight = new THREE.PointLight(0x00ffff, 1.0, 300);
   cyanLight.position.set(100, 25, 100);
-  scene.add(cyanLight);
 
   // Magenta accent light (Industrial Gate area) - boosted
   const magentaLight = new THREE.PointLight(0xff0055, 0.8, 250);
   magentaLight.position.set(-300, 20, -300);
-  scene.add(magentaLight);
 
   // Orange accent light (Scrap Yards) - boosted
   const orangeLight = new THREE.PointLight(0xff6600, 0.6, 280);
   orangeLight.position.set(-300, 20, 100);
-  scene.add(orangeLight);
 
   // Blue accent light (Main Street) - boosted
   const blueLight = new THREE.PointLight(0x0066ff, 0.6, 300);
   blueLight.position.set(100, 20, -300);
-  scene.add(blueLight);
+
+  neonLights.length = 0;
+  neonLights.push(cyanLight, magentaLight, orangeLight, blueLight);
+
+  const applyLightQuality = () => {
+    const enabled = getQualityProfile().neonLights;
+    for (const light of neonLights) light.visible = enabled;
+  };
+
+  for (const light of neonLights) scene.add(light);
+  applyLightQuality();
+  onSettingsChange(applyLightQuality);
 }
 
 /**

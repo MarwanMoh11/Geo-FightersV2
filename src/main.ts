@@ -10,6 +10,7 @@ import { uiState } from './core/UIState.svelte.ts';
 import { DEBUG, dlog } from './core/debug';
 import { initPWA } from './core/pwa';
 import { initPortal, portalLoadingFinished } from './core/portal';
+import { updateDynamicResolution } from './core/quality';
 
 // Register service worker + install-prompt brokering as early as possible.
 initPWA();
@@ -198,10 +199,15 @@ function startGameLoop(
   function animate() {
     requestAnimationFrame(animate);
 
-    const dt = Math.min(clock.getDelta(), MAX_DT);
+    const rawDt = clock.getDelta();
+    const dt = Math.min(rawDt, MAX_DT);
 
     // Update FPS counter
     updateFPS(performance.now());
+
+    // Adaptive resolution: feed the un-clamped frame time so sustained slowness
+    // scales the render resolution down (and back up when there's headroom)
+    updateDynamicResolution(rawDt);
 
     const isMultiplayer = uiState.isMultiplayer;
 

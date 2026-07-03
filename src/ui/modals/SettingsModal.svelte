@@ -101,6 +101,34 @@
           <div class="panel">
             <div class="setting-item">
               <div class="info">
+                <label for="qualitySelect">GRAPHICS QUALITY</label>
+              </div>
+              <div class="segmented" id="qualitySelect">
+                {#each ['auto', 'low', 'medium', 'high'] as level (level)}
+                  <button
+                    class="seg-btn"
+                    class:active={settings.qualityLevel === level}
+                    onclick={() =>
+                      updateSetting('qualityLevel', level as GameSettings['qualityLevel'])}
+                  >
+                    {level.toUpperCase()}
+                  </button>
+                {/each}
+              </div>
+              <p class="hint">
+                {#if settings.qualityLevel === 'auto'}
+                  Adapts resolution automatically to keep the game smooth on any device.
+                {:else if settings.qualityLevel === 'low'}
+                  Low graphics mode — best for very old or weak devices.
+                {:else if settings.qualityLevel === 'medium'}
+                  Balanced visuals and performance.
+                {:else}
+                  Maximum visuals — needs a capable device.
+                {/if}
+              </p>
+            </div>
+            <div class="setting-item">
+              <div class="info">
                 <label for="fpsToggle">SHOW FPS</label>
               </div>
               <button
@@ -275,6 +303,42 @@
     font-family: var(--font-mono);
     font-size: 0.8rem;
     color: var(--color-primary);
+  }
+
+  /* Segmented control (graphics quality) */
+  .segmented {
+    display: flex;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 0.25rem;
+    border-radius: 10px;
+    gap: 0.25rem;
+  }
+
+  .seg-btn {
+    all: unset;
+    flex: 1;
+    text-align: center;
+    padding: 0.55rem 0;
+    font-size: 0.6rem;
+    font-family: var(--font-mono);
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: all var(--transition-fast);
+    color: var(--color-text-dim);
+  }
+
+  .seg-btn.active {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--color-primary);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  }
+
+  .hint {
+    margin: 0;
+    font-size: 0.62rem;
+    line-height: 1.4;
+    color: var(--color-text-dim);
   }
 
   /* Slider */
