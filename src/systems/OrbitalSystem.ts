@@ -12,22 +12,32 @@ const ORBIT_SPEED = 2.5; // Radians per second
 let globalOrbitAngle = 0;
 
 export function OrbitalSystem(dt: number) {
-  const player = world.with('isPlayer', 'position').first;
-  if (!player) return;
+  // Map every player by id so each orbital can orbit its own owner. Previously
+  // this only used the first player, so in co-op a second player's orbitals
+  // were skipped entirely (frozen at spawn) and any that did update circled the
+  // wrong player.
+  const playersById = new Map<number, { position: THREE.Vector3 }>();
+  for (const p of world.with('isPlayer', 'position')) {
+    if (p.id !== undefined) playersById.set(p.id, p);
+  }
+  if (playersById.size === 0) return;
 
   // Update global angle
   globalOrbitAngle += ORBIT_SPEED * dt;
 
-  // Get all orbitals for the player
+  // Get all orbitals
   const orbitals = Array.from(world.with('isOrbital', 'position', 'transform', 'orbitalData'));
 
   for (let i = 0; i < orbitals.length; i++) {
     const entity = orbitals[i];
-    if (!entity.orbitalData || entity.orbitalData.ownerId !== player.id) continue;
+    const ownerId = entity.orbitalData?.ownerId;
+    if (ownerId === undefined) continue;
+    const owner = playersById.get(ownerId);
+    if (!owner) continue;
 
-    // Find other orbitals of the same weapon type to space them evenly
+    // Find other orbitals of the same owner + weapon type to space them evenly
     const sameWeaponOrbitals = orbitals.filter(
-      (o) => o.orbitalData?.ownerId === player.id && o.weaponId === entity.weaponId,
+      (o) => o.orbitalData?.ownerId === ownerId && o.weaponId === entity.weaponId,
     );
     const idx = sameWeaponOrbitals.indexOf(entity);
     const total = sameWeaponOrbitals.length;
@@ -43,9 +53,9 @@ export function OrbitalSystem(dt: number) {
     const speedMult = isBlade ? 0.85 : 1.0;
     const angle = globalOrbitAngle * direction * speedMult + angleOffset;
 
-    // Position around player
-    entity.position.x = player.position.x + Math.cos(angle) * orbitRadius;
-    entity.position.z = player.position.z + Math.sin(angle) * orbitRadius;
+    // Position around the orbital's own owner
+    entity.position.x = owner.position.x + Math.cos(angle) * orbitRadius;
+    entity.position.z = owner.position.z + Math.sin(angle) * orbitRadius;
     entity.position.y = 0.8;
 
     // Rotate mesh to face tangent
