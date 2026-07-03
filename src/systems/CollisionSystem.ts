@@ -203,6 +203,8 @@ function handleEnemyPlayerCollision(enemy: any, player: any, _scene: THREE.Scene
     player.isUpgrading ||
     (player.isLocalPlayer &&
       (uiState.showUpgrade ||
+        uiState.showChestCeremony ||
+        uiState.showProtocolChoice ||
         uiState.gameState === 'PAUSED' ||
         (uiState.overloadActive && uiState.selectedCharacter === 'lash')))
   ) {
@@ -262,6 +264,8 @@ function handleEnemyProjectilePlayerCollision(bullet: any, player: any, scene: T
     player.isUpgrading ||
     (player.isLocalPlayer &&
       (uiState.showUpgrade ||
+        uiState.showChestCeremony ||
+        uiState.showProtocolChoice ||
         uiState.gameState === 'PAUSED' ||
         (uiState.overloadActive && uiState.selectedCharacter === 'lash')))
   ) {

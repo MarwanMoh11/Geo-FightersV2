@@ -8,6 +8,7 @@ import { WEAPONS, getWeaponStatsAtLevel } from './WeaponRegistry';
 import { getTierForValue, bankXP, MAX_ACTIVE_XP } from './XPManager';
 import { createDynamicBody, isRapierInitialized } from './RapierWorld';
 import { uiState } from './UIState.svelte';
+import { partyHpMultiplier } from './difficulty';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 
 // Player/enemy collision radii
@@ -1239,10 +1240,11 @@ export function spawnEnemy(
   group.position.set(x, 0, z);
 
   // Corruption hardens enemies (+15% HP per level); endless mode keeps
-  // scaling them after the 10:00 victory.
+  // scaling them after the 10:00 victory; co-op makes them tankier per extra
+  // living fighter (neutral 1.0 in solo).
   const corruptionHp = 1 + uiState.corruption * 0.15;
   const endlessHp = uiState.endlessMode ? 1 + Math.max(0, uiState.gameTime - 600) / 180 : 1;
-  const maxHp = Math.round(stats.hp * corruptionHp * endlessHp);
+  const maxHp = Math.round(stats.hp * corruptionHp * endlessHp * partyHpMultiplier());
 
   // 1. Build and attach the custom 3D model
   const enemyMesh = buildEnemyMesh(type, stats.size);

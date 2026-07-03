@@ -710,7 +710,14 @@ export function sendClientUpdate() {
         name: uiState.playerName,
         character: uiState.selectedCharacter,
         weaponSlots: localPlayer.weaponSlots || [],
-        isUpgrading: uiState.showUpgrade || uiState.gameState === 'PAUSED',
+        // Tell the host when we're in ANY blocking modal so it grants us the
+        // co-op safety bubble (no contact damage while we pick upgrades / open
+        // a chest / choose a protocol). The host reads this into isUpgrading.
+        isUpgrading:
+          uiState.showUpgrade ||
+          uiState.showChestCeremony ||
+          uiState.showProtocolChoice ||
+          uiState.gameState === 'PAUSED',
         stats: localPlayer.stats,
       },
     });
