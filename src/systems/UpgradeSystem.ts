@@ -22,6 +22,9 @@ import {
   getAllPassives,
 } from '../core/PassiveRegistry';
 import type { PlayerStats } from '../core/PlayerStats';
+import { getDefaultStats } from '../core/PlayerStats';
+import { getCharacter } from '../core/CharacterRegistry';
+import { getProtocol } from '../core/ProtocolRegistry';
 
 import { uiState } from '../core/UIState.svelte.ts';
 import { getWeaponIcon, getPassiveIcon } from '../ui/icons';
@@ -423,22 +426,23 @@ function levelUpPassive(player: any, passiveId: string) {
 
 // --- STAT RECALCULATION ---
 function recalculateStats(player: any) {
-  // Reset to base stats
-  const stats: PlayerStats = {
-    might: 1.0,
-    area: 1.0,
-    cooldown: 0.0,
-    projectileSpeed: 1.0,
-    duration: 1.0,
-    amount: 0,
-    armor: 0,
-    maxHealth: 0,
-    recovery: 0,
-    moveSpeed: 1.0,
-    magnet: 1.0,
-    luck: 1.0,
-    curse: 1.0,
-  };
+  // Start from the run's *base* stats — permanent shop upgrades folded in by
+  // getDefaultStats(), then the selected character's identity modifiers — and
+  // layer passive bonuses on top. Previously this reset to vanilla constants,
+  // which silently wiped every shop upgrade and character bonus the moment the
+  // player picked any level-up or opened a chest.
+  const stats: PlayerStats = getDefaultStats();
+  const character = getCharacter(uiState.selectedCharacter);
+  character.applyStats(stats);
+
+  // Re-apply the run's active Data Protocol. Its stat effects (glass_kernel's
+  // +80% might, vampiric_cache's +2 recovery, etc.) live only inside player.stats,
+  // so without this they were wiped on the first level-up/chest — the healing
+  // "stopped" and the damage buff vanished. (HP-max changes are written straight
+  // to health.max in selectProtocol and persist on their own.) Applied before
+  // passives so multiplicative protocol effects scale the base, not the passives.
+  const protocol = getProtocol(uiState.activeProtocolId);
+  if (protocol) protocol.apply(stats);
 
   // Apply all passive bonuses
   const passiveSlots: PassiveSlot[] = player.passiveSlots || [];
