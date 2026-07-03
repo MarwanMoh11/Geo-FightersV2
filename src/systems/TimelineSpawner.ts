@@ -21,6 +21,7 @@ import {
 } from '../core/SpawnTimeline';
 import type { FormationType, SpawnEntry } from '../core/SpawnTimeline';
 import { uiState } from '../core/UIState.svelte.ts';
+import { partySpawnMultiplier } from '../core/difficulty';
 import * as THREE from 'three';
 
 // --- CONFIGURATION ---
@@ -89,8 +90,15 @@ export function TimelineSpawnerSystem(dt: number, scene: THREE.Scene): void {
     const corruptionMult = 1 + uiState.corruption * 0.25;
     const curseMult = (player as { stats?: { curse?: number } }).stats?.curse ?? 1.0;
     const endlessMult = uiState.endlessMode ? 1 + Math.max(0, gameTime - 600) / 90 : 1;
+    // Co-op: more living fighters → a bigger horde (neutral 1.0 in solo).
+    const partyMult = partySpawnMultiplier();
     spawnBudget *=
-      CONFIG.CURSE_MULTIPLIER * CONFIG.STAGE_MULTIPLIER * corruptionMult * curseMult * endlessMult;
+      CONFIG.CURSE_MULTIPLIER *
+      CONFIG.STAGE_MULTIPLIER *
+      corruptionMult *
+      curseMult *
+      endlessMult *
+      partyMult;
 
     // Add accumulated budget (dam breaking effect)
     spawnBudget += accumulatedBudget;
