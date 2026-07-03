@@ -28,6 +28,7 @@ import { uiState, announce } from '../core/UIState.svelte.ts';
 import { spawnDamageNumber } from './DamageNumberSystem';
 import { haptics } from '../core/haptics';
 import { dlog } from '../core/debug';
+import { scaleParticleCount } from '../core/quality';
 import {
   removeBody,
   getEventQueue,
@@ -513,7 +514,9 @@ function spawnImpactFX(
 ) {
   const finalColor = color ?? (weaponId ? WEAPONS[weaponId]?.color : 0xff0055) ?? 0xff0055;
 
-  for (let i = 0; i < count; i++) {
+  // Cosmetic debris count scales with the graphics quality tier
+  const scaledCount = scaleParticleCount(count);
+  for (let i = 0; i < scaledCount; i++) {
     // Determine scale & shape based on weapon
     let particleScale = 1.0;
     if (weaponId === 'monowire_lash' || weaponId === 'nanofiber_guillotine') {

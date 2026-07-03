@@ -117,23 +117,30 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
 
       const container = cache['mesh_container'];
       if (container) {
-        container.traverse((child: THREE.Object3D) => {
-          if (child instanceof THREE.Mesh && child.material && !Array.isArray(child.material)) {
-            child.material.transparent = true;
-            child.material.opacity = blinkOpacity;
+        // Skip the full material traversal when nothing changed since last
+        // frame (the common case: alive, visible, no glow) — traversing the
+        // whole player mesh at 60fps is wasted work otherwise.
+        const visualKey = `${glowColor ?? 'none'}:${blinkOpacity.toFixed(3)}`;
+        if (container.userData.lastVisualKey !== visualKey) {
+          container.userData.lastVisualKey = visualKey;
+          container.traverse((child: THREE.Object3D) => {
+            if (child instanceof THREE.Mesh && child.material && !Array.isArray(child.material)) {
+              child.material.transparent = true;
+              child.material.opacity = blinkOpacity;
 
-            if (glowColor !== null) {
-              if (child.userData.originalColor === undefined) {
-                child.userData.originalColor = child.material.color.getHex();
-              }
-              child.material.color.setHex(glowColor);
-            } else {
-              if (child.userData.originalColor !== undefined) {
-                child.material.color.setHex(child.userData.originalColor);
+              if (glowColor !== null) {
+                if (child.userData.originalColor === undefined) {
+                  child.userData.originalColor = child.material.color.getHex();
+                }
+                child.material.color.setHex(glowColor);
+              } else {
+                if (child.userData.originalColor !== undefined) {
+                  child.material.color.setHex(child.userData.originalColor);
+                }
               }
             }
-          }
-        });
+          });
+        }
       }
     }
 

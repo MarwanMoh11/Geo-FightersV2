@@ -34,6 +34,36 @@ const MAX_SEPARATION_CHECKS = 10;
 const _players: any[] = [];
 const _enemies: any[] = [];
 
+// --- SPATIAL HASH GRID (separation without O(n²) pair checks) ---
+// Cell size equals the separation radius, so any pair within range is in the
+// same cell or an adjacent one. Cells hold indices into _enemies and are
+// pooled/reused across frames to avoid GC pressure.
+const GRID_CELL = 1.0;
+const GRID_OFFSET = 1024; // supports maps up to ±1024 cells from the origin
+const _grid = new Map<number, number[]>();
+const _cellPool: number[][] = [];
+let _cellPoolUsed = 0;
+
+function gridKey(cx: number, cz: number): number {
+  return (cx + GRID_OFFSET) * 4096 + (cz + GRID_OFFSET);
+}
+
+function gridCellFor(key: number): number[] {
+  let cell = _grid.get(key);
+  if (!cell) {
+    cell = _cellPool[_cellPoolUsed] ?? (_cellPool[_cellPoolUsed] = []);
+    _cellPoolUsed++;
+    cell.length = 0;
+    _grid.set(key, cell);
+  }
+  return cell;
+}
+
+// Half-neighborhood offsets (own cell + 4 of 8 neighbors) so every unordered
+// pair of cells is visited exactly once — forces apply to both enemies.
+const NEIGHBOR_DX = [0, 1, 1, 0, -1];
+const NEIGHBOR_DZ = [0, 0, 1, 1, 1];
+
 export function EnemySystem(dt: number, scene: THREE.Scene) {
   // Populate reusable players array
   _players.length = 0;
@@ -50,6 +80,17 @@ export function EnemySystem(dt: number, scene: THREE.Scene) {
     _enemies.push(e);
   }
   const enemyCount = _enemies.length;
+
+  // Rebuild the spatial hash for this frame (boss excluded from separation)
+  _grid.clear();
+  _cellPoolUsed = 0;
+  for (let i = 0; i < enemyCount; i++) {
+    const e = _enemies[i];
+    if (e.isBoss) continue;
+    const cx = Math.floor(e.position.x / GRID_CELL);
+    const cz = Math.floor(e.position.z / GRID_CELL);
+    gridCellFor(gridKey(cx, cz)).push(i);
+  }
 
   for (let i = 0; i < enemyCount; i++) {
     const enemy = _enemies[i];
@@ -139,31 +180,39 @@ export function EnemySystem(dt: number, scene: THREE.Scene) {
       enemy.velocity.z += (targetVz - enemy.velocity.z) * steerFactor;
     }
 
-    // 3. SEPARATION (Limited checks for performance)
-    // Only check nearby enemies, cap at MAX_SEPARATION_CHECKS
+    // 3. SEPARATION (spatial hash: only enemies in the same or adjacent cells)
     let checksRemaining = MAX_SEPARATION_CHECKS;
+    const cellX = Math.floor(enemy.position.x / GRID_CELL);
+    const cellZ = Math.floor(enemy.position.z / GRID_CELL);
 
-    for (let j = i + 1; j < enemyCount && checksRemaining > 0; j++) {
-      const other = _enemies[j];
+    for (let n = 0; n < 5 && checksRemaining > 0; n++) {
+      const cell = _grid.get(gridKey(cellX + NEIGHBOR_DX[n], cellZ + NEIGHBOR_DZ[n]));
+      if (!cell) continue;
 
-      const dx = enemy.position.x - other.position.x;
-      const dz = enemy.position.z - other.position.z;
-      const distSq = dx * dx + dz * dz;
+      for (let k = 0; k < cell.length && checksRemaining > 0; k++) {
+        const j = cell[k];
+        if (n === 0 && j <= i) continue; // own cell: visit each pair once
+        const other = _enemies[j];
 
-      if (distSq < SEPARATION_RADIUS_SQ && distSq > 0.0001) {
-        checksRemaining--;
+        const dx = enemy.position.x - other.position.x;
+        const dz = enemy.position.z - other.position.z;
+        const distSq = dx * dx + dz * dz;
 
-        // Inverse distance force (stronger when closer)
-        const force = (1.0 - distSq / SEPARATION_RADIUS_SQ) * SEPARATION_STRENGTH * dt;
-        const invDist = 1.0 / Math.sqrt(distSq);
-        const fx = dx * invDist * force;
-        const fz = dz * invDist * force;
+        if (distSq < SEPARATION_RADIUS_SQ && distSq > 0.0001) {
+          checksRemaining--;
 
-        // Apply to both enemies (Newton's 3rd law)
-        enemy.velocity.x += fx;
-        enemy.velocity.z += fz;
-        other.velocity.x -= fx;
-        other.velocity.z -= fz;
+          // Inverse distance force (stronger when closer)
+          const force = (1.0 - distSq / SEPARATION_RADIUS_SQ) * SEPARATION_STRENGTH * dt;
+          const invDist = 1.0 / Math.sqrt(distSq);
+          const fx = dx * invDist * force;
+          const fz = dz * invDist * force;
+
+          // Apply to both enemies (Newton's 3rd law)
+          enemy.velocity.x += fx;
+          enemy.velocity.z += fz;
+          other.velocity.x -= fx;
+          other.velocity.z -= fz;
+        }
       }
     }
 

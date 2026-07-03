@@ -11,7 +11,7 @@ export interface GameSettings {
   // Display
   screenShake: boolean;
   showFps: boolean;
-  qualityLevel: 'low' | 'medium' | 'high';
+  qualityLevel: 'auto' | 'low' | 'medium' | 'high';
 
   // Gameplay
   autoAimStrength: number; // 0-100
@@ -32,7 +32,7 @@ const DEFAULT_SETTINGS: GameSettings = {
   // Display
   screenShake: true,
   showFps: false,
-  qualityLevel: 'medium',
+  qualityLevel: 'auto',
 
   // Gameplay
   autoAimStrength: 50,
