@@ -441,6 +441,8 @@ export function initializePlayerForRun(scene: THREE.Scene) {
   player.xp = 0;
   player.xpMax = 100;
   player.score = 0;
+  player.kills = 0;
+  player.reviveProgress = 0;
   player.stats = charStats;
 
   player.weaponSlots = [{ weaponId: starterWeaponId, level: 1 }];
@@ -498,15 +500,15 @@ export function initializePlayerForRun(scene: THREE.Scene) {
     },
   });
 
-  // Data protocol: daily runs force the seeded protocol; normal solo runs get
-  // a pick-1-of-3 modal. Skipped in co-op (pausing would desync the party).
+  // Data protocol: daily runs force the seeded protocol; everything else gets
+  // a pick-1-of-3 modal. In co-op EACH player now picks their own protocol —
+  // the MP loop never pauses on modals, so the world keeps simulating, and the
+  // choice reaches the host through the regular stats sync.
   // Must run after stats/health are initialized — protocols modify both.
-  if (!uiState.isMultiplayer) {
-    if (uiState.isDailyRun) {
-      selectProtocol(getDailyConfig().protocolId);
-    } else {
-      offerProtocolChoice();
-    }
+  if (!uiState.isMultiplayer && uiState.isDailyRun) {
+    selectProtocol(getDailyConfig().protocolId);
+  } else {
+    offerProtocolChoice();
   }
 }
 
