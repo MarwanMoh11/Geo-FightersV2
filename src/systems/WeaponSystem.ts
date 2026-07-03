@@ -2,7 +2,13 @@ import { world } from '../core/world';
 import * as THREE from 'three';
 import { addTrauma } from './CameraSystem';
 import { playShoot } from '../core/audio';
-import { getDefaultStats, getEffectiveDamage, getEffectiveAmount } from '../core/PlayerStats';
+import {
+  getDefaultStats,
+  getEffectiveDamage,
+  getEffectiveAmount,
+  getEffectiveCooldown,
+  getEffectiveArea,
+} from '../core/PlayerStats';
 import { spawnOrbitalProjectile } from './OrbitalSystem';
 import { createKinematicBody, isRapierInitialized } from '../core/RapierWorld';
 import { uiState } from '../core/UIState.svelte.ts';
@@ -73,7 +79,10 @@ export function WeaponSystem(dt: number, scene: THREE.Scene) {
       if (wantsToFire && entity.weapon.cooldownTimer <= 0) {
         fireWeapon(entity, player, scene);
         const mod = player.modifiers?.fireRateMult || 1.0;
-        entity.weapon.cooldownTimer = entity.weapon.fireRate * mod;
+        // Apply the player's Cooldown stat (Clock Skipper / debug_suite passives,
+        // Ghost's CDR quirk) — shorter base cooldown between shots.
+        const cdMult = getEffectiveCooldown(player.stats || getDefaultStats());
+        entity.weapon.cooldownTimer = entity.weapon.fireRate * mod * cdMult;
 
         // If local player in multiplayer, broadcast shoot event to other clients
         if (isLocal && uiState.isMultiplayer && player.aimTarget) {
@@ -182,6 +191,16 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
   const style = weaponStats.visualStyle || 'BOLT';
   const pierce = weaponStats.bulletPierce || 1;
 
+  // Apply Area stat (Capacitor / Targeting OS passives, Nova's +25% quirk) to
+  // hitbox size + blast radius, and Duration stat (Cooling System / Optics
+  // Suite) to how long projectiles live. Both were previously never read.
+  const areaMult = getEffectiveArea(1, playerStats);
+  const durationMult = playerStats.duration || 1.0;
+  const finalWidth = (weaponStats.bulletWidth || 0.2) * areaMult;
+  const finalLength = (weaponStats.bulletLength || 1.0) * areaMult;
+  const finalExplodeRadius = (weaponStats.bulletExplodeRadius || 0) * areaMult;
+  const finalLifetime = (weaponStats.bulletLifetime || 1.0) * durationMult;
+
   // ORBITAL WEAPONS: Spawn orbiting projectiles instead of regular projectiles
   if (weaponStats.category === 'orbit') {
     spawnOrbitalProjectile(
@@ -191,8 +210,8 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
       finalDamage,
       weaponStats.bulletColor,
       style,
-      weaponStats.bulletWidth || 0.3,
-      weaponStats.bulletLength || 1.0,
+      finalWidth,
+      finalLength,
       finalSpeed * 0.3, // Use speed as orbit speed (scaled down)
       weaponEntity.weaponId, // Pass the weapon ID
     );
@@ -212,8 +231,8 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
     const mesh = createCustomProjectileMesh(
       weaponEntity.weaponId || '',
       weaponStats.bulletColor,
-      weaponStats.bulletWidth || 0.2,
-      weaponStats.bulletLength || 1.0,
+      finalWidth,
+      finalLength,
       dir,
     );
     let spin = 0;
@@ -235,24 +254,24 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
       position: mesh.position,
       velocity: velocity,
       lifeTimer: 0,
-      maxLife: weaponStats.bulletLifetime,
+      maxLife: finalLifetime,
       transform: mesh,
       damage: finalDamage,
       projectile: {
         pierce: pierce,
-        explodeRadius: weaponStats.bulletExplodeRadius || 0,
+        explodeRadius: finalExplodeRadius,
         knockback: weaponStats.knockback || 5,
         hitList: [],
         spinSpeed: spin,
         // Signal Hijacker: 0 damage + AoE = confusion weapon (3 second duration)
-        confusionDuration: finalDamage === 0 && weaponStats.bulletExplodeRadius > 0 ? 3.0 : 0,
+        confusionDuration: finalDamage === 0 && finalExplodeRadius > 0 ? 3.0 : 0,
       },
     });
 
     // Add Rapier rigid body for collision (skip on client-side visual projectiles)
     const isMultiplayerClient = uiState.isMultiplayer && !uiState.isHost;
     if (isRapierInitialized() && projectile.id !== undefined && !isMultiplayerClient) {
-      const radius = weaponStats.bulletWidth ? weaponStats.bulletWidth * 0.6 : PROJECTILE_RADIUS;
+      const radius = finalWidth ? finalWidth * 0.6 : PROJECTILE_RADIUS;
       const { rigidBody, collider } = createKinematicBody(
         mesh.position.x,
         mesh.position.z,

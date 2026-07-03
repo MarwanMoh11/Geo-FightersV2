@@ -94,9 +94,10 @@ preloadTextures(updateLoadingProgress).then(async () => {
   const { scene, camera, renderer } = await initRenderer();
   setNetworkScene(scene);
 
-  // Debug hook: expose UI state for the dev console / automated tests
+  // Debug hook: expose UI state + ECS world for the dev console / automated tests
   if (DEBUG) {
     (window as unknown as { uiState: typeof uiState }).uiState = uiState;
+    (window as unknown as { world: typeof world }).world = world;
   }
 
   // Renderer backend indicator (debug builds only)
