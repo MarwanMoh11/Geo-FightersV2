@@ -90,7 +90,9 @@
         <div class="hp-bar">
           <div class="hp-fill" class:low={lowHealth} style="width: {hpPercent}%"></div>
         </div>
-        <span class="hp-val tnum" class:low={lowHealth}>{Math.ceil(hpPercent)}</span>
+        <span class="hp-val tnum" class:low={lowHealth}
+          >{Math.max(0, Math.ceil(uiState.health.current))}/{Math.round(uiState.health.max)}</span
+        >
       </div>
 
       <!-- Overload Charge Core -->
@@ -401,8 +403,9 @@
     font-size: 0.72rem;
     font-weight: 700;
     color: var(--color-text-dim);
-    min-width: 22px;
+    min-width: 44px;
     text-align: right;
+    white-space: nowrap;
   }
   .hp-val.low {
     color: var(--color-secondary);
