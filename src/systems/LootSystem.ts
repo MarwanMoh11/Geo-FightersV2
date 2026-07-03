@@ -134,17 +134,22 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
           lastCollectTime = now;
           playCollect(1 + Math.min(collectStreak, 12) * 0.05);
 
-          if (closestPlayer.xp >= (closestPlayer.xpMax || 100)) {
-            closestPlayer.xp = 0;
+          // Carry overflow instead of zeroing XP, and level up repeatedly so a
+          // big pickup (e.g. an XP-bank delivery) grants every level it earns
+          // rather than one — the extra level-ups queue in triggerLevelUp.
+          let leveledUp = false;
+          while (closestPlayer.xp >= (closestPlayer.xpMax || 100)) {
+            closestPlayer.xp -= closestPlayer.xpMax || 100;
             closestPlayer.level = (closestPlayer.level || 1) + 1;
             closestPlayer.xpMax = Math.floor((closestPlayer.xpMax || 100) * 1.2);
-            playLevelUp();
             triggerLevelUp();
+            leveledUp = true;
           }
+          if (leveledUp) playLevelUp();
         } else {
           // If a remote player collected it, check if they level up (Host-side only)
-          if (closestPlayer.xp >= (closestPlayer.xpMax || 100)) {
-            closestPlayer.xp = 0;
+          while (closestPlayer.xp >= (closestPlayer.xpMax || 100)) {
+            closestPlayer.xp -= closestPlayer.xpMax || 100;
             closestPlayer.level = (closestPlayer.level || 1) + 1;
             closestPlayer.xpMax = Math.floor((closestPlayer.xpMax || 100) * 1.2);
           }
