@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { getQualityProfile, initDynamicResolution, applyPixelRatio } from './quality';
+import { onSettingsChange } from './SettingsManager';
 
 // Feature detection: Check if WebGPU is available
 function isWebGPUAvailable(): boolean {
@@ -19,19 +21,18 @@ export async function initRenderer() {
   camera.lookAt(0, 0, 0);
 
   // 3. The Renderer - WebGPU with WebGL fallback
+  // All quality knobs (AA, shadows, pixel ratio) come from the quality profile
+  // resolved from the user's Graphics Quality setting (auto/low/medium/high).
   let renderer: any;
-  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-    navigator.userAgent,
-  );
+  const quality = getQualityProfile();
 
   if (isWebGPUAvailable()) {
     try {
       console.log(
-        `[Renderer] WebGPU is available. Mobile: ${isMobile}. Attempting to initialize...`,
+        `[Renderer] WebGPU is available. Quality: ${quality.tier}. Attempting to initialize...`,
       );
       const { WebGPURenderer } = await import('three/webgpu');
-      // Disable AA on mobile for fill-rate performance gain
-      renderer = new WebGPURenderer({ antialias: !isMobile, forceWebGL: false });
+      renderer = new WebGPURenderer({ antialias: quality.antialias, forceWebGL: false });
       await renderer.init();
 
       // Check if WebGPU actually initialized or fell back to WebGL
@@ -45,23 +46,19 @@ export async function initRenderer() {
       }
     } catch (error) {
       console.warn('[Renderer] WebGPU initialization failed, falling back to WebGL:', error);
-      renderer = new THREE.WebGLRenderer({ antialias: !isMobile });
+      renderer = new THREE.WebGLRenderer({ antialias: quality.antialias });
     }
   } else {
-    console.log(`[Renderer] WebGPU not available, using WebGL renderer. Mobile: ${isMobile}`);
-    renderer = new THREE.WebGLRenderer({ antialias: !isMobile });
+    console.log(`[Renderer] WebGPU not available, using WebGL renderer. Quality: ${quality.tier}`);
+    renderer = new THREE.WebGLRenderer({ antialias: quality.antialias });
   }
 
-  // Disable shadow map completely on mobile; use soft PCF shadows on desktop
-  if (isMobile) {
-    renderer.shadowMap.enabled = false;
-  } else {
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  }
+  renderer.shadowMap.enabled = quality.shadows;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2)); // Lower pixel ratio limit on mobile for speed
+  // Pixel ratio is owned by the quality manager (handles caps + adaptive scaling)
+  initDynamicResolution(renderer);
 
   // Append to #app container (not body) to prevent layout issues
   const appContainer = document.getElementById('app');
@@ -77,11 +74,11 @@ export async function initRenderer() {
 
   const dirLight = new THREE.DirectionalLight(0xffffff, 1.5); // Boosted from 1.0
   dirLight.position.set(10, 30, 10);
-  dirLight.castShadow = !isMobile; // No shadow maps rendered from light on mobile
+  dirLight.castShadow = quality.shadows;
 
-  if (!isMobile) {
-    dirLight.shadow.mapSize.width = 512;
-    dirLight.shadow.mapSize.height = 512;
+  if (quality.shadows) {
+    dirLight.shadow.mapSize.width = quality.shadowMapSize;
+    dirLight.shadow.mapSize.height = quality.shadowMapSize;
     dirLight.shadow.camera.near = 0.5;
     dirLight.shadow.camera.far = 80;
     dirLight.shadow.camera.left = -25;
@@ -91,6 +88,22 @@ export async function initRenderer() {
     dirLight.shadow.bias = -0.0005;
   }
   scene.add(dirLight);
+
+  // Live-apply shadow toggles when the user changes quality in Settings
+  // (antialiasing needs a reload; everything else applies immediately)
+  onSettingsChange(() => {
+    const q = getQualityProfile();
+    renderer.shadowMap.enabled = q.shadows;
+    dirLight.castShadow = q.shadows;
+    if (q.shadows && q.shadowMapSize > 0) {
+      dirLight.shadow.mapSize.width = q.shadowMapSize;
+      dirLight.shadow.mapSize.height = q.shadowMapSize;
+      if (dirLight.shadow.map) {
+        dirLight.shadow.map.dispose();
+        dirLight.shadow.map = null;
+      }
+    }
+  });
 
   // 5. The Floor is now created by LevelSystem
   // (Replaced GridHelper with textured ground plane in LevelSystem.ts)
@@ -106,6 +119,7 @@ export async function initRenderer() {
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     renderer.setSize(w, h);
+    applyPixelRatio(); // devicePixelRatio can change when moving across monitors
   };
   window.addEventListener('resize', applySize);
   window.addEventListener('orientationchange', () => setTimeout(applySize, 250));
