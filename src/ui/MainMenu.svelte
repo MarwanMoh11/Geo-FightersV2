@@ -2,7 +2,14 @@
   import { uiState, showToast } from '../core/UIState.svelte.ts';
   import { setGameState } from '../core/GameState';
   import { resumeAudioContext, playMenuBuy, playMenuClick } from '../core/audio';
-  import { hostRoom, joinRoom, disconnectNetwork } from '../core/network';
+  import {
+    hostRoom,
+    joinRoom,
+    disconnectNetwork,
+    setLobbyState,
+    startPartyGame,
+    getLocalConnectionId,
+  } from '../core/network';
   import { promptInstall } from '../core/pwa';
   import { haptics } from '../core/haptics';
   import { CHARACTERS, getCharacter } from '../core/CharacterRegistry';
@@ -209,6 +216,45 @@
     showMpOptions = false;
   }
 
+  // --- Party lobby helpers ---
+  let lobbyMe = $derived(
+    uiState.lobby.players.find((p) => p.connectionId === getLocalConnectionId()),
+  );
+  let allReady = $derived(
+    uiState.lobby.players.length > 0 && uiState.lobby.players.every((p) => p.ready),
+  );
+
+  function toggleReady() {
+    playMenuClick();
+    haptics.select();
+    setLobbyState({ ready: !(lobbyMe?.ready ?? false) });
+  }
+
+  function pickLobbyCharacter(charId: string) {
+    if (!isCharacterUnlocked(charId)) {
+      showToast('🔒 Character locked');
+      return;
+    }
+    playMenuClick();
+    localStorage.setItem('geo_selected_character', JSON.stringify(charId));
+    setLobbyState({ character: charId });
+  }
+
+  function handleStartParty() {
+    playMenuClick();
+    haptics.select();
+    startPartyGame();
+  }
+
+  async function copyRoomCode() {
+    try {
+      await navigator.clipboard.writeText(uiState.roomCode);
+      showToast('Room code copied');
+    } catch {
+      showToast(uiState.roomCode);
+    }
+  }
+
   function openSettings() {
     playMenuClick();
     uiState.showSettings = true;
@@ -314,21 +360,79 @@
             oninput={() => localStorage.setItem('geo_server_url', uiState.customServerUrl)}
           />
         </label>
-      {:else}
+      {:else if uiState.networkStatus === 'connecting'}
         <div class="status-panel">
-          {#if uiState.networkStatus === 'connecting'}
-            <div class="spinner"></div>
-            <p class="status-heading">Connecting</p>
-            <p class="status-detail">Pinging beacon…</p>
-          {:else if uiState.networkStatus === 'waiting_for_players'}
-            <div class="code-box">
-              <p class="lobby-code tnum">{uiState.roomCode}</p>
-            </div>
-            <p class="status-heading">Lobby online</p>
-            <p class="status-detail">Waiting for teammate…</p>
-          {/if}
+          <div class="spinner"></div>
+          <p class="status-heading">Connecting</p>
+          <p class="status-detail">Pinging beacon…</p>
           <button class="btn ghost danger" onclick={handleCancelMp}>
             <span class="label">Abort</span>
+          </button>
+        </div>
+      {:else if uiState.networkStatus === 'in_lobby'}
+        <!-- PARTY LOBBY: roster, ready-up, character pick, host start -->
+        <div class="lobby-panel">
+          <button class="code-box clickable" onclick={copyRoomCode} title="Copy room code">
+            <p class="lobby-code tnum">{uiState.roomCode}</p>
+            <span class="copy-hint">TAP TO COPY · SHARE WITH FRIENDS</span>
+          </button>
+
+          <div class="lobby-roster">
+            {#each uiState.lobby.players as p (p.connectionId)}
+              {@const ch = getCharacter(p.character)}
+              <div class="lobby-row" class:ready={p.ready}>
+                <span class="lobby-char">{ch.icon}</span>
+                <span class="lobby-name"
+                  >{p.name}{#if p.isHost}<span class="host-tag">HOST</span>{/if}</span
+                >
+                <span class="lobby-ready">{p.ready ? '✓ READY' : '· · ·'}</span>
+              </div>
+            {/each}
+            {#each Array(Math.max(0, 4 - uiState.lobby.players.length)) as _, i (i)}
+              <div class="lobby-row empty"><span class="lobby-name">— open slot —</span></div>
+            {/each}
+          </div>
+
+          <!-- Own character pick (unlocked roster only) -->
+          <div class="lobby-chars">
+            {#each CHARACTERS as char (char.id)}
+              {@const locked = !isCharacterUnlocked(char.id)}
+              <button
+                class="lobby-char-btn"
+                class:selected={lobbyMe?.character === char.id}
+                class:locked
+                title={char.name}
+                onclick={() => pickLobbyCharacter(char.id)}
+              >
+                {locked ? '🔒' : char.icon}
+              </button>
+            {/each}
+          </div>
+
+          {#if uiState.isHost}
+            <button
+              class="btn primary"
+              disabled={!allReady || uiState.lobby.players.length < 2}
+              onclick={handleStartParty}
+            >
+              <span class="label">START RUN</span>
+              <span class="sub">
+                {uiState.lobby.players.length < 2
+                  ? 'Waiting for teammates…'
+                  : allReady
+                    ? `${uiState.lobby.players.length} fighters ready`
+                    : 'Waiting for ready-up…'}
+              </span>
+            </button>
+          {:else}
+            <button class="btn primary" class:ghosted={lobbyMe?.ready} onclick={toggleReady}>
+              <span class="label">{lobbyMe?.ready ? 'UNREADY' : 'READY UP'}</span>
+              <span class="sub">Host starts when everyone is ready</span>
+            </button>
+          {/if}
+
+          <button class="btn ghost danger" onclick={handleCancelMp}>
+            <span class="label">Leave party</span>
           </button>
         </div>
       {/if}
@@ -754,6 +858,122 @@
     border-top-color: var(--color-primary);
     border-radius: 50%;
     animation: spin 0.9s linear infinite;
+  }
+
+  /* ---- Party lobby ---- */
+  .lobby-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+  }
+  .code-box.clickable {
+    all: unset;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+    background: rgba(54, 230, 255, 0.06);
+    border: 1px solid var(--color-border-bright);
+    border-radius: var(--r-md);
+    padding: 0.7rem 1.5rem;
+    text-align: center;
+  }
+  .code-box.clickable:hover {
+    background: rgba(54, 230, 255, 0.12);
+  }
+  .copy-hint {
+    font-size: 0.52rem;
+    letter-spacing: 0.12em;
+    color: var(--color-text-dim);
+  }
+  .lobby-roster {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+  .lobby-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.55rem 0.8rem;
+    border-radius: var(--r-md);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    font-size: 0.75rem;
+  }
+  .lobby-row.ready {
+    border-color: rgba(0, 255, 136, 0.35);
+  }
+  .lobby-row.empty {
+    opacity: 0.35;
+    justify-content: center;
+    font-size: 0.62rem;
+    letter-spacing: 0.1em;
+  }
+  .lobby-char {
+    font-size: 1rem;
+  }
+  .lobby-name {
+    flex: 1;
+    font-weight: 700;
+    color: var(--color-text-main);
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+  }
+  .host-tag {
+    font-size: 0.5rem;
+    letter-spacing: 0.12em;
+    color: var(--color-primary);
+    border: 1px solid var(--color-border-bright);
+    border-radius: 4px;
+    padding: 0.1rem 0.3rem;
+  }
+  .lobby-ready {
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--color-text-dim);
+  }
+  .lobby-row.ready .lobby-ready {
+    color: #00ff88;
+  }
+  .lobby-chars {
+    display: flex;
+    gap: 0.4rem;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .lobby-char-btn {
+    all: unset;
+    cursor: pointer;
+    width: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.05rem;
+    border-radius: var(--r-md);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    transition: all var(--transition-fast);
+  }
+  .lobby-char-btn.selected {
+    border-color: var(--color-primary);
+    background: rgba(54, 230, 255, 0.12);
+  }
+  .lobby-char-btn.locked {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .btn.primary:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    filter: none;
+  }
+  .btn.primary.ghosted {
+    filter: saturate(0.4) brightness(0.85);
   }
   @keyframes spin {
     to {

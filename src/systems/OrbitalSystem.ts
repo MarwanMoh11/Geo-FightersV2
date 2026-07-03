@@ -108,6 +108,7 @@ export function spawnOrbitalProjectile(
       isOrbital: true,
       isProjectile: true,
       weaponId: weaponId,
+      ownerConnId: owner.connectionId, // kill credit (co-op scoreboard)
       position: mesh.position,
       velocity: new THREE.Vector3(0, 0, 0),
       transform: mesh,

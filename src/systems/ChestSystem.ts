@@ -15,10 +15,11 @@ import { WEAPONS, getWeaponStatsAtLevel } from '../core/WeaponRegistry';
 import { applyRandomChestRewards } from './UpgradeSystem';
 import { playChestOpen } from '../core/audio';
 import { recordChestOpened, recordEvolution } from '../core/ProgressManager';
-import { uiState } from '../core/UIState.svelte.ts';
+import { uiState, showToast } from '../core/UIState.svelte.ts';
 import { spawnCredit } from '../core/factories';
 import { haptics } from '../core/haptics';
 import { dlog } from '../core/debug';
+import { sendDirectEvent, broadcastGameEvent } from '../core/network';
 
 // --- CONSTANTS ---
 export const LEVEL_DURATION = 600; // 10 minutes for testing (boss at 8:00, escape at 10:00)
@@ -139,24 +140,39 @@ export function ChestSystem(dt: number, scene: THREE.Scene) {
   // Track game time
   gameTime += dt;
 
-  const player = world.with('isPlayer', 'position', 'weaponSlots', 'passiveSlots', 'stats').first;
-  if (!player) return;
+  // Co-op: ANY alive player can open a chest — each chest homes toward and is
+  // collected by whichever alive player is nearest (was: only the first player
+  // entity, so clients could never open chests).
+  const players: any[] = [];
+  for (const p of world.with('isPlayer', 'position')) {
+    if (!p.health || p.health.current > 0) players.push(p);
+  }
+  if (players.length === 0) return;
 
   const chests = world.with('isChest', 'position', 'velocity', 'transform');
 
   for (const chest of chests) {
-    const distSq = chest.position.distanceToSquared(player.position);
+    let nearest: any = players[0];
+    let nearestSq = Infinity;
+    for (const p of players) {
+      const dSq = chest.position.distanceToSquared(p.position);
+      if (dSq < nearestSq) {
+        nearestSq = dSq;
+        nearest = p;
+      }
+    }
+    const distSq = nearestSq;
 
     // A. COLLECTION
     if (distSq < CHEST_COLLECT_RADIUS * CHEST_COLLECT_RADIUS) {
-      collectChest(chest, player, scene);
+      collectChest(chest, nearest, scene);
       continue;
     }
 
     // B. MAGNETISM (eased in with proximity so the pull feels organic)
     const magnetRadiusSq = CHEST_MAGNET_RADIUS * CHEST_MAGNET_RADIUS;
     if (distSq < magnetRadiusSq) {
-      _dir.subVectors(player.position, chest.position).normalize();
+      _dir.subVectors(nearest.position, chest.position).normalize();
       const closeness = 1 - distSq / magnetRadiusSq;
       const pull = closeness * closeness * (3 - 2 * closeness); // smoothstep
       const force = CHEST_MAGNET_FORCE * (0.3 + 0.7 * pull);
@@ -180,34 +196,79 @@ export function ChestSystem(dt: number, scene: THREE.Scene) {
 }
 
 /**
- * Collect chest and resolve rewards
+ * Collect chest and resolve rewards.
+ * - Opener is the local player → full local ceremony (evolution scan + rewards).
+ * - Opener is a remote player (host only) → the opener's own machine rolls the
+ *   rewards: send them a targeted 'chest-opened' event. Their build lives on
+ *   their client and syncs back via client-update.
  */
 function collectChest(chest: any, player: any, scene: THREE.Scene) {
+  const rarity: 'common' | 'rare' | 'epic' = chest.chestRarity || 'common';
+
+  if (!player.isLocalPlayer) {
+    // Remote opener (we are the host): hand the ceremony to their client.
+    if (player.connectionId) {
+      sendDirectEvent(player.connectionId, 'chest-opened', { rarity });
+      broadcastGameEvent('chest-toast', {
+        connectionId: player.connectionId,
+        name: player.playerName || 'PLAYER',
+        rarity,
+      });
+      showToast(`📦 ${player.playerName || 'PLAYER'} opened a ${rarity} chest`);
+    }
+    despawnChest(chest, scene);
+    return;
+  }
+
   playChestOpen();
   haptics.reward();
+  openChestLocally(rarity, scene, chest.position);
+  if (uiState.isMultiplayer && uiState.isHost) {
+    broadcastGameEvent('chest-toast', {
+      connectionId: player.connectionId,
+      name: uiState.playerName || 'HOST',
+      rarity,
+    });
+  }
+  despawnChest(chest, scene);
+}
+
+/**
+ * Resolve a chest's rewards for the LOCAL player. Used by the normal solo/host
+ * path and by clients receiving a targeted 'chest-opened' event from the host.
+ */
+export function openChestLocally(
+  rarity: 'common' | 'rare' | 'epic',
+  scene?: THREE.Scene,
+  position?: THREE.Vector3,
+) {
+  const player = world.with(
+    'isLocalPlayer',
+    'position',
+    'weaponSlots',
+    'passiveSlots',
+    'stats',
+  ).first;
+  if (!player) return;
+
   recordChestOpened();
 
-  // 1. EVOLUTION SCAN (only if time >= threshold)
-  const candidates = scanForEvolutions(
-    player.weaponSlots || [],
-    player.passiveSlots || [],
-    gameTime,
-  );
+  // 1. EVOLUTION SCAN (only if time >= threshold). Clients use the synced
+  // uiState.gameTime (their local ChestSystem clock never ticks).
+  const timeNow = uiState.isMultiplayer && !uiState.isHost ? uiState.gameTime : gameTime;
+  const candidates = scanForEvolutions(player.weaponSlots || [], player.passiveSlots || [], timeNow);
 
-  if (candidates.length > 0) {
-    // Select and perform evolution
+  if (candidates.length > 0 && scene) {
     const selected = selectEvolution(candidates);
     if (selected) {
       performEvolution(player, selected.weaponSlotIndex, selected.evolution.evolvedWeaponId, scene);
       recordEvolution();
-      despawnChest(chest, scene);
       return;
     }
   }
 
   // 2. CHEST CEREMONY: jackpot roll of 1/3/5 instant upgrades (VS-style —
   // the chest picks for you, the modal reveals them one by one).
-  const rarity: 'common' | 'rare' | 'epic' = chest.chestRarity || 'common';
   const luck = player.stats?.luck || 1;
   const jackpotBoost = (luck - 1) * 0.1; // luck nudges the good rolls
   const roll = Math.random();
@@ -225,15 +286,15 @@ function collectChest(chest: any, player: any, scene: THREE.Scene) {
     uiState.chestRewards = rewards;
     uiState.chestRarity = rarity;
     uiState.showChestCeremony = true;
-  } else {
+  } else if (scene) {
     // Build is fully maxed — pay out credits instead so chests never whiff.
+    const px = position?.x ?? player.position.x;
+    const pz = position?.z ?? player.position.z;
     for (let i = 0; i < 6; i++) {
       const a = (i / 6) * Math.PI * 2;
-      spawnCredit(scene, chest.position.x + Math.cos(a), chest.position.z + Math.sin(a), 5);
+      spawnCredit(scene, px + Math.cos(a), pz + Math.sin(a), 5);
     }
   }
-
-  despawnChest(chest, scene);
 }
 
 /**

@@ -128,6 +128,7 @@ function handleProjectileEnemyCollision(bullet: any, enemy: any, scene: THREE.Sc
     'enemy',
     bullet.weaponId,
     bullet.weapon?.bulletColor,
+    bullet.ownerConnId,
   );
 
   // Spark FX on impact
@@ -174,6 +175,7 @@ function handleProjectileEnemyCollision(bullet: any, enemy: any, scene: THREE.Sc
             'aoe',
             bullet.weaponId,
             bullet.weapon?.bulletColor,
+            bullet.ownerConnId,
           );
         }
       }
@@ -314,6 +316,7 @@ function applyDamage(
   variant: 'enemy' | 'aoe' = 'enemy',
   weaponId?: string,
   bulletColor?: number,
+  killerConnId?: string,
 ) {
   if (!enemy.health) return;
 
@@ -349,7 +352,7 @@ function applyDamage(
 
   // Death
   if (enemy.health.current <= 0) {
-    handleEnemyDeath(enemy, scene, weaponId, bulletColor);
+    handleEnemyDeath(enemy, scene, weaponId, bulletColor, killerConnId);
   }
 }
 
@@ -376,14 +379,39 @@ function chainCombo(): void {
   }
 }
 
+/**
+ * Credit a kill to the player who landed it (co-op scoreboard). Falls back to
+ * the local player when no connection id is attached (melee tears, anomalies,
+ * overload bursts, single-player).
+ */
+function creditKill(killerConnId?: string) {
+  let killer: any = null;
+  if (killerConnId) {
+    for (const p of world.with('isPlayer')) {
+      if (p.connectionId === killerConnId) {
+        killer = p;
+        break;
+      }
+    }
+  }
+  if (!killer) killer = world.with('isLocalPlayer').first;
+  if (killer) {
+    killer.kills = (killer.kills || 0) + 1;
+    if (killer.isLocalPlayer) uiState.kills = killer.kills;
+  } else {
+    uiState.kills++;
+  }
+}
+
 export function handleEnemyDeath(
   enemy: any,
   scene: THREE.Scene,
   weaponId = '',
   bulletColor = 0xb0b0b0,
+  killerConnId?: string,
 ) {
   reportKill();
-  uiState.kills++;
+  creditKill(killerConnId);
   recordKill();
   chainCombo();
 
