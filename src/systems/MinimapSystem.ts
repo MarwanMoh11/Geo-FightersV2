@@ -1,5 +1,7 @@
 // --- MINIMAP SYSTEM ---
-// Renders a top-down view of the level showing obstacles, player, and enemies
+// Player-centric tactical radar: the local player sits at the center and the
+// world scrolls under them. Off-screen elites and the boss are pinned to the
+// rim as direction arrows so threats read at a glance.
 
 import { dlog, dwarn } from '../core/debug';
 import { world } from '../core/world';
@@ -13,8 +15,19 @@ let ctx: CanvasRenderingContext2D | null = null;
 // The minimap doesn't need 60fps — redraw at the quality profile's interval
 let lastDraw = 0;
 
-// Map scale: how many world units per pixel
-const SCALE = 800 / 150; // 800 world units / 150 canvas pixels
+// World units per pixel. Tighter than the old world-fixed map so the radar
+// shows the immediate combat area (~±40 units) around the player.
+const SCALE = 80 / 150;
+
+// Elite / mini-boss enemy types worth an off-screen direction arrow
+const ELITE_TYPES = new Set([
+  'firewall',
+  'enforcer',
+  'warden',
+  'colossus',
+  'hydra',
+  'overseer',
+]);
 
 // Colors
 const COLORS = {
@@ -22,7 +35,10 @@ const COLORS = {
   wall: '#3a3a4a',
   prop: '#4a4a5a',
   player: '#00ffff',
+  teammate: '#ff00ff',
   enemy: '#ff0055',
+  elite: '#ff9500',
+  boss: '#ff2d55',
   xp: '#00ff88',
   chest: '#ffaa00',
   border: '#2de2e6',
@@ -42,7 +58,7 @@ export function initMinimap(): void {
 }
 
 /**
- * Update the minimap every frame
+ * Update the minimap every frame (throttled by quality profile)
  */
 export function MinimapSystem(): void {
   if (!ctx || !canvas) return;
@@ -53,109 +69,143 @@ export function MinimapSystem(): void {
 
   const width = canvas.width;
   const height = canvas.height;
-  const centerX = width / 2;
-  const centerY = height / 2;
+  const cx = width / 2;
+  const cy = height / 2;
 
-  // Clear canvas
+  // Radar is centered on the local player (fall back to any player)
+  const local = world.with('isLocalPlayer', 'position').first ?? world.with('isPlayer', 'position').first;
+  const ox = local ? local.position.x : 0;
+  const oz = local ? local.position.z : 0;
+
+  // World -> map, relative to the local player (who is fixed at the center)
+  const mapX = (wx: number) => cx + (wx - ox) / SCALE;
+  const mapZ = (wz: number) => cy + (wz - oz) / SCALE;
+  const onMap = (x: number, y: number) => x >= 0 && x <= width && y >= 0 && y <= height;
+
+  // Clear + border
   ctx.fillStyle = COLORS.background;
   ctx.fillRect(0, 0, width, height);
-
-  // Draw border
   ctx.strokeStyle = COLORS.border;
   ctx.lineWidth = 1;
   ctx.strokeRect(0, 0, width, height);
 
-  // Draw obstacles
-  const obstacles = getBlockingObstacles();
-  for (const obs of obstacles) {
-    // Skip border walls (too far out to display nicely)
+  // Obstacles (only nearby ones are on-screen now)
+  for (const obs of getBlockingObstacles()) {
     if (obs.id.startsWith('wall_')) continue;
-
-    const x = worldToMapX(obs.x, centerX);
-    const y = worldToMapZ(obs.z, centerY);
-    const w = obs.width / SCALE;
-    const h = obs.depth / SCALE;
-
+    const x = mapX(obs.x);
+    const y = mapZ(obs.z);
+    const w = Math.max(1, obs.width / SCALE);
+    const h = Math.max(1, obs.depth / SCALE);
+    if (!onMap(x, y)) continue;
     ctx.fillStyle = obs.type === 'wall' ? COLORS.wall : COLORS.prop;
     ctx.fillRect(x - w / 2, y - h / 2, w, h);
   }
 
-  // Draw XP shards (small green dots)
+  // XP shards (small green)
+  ctx.fillStyle = COLORS.xp;
   for (const xp of world.with('isXP', 'position')) {
-    const x = worldToMapX(xp.position.x, centerX);
-    const y = worldToMapZ(xp.position.z, centerY);
-
-    // Only draw if on map
-    if (x >= 0 && x <= width && y >= 0 && y <= height) {
-      ctx.fillStyle = COLORS.xp;
-      ctx.beginPath();
-      ctx.arc(x, y, 1, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  // Draw chests (orange diamonds)
-  for (const chest of world.with('isChest', 'position')) {
-    const x = worldToMapX(chest.position.x, centerX);
-    const y = worldToMapZ(chest.position.z, centerY);
-
-    if (x >= 0 && x <= width && y >= 0 && y <= height) {
-      ctx.fillStyle = COLORS.chest;
-      ctx.beginPath();
-      ctx.moveTo(x, y - 3);
-      ctx.lineTo(x + 3, y);
-      ctx.lineTo(x, y + 3);
-      ctx.lineTo(x - 3, y);
-      ctx.closePath();
-      ctx.fill();
-    }
-  }
-
-  // Draw enemies (red dots)
-  for (const enemy of world.with('isEnemy', 'position')) {
-    const x = worldToMapX(enemy.position.x, centerX);
-    const y = worldToMapZ(enemy.position.z, centerY);
-
-    if (x >= 0 && x <= width && y >= 0 && y <= height) {
-      ctx.fillStyle = COLORS.enemy;
-      ctx.beginPath();
-      ctx.arc(x, y, 2, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  // Draw players (local in cyan, remote teammates in magenta)
-  for (const p of world.with('isPlayer', 'position')) {
-    const x = worldToMapX(p.position.x, centerX);
-    const y = worldToMapZ(p.position.z, centerY);
-
-    const isLocal = p.isLocalPlayer;
-    const color = isLocal ? COLORS.player : '#ff00ff';
-
-    ctx.fillStyle = color;
+    const x = mapX(xp.position.x);
+    const y = mapZ(xp.position.z);
+    if (!onMap(x, y)) continue;
     ctx.beginPath();
-    ctx.arc(x, y, 4, 0, Math.PI * 2);
+    ctx.arc(x, y, 1, 0, Math.PI * 2);
     ctx.fill();
-
-    // Outer glow ring
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(x, y, 6, 0, Math.PI * 2);
-    ctx.stroke();
   }
+
+  // Chests (orange diamonds)
+  ctx.fillStyle = COLORS.chest;
+  for (const chest of world.with('isChest', 'position')) {
+    const x = mapX(chest.position.x);
+    const y = mapZ(chest.position.z);
+    if (!onMap(x, y)) continue;
+    ctx.beginPath();
+    ctx.moveTo(x, y - 3);
+    ctx.lineTo(x + 3, y);
+    ctx.lineTo(x, y + 3);
+    ctx.lineTo(x - 3, y);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Enemies. Regular ones only when on-screen; elites/boss also get an
+  // off-screen edge arrow so you can feel a threat closing in.
+  for (const enemy of world.with('isEnemy', 'position')) {
+    const isBoss = !!enemy.isBoss;
+    const isElite = isBoss || ELITE_TYPES.has(enemy.enemyType || '');
+    const x = mapX(enemy.position.x);
+    const y = mapZ(enemy.position.z);
+
+    if (onMap(x, y)) {
+      ctx.fillStyle = isBoss ? COLORS.boss : isElite ? COLORS.elite : COLORS.enemy;
+      ctx.beginPath();
+      ctx.arc(x, y, isBoss ? 5 : isElite ? 3 : 2, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (isElite) {
+      drawEdgeArrow(ctx, cx, cy, enemy.position.x - ox, enemy.position.z - oz, isBoss);
+    }
+  }
+
+  // Players: teammates first, then the local player on top at the center
+  for (const p of world.with('isPlayer', 'position')) {
+    if (p.isLocalPlayer) continue;
+    if (p.health && p.health.current <= 0) continue; // hide downed ghosts
+    const x = mapX(p.position.x);
+    const y = mapZ(p.position.z);
+    if (!onMap(x, y)) {
+      drawEdgeArrow(ctx, cx, cy, p.position.x - ox, p.position.z - oz, false, COLORS.teammate);
+      continue;
+    }
+    drawPlayerDot(ctx, x, y, COLORS.teammate);
+  }
+
+  if (local) drawPlayerDot(ctx, cx, cy, COLORS.player);
+}
+
+function drawPlayerDot(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  color: string,
+): void {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(x, y, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(x, y, 6, 0, Math.PI * 2);
+  ctx.stroke();
 }
 
 /**
- * Convert world X coordinate to minimap X coordinate
+ * Pin an off-screen entity to the radar rim as a small arrow pointing toward
+ * it. dx/dz are the entity's position relative to the radar center (player).
  */
-function worldToMapX(worldX: number, centerX: number): number {
-  return centerX + worldX / SCALE;
-}
+function drawEdgeArrow(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  dx: number,
+  dz: number,
+  big: boolean,
+  color: string = COLORS.elite,
+): void {
+  const angle = Math.atan2(dz, dx);
+  const rim = Math.min(cx, cy) - 5;
+  const x = cx + Math.cos(angle) * rim;
+  const y = cy + Math.sin(angle) * rim;
+  const size = big ? 5 : 3.5;
 
-/**
- * Convert world Z coordinate to minimap Y coordinate
- */
-function worldToMapZ(worldZ: number, centerY: number): number {
-  return centerY + worldZ / SCALE;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle + Math.PI / 2); // point the triangle outward
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(0, -size);
+  ctx.lineTo(size * 0.8, size);
+  ctx.lineTo(-size * 0.8, size);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
 }
