@@ -91,9 +91,11 @@ export function FinaleBossSystem(dt: number, scene: THREE.Scene) {
       return;
     }
 
-    // 1. Slow chase toward player
-    const dx = player.position.x - bossEntity.position.x;
-    const dz = player.position.z - bossEntity.position.z;
+    // 1. Slow chase toward the NEAREST LIVING player (co-op: don't lock onto a
+    // downed ghost or only ever the first player entity).
+    const chaseTarget = nearestLivingPlayer(bossEntity.position) ?? player;
+    const dx = chaseTarget.position.x - bossEntity.position.x;
+    const dz = chaseTarget.position.z - bossEntity.position.z;
     const dist = Math.sqrt(dx * dx + dz * dz);
 
     if (dist > 2) {
@@ -233,45 +235,75 @@ export function FinaleBossSystem(dt: number, scene: THREE.Scene) {
   }
 
   // C. SHOCKWAVE DAMAGE LOGIC (Runs for any active shockwave)
+  // Co-op: the ring damages EVERY living player it passes through, not just the
+  // first. Each player is evaluated independently and knocked back on their own.
+  const allPlayers = Array.from(world.with('isPlayer', 'position', 'health'));
   const shockwaves = Array.from(world.with('isBossShockwave', 'lifeTimer', 'maxLife', 'position'));
   for (const sw of shockwaves) {
-    if (sw.shockwaveDamageDealt) continue;
     if (sw.lifeTimer === undefined || sw.maxLife === undefined) continue;
 
     const age = sw.lifeTimer / sw.maxLife;
     const currentRadius = age * (sw.shockwaveMaxRadius || 12.0);
 
-    const dx = player.position.x - sw.position.x;
-    const dz = player.position.z - sw.position.z;
-    const dist = Math.sqrt(dx * dx + dz * dz);
+    // Track who this ring has already struck so it hits each player exactly
+    // once as it sweeps outward past them (not just the innermost one).
+    if (!sw.hitList) sw.hitList = [];
 
-    if (Math.abs(dist - currentRadius) < 0.6) {
+    for (const p of allPlayers) {
+      if (!p.health || p.health.current <= 0) continue; // ghosts pass through
+      if (p.id !== undefined && sw.hitList.includes(p.id)) continue;
+
+      const dx = p.position.x - sw.position.x;
+      const dz = p.position.z - sw.position.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (Math.abs(dist - currentRadius) >= 0.6) continue;
+
       const isInvuln =
-        (player.invulnTimer && player.invulnTimer > 0) ||
-        uiState.showUpgrade ||
-        uiState.gameState === 'PAUSED' ||
-        (uiState.overloadActive && uiState.selectedCharacter === 'lash');
-      if (!isInvuln) {
-        const baseDamage = 15;
-        const armor = player.stats?.armor || 0;
-        const actualDamage = Math.max(1, baseDamage - armor);
+        (p.invulnTimer && p.invulnTimer > 0) ||
+        (p.isLocalPlayer &&
+          (uiState.showUpgrade ||
+            uiState.showChestCeremony ||
+            uiState.showProtocolChoice ||
+            uiState.gameState === 'PAUSED' ||
+            (uiState.overloadActive && uiState.selectedCharacter === 'lash')));
+      if (isInvuln) continue;
 
-        player.health.current -= actualDamage;
-        player.invulnTimer = 0.8;
-        player.hitFlashTimer = 0.15;
+      const baseDamage = 15;
+      const armor = p.stats?.armor || 0;
+      const actualDamage = Math.max(1, baseDamage - armor);
+
+      p.health.current -= actualDamage;
+      p.invulnTimer = 0.8;
+      p.hitFlashTimer = 0.15;
+      if (p.id !== undefined) sw.hitList.push(p.id);
+      if (p.isLocalPlayer) {
         playHurt();
         haptics.hit();
-        spawnDamageNumber(player.position, actualDamage, 'player');
         uiState.damageFlash++;
-
-        sw.shockwaveDamageDealt = true;
-
-        if (!player.knockback) player.knockback = new THREE.Vector3();
-        const push = new THREE.Vector3(dx, 0, dz).normalize().multiplyScalar(10);
-        player.knockback.add(push);
       }
+      spawnDamageNumber(p.position, actualDamage, 'player');
+
+      if (!p.knockback) p.knockback = new THREE.Vector3();
+      p.knockback.add(new THREE.Vector3(dx, 0, dz).normalize().multiplyScalar(10));
     }
   }
+}
+
+/** Nearest player with HP > 0 to a point, or null if the whole party is down. */
+function nearestLivingPlayer(pos: THREE.Vector3): any {
+  let best: any = null;
+  let bestSq = Infinity;
+  for (const p of world.with('isPlayer', 'position', 'health')) {
+    if (!p.health || p.health.current <= 0) continue;
+    const dx = p.position.x - pos.x;
+    const dz = p.position.z - pos.z;
+    const d = dx * dx + dz * dz;
+    if (d < bestSq) {
+      bestSq = d;
+      best = p;
+    }
+  }
+  return best;
 }
 
 // --- BUILD BOSS VISUAL (shared by host spawn + client mirror) ---
