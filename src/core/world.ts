@@ -107,9 +107,6 @@ export type Entity = {
     bulletExplodeRadius?: number;
   };
 
-  // MODIFIERS
-  modifiers?: { damageAdd: number; fireRateMult: number; speedMult: number };
-
   // PROJECTILE
   projectile?: {
     pierce: number;
