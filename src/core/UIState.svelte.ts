@@ -87,6 +87,7 @@ export const uiState = $state({
   networkStatus: 'disconnected' as
     | 'disconnected'
     | 'connecting'
+    | 'in_lobby'
     | 'connected'
     | 'waiting_for_players',
   peerId: '',
@@ -97,13 +98,30 @@ export const uiState = $state({
   // Chosen display name (persisted), used as this player's name in multiplayer
   playerName: typeof window !== 'undefined' ? localStorage.getItem('geo_player_name') || '' : '',
 
+  // Party lobby roster (pre-game): who's in, chosen characters, ready states
+  lobby: {
+    players: [] as {
+      connectionId: string;
+      name: string;
+      character: string;
+      ready: boolean;
+      isHost: boolean;
+    }[],
+    started: false,
+  },
+
   // Live party roster (all players incl. self) — drives the co-op teammate HUD
+  // and the end-of-run scoreboard
   party: [] as {
     connectionId: string;
     name: string;
     hp: number;
     maxHp: number;
     level: number;
+    kills: number;
+    dead: boolean;
+    revivePct: number; // 0-100 while being revived
+    character: string;
     isLocal: boolean;
   }[],
 

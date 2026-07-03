@@ -143,24 +143,34 @@
     </button>
   </div>
 
-  <!-- Co-op teammate roster: name + health for every other player -->
+  <!-- Co-op teammate roster: name, health, kills; DOWN + revive channel -->
   {#if teammates.length > 0}
     <div class="party">
       {#each teammates as mate (mate.connectionId)}
-        <div class="mate" class:dead={mate.hp <= 0}>
+        <div class="mate" class:dead={mate.dead || mate.hp <= 0}>
           <div class="mate-head">
             <span class="mate-name">{mate.name}</span>
+            <span class="mate-kills tnum">☠{mate.kills}</span>
             <span class="mate-lv tnum">LV{mate.level}</span>
           </div>
-          <div class="mate-hp">
-            <div
-              class="mate-hp-fill"
-              class:low={mate.maxHp > 0 && mate.hp / mate.maxHp <= 0.3}
-              style="width: {mate.maxHp > 0
-                ? Math.max(0, Math.min(100, (mate.hp / mate.maxHp) * 100))
-                : 0}%"
-            ></div>
-          </div>
+          {#if mate.dead || mate.hp <= 0}
+            <div class="mate-down">
+              <span class="down-label">{mate.revivePct > 0 ? 'REVIVING' : 'DOWN'}</span>
+              <div class="mate-revive">
+                <div class="mate-revive-fill" style="width: {mate.revivePct}%"></div>
+              </div>
+            </div>
+          {:else}
+            <div class="mate-hp">
+              <div
+                class="mate-hp-fill"
+                class:low={mate.maxHp > 0 && mate.hp / mate.maxHp <= 0.3}
+                style="width: {mate.maxHp > 0
+                  ? Math.max(0, Math.min(100, (mate.hp / mate.maxHp) * 100))
+                  : 0}%"
+              ></div>
+            </div>
+          {/if}
         </div>
       {/each}
     </div>
@@ -249,6 +259,35 @@
   }
   .mate-hp-fill.low {
     background: var(--color-primary);
+  }
+  .mate-kills {
+    flex: 0 0 auto;
+    font-size: 0.55rem;
+    font-weight: 700;
+    color: var(--color-text-dim);
+  }
+  .mate-down {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .down-label {
+    font-size: 0.5rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    color: var(--color-secondary);
+  }
+  .mate-revive {
+    flex: 1;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.1);
+    overflow: hidden;
+  }
+  .mate-revive-fill {
+    height: 100%;
+    background: #00ff88;
+    transition: width 0.15s linear;
   }
 
   .hidden {

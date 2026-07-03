@@ -24,6 +24,13 @@ export type Entity = {
   isLocalPlayer?: boolean;
   connectionId?: string;
   playerName?: string; // multiplayer display name (remote players)
+  character?: string; // chosen character id (used to tint remote avatars)
+  kills?: number; // per-player kill count (co-op scoreboard)
+  reviveProgress?: number; // 0-1 while a teammate is reviving this dead player
+  ownerConnId?: string; // projectiles: connectionId of the player who fired (kill credit)
+  // Network smoothing targets (clients lerp remote entities toward these)
+  netX?: number;
+  netZ?: number;
   isEnemy?: boolean;
   isProjectile?: boolean;
   isEnemyProjectile?: boolean;
