@@ -46,7 +46,7 @@ export function WeaponSystem(dt: number, scene: THREE.Scene) {
   }
 
   // 2. PLAYER WEAPONS
-  const players = Array.from(world.with('isPlayer', 'position', 'aimTarget', 'input', 'modifiers'));
+  const players = Array.from(world.with('isPlayer', 'position', 'aimTarget', 'input'));
   for (const player of players) {
     const isLocal = player.isLocalPlayer;
     const isHost = uiState.isHost;
@@ -81,11 +81,10 @@ export function WeaponSystem(dt: number, scene: THREE.Scene) {
 
       if (wantsToFire && entity.weapon.cooldownTimer <= 0) {
         fireWeapon(entity, player, scene);
-        const mod = player.modifiers?.fireRateMult || 1.0;
         // Apply the player's Cooldown stat (Clock Skipper / debug_suite passives,
         // Ghost's CDR quirk) — shorter base cooldown between shots.
         const cdMult = getEffectiveCooldown(player.stats || getDefaultStats());
-        entity.weapon.cooldownTimer = entity.weapon.fireRate * mod * cdMult;
+        entity.weapon.cooldownTimer = entity.weapon.fireRate * cdMult;
 
         // If local player in multiplayer, broadcast shoot event to other clients
         if (isLocal && uiState.isMultiplayer && player.aimTarget) {
