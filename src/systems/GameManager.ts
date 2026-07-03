@@ -1,8 +1,10 @@
 import { world } from '../core/world';
 import { setGameState } from '../core/GameState';
-import { uiState } from '../core/UIState.svelte.ts';
+import { uiState, announce } from '../core/UIState.svelte.ts';
 import { stopMusic, playExplosion, playGameOver, playVictory } from '../core/audio';
 import { addTrauma } from './CameraSystem';
+import { recordRunEnd } from '../core/ProgressManager';
+import { onRunEnded } from '../core/DailyManager';
 import { dlog } from '../core/debug';
 
 export let isGameOver = false;
@@ -19,7 +21,11 @@ export function triggerGameOver() {
   isGameOver = true;
 
   captureFinalStats();
-  uiState.isVictory = false;
+  // Dying in endless mode still counts as a victory — the 10:00 win already
+  // happened; endless is a bonus score chase.
+  uiState.isVictory = uiState.endlessMode;
+  recordRunEnd(uiState.gameTime, uiState.level, uiState.endlessMode);
+  onRunEnded();
 
   // Let the death land: explosion + heavy shake, music cuts out, somber sting
   addTrauma(1.0);
@@ -33,13 +39,43 @@ export function triggerGameOver() {
 
 export function triggerVictory() {
   if (isGameOver || isVictory) return;
+
+  captureFinalStats();
+  recordRunEnd(uiState.gameTime, uiState.level, true);
+  playVictory();
+
+  // First victory moment: offer to stay in the system (endless mode) instead
+  // of ending immediately. The choice modal pauses via the same flag the
+  // upgrade screen uses; resolveVictoryChoice() continues or ends the run.
+  if (!uiState.endlessMode) {
+    uiState.showVictoryChoice = true;
+    return;
+  }
+
+  endRunAsVictory();
+}
+
+/** Player chose to extract (or died in endless): finish the run as a win. */
+export function endRunAsVictory() {
+  if (isGameOver || isVictory) return;
   isVictory = true;
   isGameOver = true; // Also stop game loop
 
   captureFinalStats();
   uiState.isVictory = true;
-  playVictory();
+  onRunEnded();
   setGameState('GAME_OVER');
 
   dlog('[VICTORY] Player survived the corruption!');
+}
+
+/** Called by the victory-choice modal. */
+export function resolveVictoryChoice(stay: boolean) {
+  uiState.showVictoryChoice = false;
+  if (stay) {
+    uiState.endlessMode = true;
+    announce('ENDLESS MODE — SURVIVE');
+  } else {
+    endRunAsVictory();
+  }
 }

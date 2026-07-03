@@ -2,6 +2,7 @@ import { world } from '../core/world';
 import { uiState } from '../core/UIState.svelte.ts';
 import { setMusicIntensity } from '../core/audio';
 import { getGameTime } from './ChestSystem';
+import { tickCombo } from './CollisionSystem';
 import { isGamePaused as _isPauseGlobal } from './UpgradeSystem';
 import { isGameOver as _isGameOverGlobal } from './GameManager';
 
@@ -36,6 +37,9 @@ export function UISystem() {
   if (uiState.gameState === 'PLAYING') {
     setMusicIntensity(0.55 + 0.45 * Math.min(1, uiState.gameTime / 480));
   }
+
+  // Expire the kill-combo chain when the window lapses.
+  tickCombo();
 
   // Safety Check for player
   if (!player || !player.health) return;

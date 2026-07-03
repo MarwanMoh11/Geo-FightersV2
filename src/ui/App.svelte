@@ -7,6 +7,10 @@
   import UpgradeModal from './modals/UpgradeModal.svelte';
   import GameOverModal from './modals/GameOverModal.svelte';
   import GrimoireModal from './modals/GrimoireModal.svelte';
+  import ProtocolModal from './modals/ProtocolModal.svelte';
+  import ChestCeremonyModal from './modals/ChestCeremonyModal.svelte';
+  import VictoryChoiceModal from './modals/VictoryChoiceModal.svelte';
+  import RecordsModal from './modals/RecordsModal.svelte';
   import MobileControls from './MobileControls.svelte';
   import FPSCounter from './FPSCounter.svelte';
   import PwaLayer from './PwaLayer.svelte';
@@ -24,6 +28,10 @@
   <UpgradeModal />
   <GameOverModal />
   <GrimoireModal />
+  <ProtocolModal />
+  <ChestCeremonyModal />
+  <VictoryChoiceModal />
+  <RecordsModal />
 
   <FPSCounter />
   <PwaLayer />

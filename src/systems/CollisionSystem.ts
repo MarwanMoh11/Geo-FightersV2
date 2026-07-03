@@ -15,10 +15,16 @@ import { addTrauma } from './CameraSystem';
 import { WEAPONS } from '../core/WeaponRegistry';
 import { spawnXP, spawnCredit } from '../core/factories';
 import { triggerGameOver } from './GameManager';
-import { playExplosion, playHurt } from '../core/audio';
+import { playExplosion, playHurt, playCollect } from '../core/audio';
 import { reportDamageTaken, reportKill } from '../core/FlowStateManager';
-import { spawnChest } from './ChestSystem';
-import { uiState } from '../core/UIState.svelte.ts';
+import { recordKill, recordDamage, recordVaultCracked } from '../core/ProgressManager';
+import {
+  spawnChest,
+  tryDropEliteChest,
+  registerGuaranteedChestDrop,
+  rollChestRarity,
+} from './ChestSystem';
+import { uiState, announce } from '../core/UIState.svelte.ts';
 import { spawnDamageNumber } from './DamageNumberSystem';
 import { haptics } from '../core/haptics';
 import { dlog } from '../core/debug';
@@ -64,7 +70,7 @@ export function CollisionSystem(scene: THREE.Scene) {
 
       if (distSq < 1.4 * 1.4) {
         if (tear.hitList) tear.hitList.push(enemy.id || 0);
-        
+
         const pushDir = new THREE.Vector3(dx, 0, dz).normalize();
         applyDamage(enemy, 90, pushDir, 6, scene);
       }
@@ -192,7 +198,10 @@ function handleEnemyPlayerCollision(enemy: any, player: any, _scene: THREE.Scene
   // INVULNERABILITY: ignore contact while player is in a menu or in Lash's invuln overload state
   if (
     player.isUpgrading ||
-    (player.isLocalPlayer && (uiState.showUpgrade || uiState.gameState === 'PAUSED' || (uiState.overloadActive && uiState.selectedCharacter === 'lash')))
+    (player.isLocalPlayer &&
+      (uiState.showUpgrade ||
+        uiState.gameState === 'PAUSED' ||
+        (uiState.overloadActive && uiState.selectedCharacter === 'lash')))
   ) {
     return;
   }
@@ -248,7 +257,10 @@ function handleEnemyProjectilePlayerCollision(bullet: any, player: any, scene: T
   // INVULNERABILITY: ignore contact while player is in a menu or in Lash's invuln overload state
   if (
     player.isUpgrading ||
-    (player.isLocalPlayer && (uiState.showUpgrade || uiState.gameState === 'PAUSED' || (uiState.overloadActive && uiState.selectedCharacter === 'lash')))
+    (player.isLocalPlayer &&
+      (uiState.showUpgrade ||
+        uiState.gameState === 'PAUSED' ||
+        (uiState.overloadActive && uiState.selectedCharacter === 'lash')))
   ) {
     return;
   }
@@ -311,6 +323,7 @@ function applyDamage(
   const critChance = 0.05 * luckMult;
   const isCrit = Math.random() < critChance;
   const finalDamage = isCrit ? Math.round(dmg * 2.5) : dmg;
+  recordDamage(finalDamage);
 
   if (enemy.isBoss) {
     // Boss takes real damage and can now be killed. Death/cleanup is owned by
@@ -339,9 +352,40 @@ function applyDamage(
   }
 }
 
-export function handleEnemyDeath(enemy: any, scene: THREE.Scene, weaponId = '', bulletColor = 0xb0b0b0) {
+// Kill-combo chain: kills within the window extend the chain; callouts fire
+// at escalating thresholds (the "something every 5 seconds" dopamine rule).
+const COMBO_WINDOW_MS = 2000;
+const COMBO_MILESTONES = [25, 50, 100, 250, 500, 1000];
+let comboExpiresAt = 0;
+
+export function tickCombo(): void {
+  if (uiState.combo > 0 && performance.now() > comboExpiresAt) {
+    uiState.combo = 0;
+  }
+}
+
+function chainCombo(): void {
+  const now = performance.now();
+  uiState.combo = now > comboExpiresAt ? 1 : uiState.combo + 1;
+  comboExpiresAt = now + COMBO_WINDOW_MS;
+  if (uiState.combo > uiState.bestCombo) uiState.bestCombo = uiState.combo;
+  if (COMBO_MILESTONES.includes(uiState.combo)) {
+    announce(`COMBO ×${uiState.combo}`);
+    playCollect(1 + COMBO_MILESTONES.indexOf(uiState.combo) * 0.15);
+  }
+}
+
+export function handleEnemyDeath(
+  enemy: any,
+  scene: THREE.Scene,
+  weaponId = '',
+  bulletColor = 0xb0b0b0,
+) {
   reportKill();
   uiState.kills++;
+  recordKill();
+  chainCombo();
+
   spawnImpactFX(enemy.position, scene, weaponId, bulletColor, 6);
   spawnXP(scene, enemy.position.x, enemy.position.z, enemy.xpValue || 10);
 
@@ -352,6 +396,25 @@ export function handleEnemyDeath(enemy: any, scene: THREE.Scene, weaponId = '', 
   const player = world.with('isLocalPlayer', 'stats').first;
   const luckMult = player?.stats?.luck || 1.0;
 
+  // Data vault greed event: cracking it showers credits + guarantees a chest
+  // (rarity rolls with time/luck but never below rare — it's the greed prize).
+  if (enemy.isVault) {
+    recordVaultCracked();
+    announce('VAULT CRACKED');
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      spawnCredit(scene, px + Math.cos(a) * 1.2, pz + Math.sin(a) * 1.2, 2);
+    }
+    registerGuaranteedChestDrop();
+    const vaultRarity = rollChestRarity(luckMult + 0.5);
+    spawnChest(scene, px, pz, vaultRarity === 'common' ? 'rare' : vaultRarity);
+
+    // The vault reuses the firewall enemy type — skip the regular elite
+    // credit/chest branches below or it would double-pay.
+    despawn(enemy, scene);
+    return;
+  }
+
   // === CREDIT DROPS ===
   let insideLeakZone = false;
   for (const zone of world.with('isAnomaly', 'anomalyType', 'size', 'position')) {
@@ -359,13 +422,19 @@ export function handleEnemyDeath(enemy: any, scene: THREE.Scene, weaponId = '', 
       const halfSize = (zone.size || 6.0) / 2;
       const zx = zone.position.x;
       const zz = zone.position.z;
-      if (px >= zx - halfSize && px <= zx + halfSize && pz >= zz - halfSize && pz <= zz + halfSize) {
+      if (
+        px >= zx - halfSize &&
+        px <= zx + halfSize &&
+        pz >= zz - halfSize &&
+        pz <= zz + halfSize
+      ) {
         insideLeakZone = true;
         break;
       }
     }
   }
-  const creditMultiplier = insideLeakZone ? 5 : 1;
+  const scavengerMult = uiState.activeProtocolId === 'scavenger_daemon' ? 3 : 1;
+  const creditMultiplier = (insideLeakZone ? 5 : 1) * scavengerMult;
 
   // Basic: 5% * luck chance to drop 1 Credit
   if (Math.random() < 0.05 * luckMult) {
@@ -386,34 +455,50 @@ export function handleEnemyDeath(enemy: any, scene: THREE.Scene, weaponId = '', 
   }
 
   // === CHEST DROPS BY ENEMY TYPE ===
-  // Standard elite (1 chest)
+  // Standard elites go through the chest governor (at most one chest per
+  // cooldown window — firewalls spawn in packs late game and used to rain
+  // chests). A denied drop pays credits instead so the kill still rewards.
   if (type === 'firewall' || type === 'enforcer' || type === 'warden') {
-    const roll = Math.random();
-    const rarity = roll < 0.7 ? 'common' : roll < 0.95 ? 'rare' : 'epic';
-    spawnChest(scene, px, pz, rarity as 'common' | 'rare' | 'epic');
-    dlog(`[Chest] ${type} dropped ${rarity} chest`);
+    if (tryDropEliteChest(scene, px, pz, luckMult)) {
+      dlog(`[Chest] ${type} dropped a chest`);
+    } else {
+      spawnCredit(scene, px, pz, 3 * creditMultiplier);
+    }
   }
-  // Mid-tier elite (1 rare chest)
+  // Mid-tier elite: also gated, but pays a bigger consolation.
   else if (type === 'colossus') {
-    spawnChest(scene, px, pz, 'rare');
-    dlog(`[Chest] ${type} dropped rare chest`);
+    if (tryDropEliteChest(scene, px, pz, luckMult + 0.5)) {
+      dlog(`[Chest] ${type} dropped a chest`);
+    } else {
+      spawnCredit(scene, px, pz, 8 * creditMultiplier);
+    }
   }
-  // Mini-boss HYDRA (3 chests)
+  // Mini-boss HYDRA: one guaranteed epic (was 3 rares — chained 3 ceremony
+  // modals back-to-back) plus a credit fan.
   else if (type === 'hydra') {
-    for (let i = 0; i < 3; i++) {
-      const offset = (i - 1) * 1.5;
-      spawnChest(scene, px + offset, pz, 'rare');
+    registerGuaranteedChestDrop();
+    spawnChest(scene, px, pz, 'epic');
+    for (let i = 0; i < 4; i++) {
+      spawnCredit(scene, px + (i - 1.5) * 1.2, pz + 1.2, 6 * creditMultiplier);
     }
-    dlog(`[Chest] HYDRA dropped 3 rare chests!`);
+    dlog(`[Chest] HYDRA dropped an epic chest`);
   }
-  // Major boss OVERSEER (5 chests)
+  // Major boss OVERSEER: two epics (was 5 — five chained ceremonies and a
+  // free full build) plus a credit ring.
   else if (type === 'overseer') {
-    for (let i = 0; i < 5; i++) {
-      const angle = (i / 5) * Math.PI * 2;
-      const dist = 2;
-      spawnChest(scene, px + Math.cos(angle) * dist, pz + Math.sin(angle) * dist, 'epic');
+    registerGuaranteedChestDrop();
+    spawnChest(scene, px - 1.5, pz, 'epic');
+    spawnChest(scene, px + 1.5, pz, 'epic');
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2;
+      spawnCredit(
+        scene,
+        px + Math.cos(angle) * 2.2,
+        pz + Math.sin(angle) * 2.2,
+        8 * creditMultiplier,
+      );
     }
-    dlog(`[Chest] OVERSEER dropped 5 epic chests!`);
+    dlog(`[Chest] OVERSEER dropped 2 epic chests`);
   }
 
   despawn(enemy, scene);

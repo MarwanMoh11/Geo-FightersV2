@@ -5,6 +5,18 @@
   import { hostRoom, joinRoom, disconnectNetwork } from '../core/network';
   import { promptInstall } from '../core/pwa';
   import { haptics } from '../core/haptics';
+  import { CHARACTERS, getCharacter } from '../core/CharacterRegistry';
+  import {
+    isCharacterUnlocked,
+    getUnlockCondition,
+    getLifetimeStats,
+  } from '../core/ProgressManager';
+  import {
+    getDailyConfig,
+    isDailyAvailable,
+    getDailyState,
+    beginDailyRun,
+  } from '../core/DailyManager';
   import { fade } from 'svelte/transition';
 
   let showMpOptions = $state(false);
@@ -115,7 +127,15 @@
     showCharacterSelect = true;
   }
 
-  function selectCharacter(charId: 'cypher' | 'lash' | 'rail') {
+  function selectCharacter(charId: string) {
+    if (!isCharacterUnlocked(charId)) {
+      const gate = getUnlockCondition('character', charId);
+      if (gate) {
+        const pct = Math.floor(Math.min(1, gate.progress(getLifetimeStats()) / gate.target) * 100);
+        showToast(`🔒 ${gate.description} (${pct}%)`);
+      }
+      return;
+    }
     playMenuClick();
     uiState.selectedCharacter = charId;
     localStorage.setItem('geo_selected_character', JSON.stringify(charId));
@@ -128,6 +148,43 @@
     uiState.isMultiplayer = false;
     uiState.isHost = false;
     setGameState('PLAYING');
+  }
+
+  // --- Corruption dial (0-5 risk/reward, persisted) ---
+  function setCorruption(delta: number) {
+    playMenuClick();
+    haptics.select();
+    uiState.corruption = Math.max(0, Math.min(5, uiState.corruption + delta));
+    localStorage.setItem('geo_corruption', JSON.stringify(uiState.corruption));
+  }
+
+  // --- Daily run ---
+  const dailyConfig = getDailyConfig();
+  let dailyAvailable = $state(isDailyAvailable());
+  let dailyBest = $state(getDailyState().bestScore);
+
+  async function handleDaily() {
+    if (!dailyAvailable) {
+      showToast(`Daily attempt used — next run in ${hoursToReset()}h. Best: ${dailyBest}`);
+      return;
+    }
+    playMenuClick();
+    haptics.select();
+    beginDailyRun();
+    dailyAvailable = false;
+    await startSinglePlayer();
+  }
+
+  function hoursToReset(): number {
+    const now = new Date();
+    const next = new Date(now);
+    next.setUTCHours(24, 0, 0, 0);
+    return Math.max(1, Math.round((next.getTime() - now.getTime()) / 3600000));
+  }
+
+  function openRecords() {
+    playMenuClick();
+    uiState.showRecords = true;
   }
 
   async function handleHost() {
@@ -176,27 +233,39 @@
           <span class="sub">Solo run</span>
         </button>
 
-        <button class="btn" onclick={() => (showShop = true)}>
-          <span class="label">Shop</span>
-          <span class="sub">Upgrades</span>
+        <button class="btn daily" class:used={!dailyAvailable} onclick={handleDaily}>
+          <span class="label">Daily Run</span>
+          <span class="sub">
+            {#if dailyAvailable}
+              {getCharacter(dailyConfig.characterId).name} · CORRUPTION {dailyConfig.corruption}
+            {:else}
+              Done — best {dailyBest}
+            {/if}
+          </span>
         </button>
 
-        <button class="btn" onclick={() => (uiState.showGrimoire = true)}>
-          <span class="label">Evolutions</span>
-          <span class="sub">Recipe Guide</span>
-        </button>
+        <!-- Secondary destinations: compact two-column grid keeps the menu short -->
+        <div class="menu-grid">
+          <button class="btn compact" onclick={() => (showShop = true)}>
+            <span class="label">Shop</span>
+          </button>
+          <button class="btn compact" onclick={openRecords}>
+            <span class="label">Records</span>
+          </button>
+          <button class="btn compact" onclick={() => (uiState.showGrimoire = true)}>
+            <span class="label">Evolutions</span>
+          </button>
+          <button class="btn compact" onclick={() => (showMpOptions = true)}>
+            <span class="label">Co-op</span>
+          </button>
+        </div>
 
-        <button class="btn" onclick={() => (showMpOptions = true)}>
-          <span class="label">Co-op</span>
-          <span class="sub">Online</span>
-        </button>
-
-        <button class="btn" onclick={openSettings}>
+        <button class="btn slim" onclick={openSettings}>
           <span class="label">Settings</span>
         </button>
 
         {#if uiState.canInstall}
-          <button class="btn ghost" onclick={handleInstall}>
+          <button class="btn ghost slim" onclick={handleInstall}>
             <span class="label install">Install app</span>
           </button>
         {/if}
@@ -324,54 +393,59 @@
         <p class="panel-subtitle">Choose your starting configuration</p>
       </header>
 
+      <!-- Corruption dial: opt-in risk for opt-in reward -->
+      <div class="corruption-row">
+        <div class="corruption-info">
+          <span class="corruption-label">☠️ CORRUPTION {uiState.corruption}</span>
+          <span class="corruption-desc">
+            {#if uiState.corruption === 0}
+              Standard threat level
+            {:else}
+              +{uiState.corruption * 25}% swarm · +{uiState.corruption * 15}% enemy HP · +{uiState.corruption *
+                20}% XP · +{uiState.corruption * 25}% credits
+            {/if}
+          </span>
+        </div>
+        <div class="corruption-controls">
+          <button
+            class="corr-btn"
+            onclick={() => setCorruption(-1)}
+            disabled={uiState.corruption <= 0}>−</button
+          >
+          <button
+            class="corr-btn"
+            onclick={() => setCorruption(1)}
+            disabled={uiState.corruption >= 5}>+</button
+          >
+        </div>
+      </div>
+
       <div class="char-grid">
-        <!-- Cypher -->
-        <button class="char-card" onclick={() => selectCharacter('cypher')}>
-          <div class="char-icon core-cyan">💠</div>
-          <h3 class="char-name">CYPHER</h3>
-          <p class="char-weapon">MK-1 Pulse Repeater</p>
-          <p class="char-desc">
-            Fires directional energy bolts. Extremely balanced and reliable for long deployments.
-          </p>
-          <div class="char-stats">
-            <span>HP: 100</span>
-            <span>SPD: 100%</span>
-            <span>Might: 100%</span>
-          </div>
-        </button>
-
-        <!-- Lash -->
-        <button class="char-card" onclick={() => selectCharacter('lash')}>
-          <div class="char-icon core-magenta">🧬</div>
-          <h3 class="char-name">LASH</h3>
-          <p class="char-weapon">Monowire Lash</p>
-          <p class="char-desc">
-            Swift and agile combatant using slicing filaments. High speed and critical hits, but
-            lower protection.
-          </p>
-          <div class="char-stats">
-            <span>HP: 90</span>
-            <span class="green">SPD: 115%</span>
-            <span class="green">Luck: 110%</span>
-          </div>
-        </button>
-
-        <!-- Rail -->
-        <button class="char-card" onclick={() => selectCharacter('rail')}>
-          <div class="char-icon core-green">⚙️</div>
-          <h3 class="char-name">RAIL</h3>
-          <p class="char-weapon">Smart Rail Needles</p>
-          <p class="char-desc">
-            Heavily armored defensive platform deploying rail Needles. Slow velocity, but high
-            destruction.
-          </p>
-          <div class="char-stats">
-            <span class="green">HP: 120</span>
-            <span class="red">SPD: 90%</span>
-            <span class="green">Might: 115%</span>
-            <span class="green">Armor: +1</span>
-          </div>
-        </button>
+        {#each CHARACTERS as char (char.id)}
+          {@const locked = !isCharacterUnlocked(char.id)}
+          {@const gate = locked ? getUnlockCondition('character', char.id) : null}
+          <button class="char-card" class:locked onclick={() => selectCharacter(char.id)}>
+            {#if locked}
+              <div class="char-icon">🔒</div>
+              <h3 class="char-name">???</h3>
+              <p class="char-weapon">LOCKED</p>
+              <p class="char-desc">{gate ? gate.description : 'Keep playing to unlock.'}</p>
+            {:else}
+              <div class="char-icon">{char.icon}</div>
+              <h3 class="char-name">{char.name}</h3>
+              <p class="char-weapon">{char.weaponName}</p>
+              <p class="char-desc">{char.description}</p>
+              {#if char.quirk}
+                <p class="char-quirk">★ {char.quirk}</p>
+              {/if}
+              <div class="char-stats">
+                {#each char.statPreview as stat (stat)}
+                  <span>{stat}</span>
+                {/each}
+              </div>
+            {/if}
+          </button>
+        {/each}
       </div>
 
       <button class="btn back-btn" onclick={() => (showCharacterSelect = false)}
@@ -496,6 +570,35 @@
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--color-text-dim);
+  }
+
+  /* Secondary destinations packed two-up */
+  .menu-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.65rem;
+  }
+  .btn.compact {
+    justify-content: center;
+    padding: 0.8rem 0.5rem;
+  }
+  .btn.compact .label {
+    font-size: 0.82rem;
+  }
+
+  /* Tertiary rows (settings/install) stay quiet */
+  .btn.slim {
+    justify-content: center;
+    padding: 0.6rem;
+    background: transparent;
+  }
+  .btn.slim .label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--color-text-dim);
+  }
+  .btn.slim:hover .label {
+    color: var(--color-text-main);
   }
 
   .btn.primary {
@@ -861,13 +964,15 @@
   }
 
   /* ---- Character Select ---- */
+  /* Two columns on phones, four on wide screens — cards stay card-shaped
+     instead of stretching into full-width slabs or 8-up slivers. */
   .char-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 0.8rem;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.7rem;
     width: 100%;
-    max-width: 540px;
-    margin: auto;
+    max-width: 560px;
+    margin: 0 auto;
   }
 
   .char-card {
@@ -877,12 +982,12 @@
     background: rgba(255, 255, 255, 0.025);
     border: 1px solid var(--color-border);
     border-radius: var(--r-md);
-    padding: 1.25rem;
+    padding: 0.95rem 0.75rem;
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
-    text-align: left;
-    gap: 0.4rem;
+    align-items: center;
+    text-align: center;
+    gap: 0.35rem;
     transition: all var(--transition-fast);
   }
   .char-card:hover {
@@ -895,31 +1000,30 @@
   }
 
   .char-icon {
-    font-size: 1.8rem;
-    margin-bottom: 0.2rem;
+    font-size: 1.6rem;
   }
 
   .char-name {
     font-family: var(--font-heading);
-    font-size: 1.2rem;
+    font-size: 0.95rem;
     font-weight: 800;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.05em;
     color: var(--color-text-main);
     margin: 0;
   }
 
   .char-weapon {
     font-family: var(--font-mono);
-    font-size: 0.62rem;
+    font-size: 0.56rem;
     font-weight: 600;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--color-primary);
     margin: 0;
   }
 
   .char-desc {
-    font-size: 0.74rem;
+    font-size: 0.62rem;
     color: var(--color-text-dim);
     margin: 0;
     line-height: 1.35;
@@ -928,12 +1032,14 @@
   .char-stats {
     display: flex;
     flex-direction: row;
-    gap: 0.8rem;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.3rem;
     font-family: var(--font-mono);
-    font-size: 0.58rem;
+    font-size: 0.52rem;
     font-weight: 600;
     color: var(--color-text-dim);
-    margin-top: 0.4rem;
+    margin-top: 0.3rem;
   }
 
   .char-stats span {
@@ -942,26 +1048,113 @@
     border-radius: var(--r-sm);
   }
 
-  .char-stats span.green {
-    color: var(--color-accent);
-    background: rgba(0, 255, 85, 0.06);
+  .char-card.locked {
+    opacity: 0.55;
+    filter: grayscale(0.6);
   }
 
-  .char-stats span.red {
-    color: var(--color-secondary);
-    background: rgba(255, 61, 119, 0.06);
+  .char-card.locked:hover {
+    border-color: var(--color-border);
+    box-shadow: none;
   }
 
-  /* Responsive wide styling for character cards */
-  @media (min-width: 600px) {
-    .char-grid {
-      flex-direction: row;
-      max-width: 900px;
+  .char-quirk {
+    font-size: 0.62rem;
+    font-weight: 700;
+    color: #ffd75e;
+    margin: 0;
+  }
+
+  /* --- Corruption dial --- */
+  .corruption-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8rem;
+    padding: 0.7rem 0.9rem;
+    border-radius: var(--r-md);
+    border: 1px solid rgba(255, 61, 119, 0.35);
+    background: rgba(255, 61, 119, 0.05);
+    margin: 0 auto 0.8rem;
+    width: 100%;
+    max-width: 560px;
+  }
+
+  @media (min-width: 720px) {
+    .corruption-row {
+      max-width: 780px;
     }
-    .char-card {
-      flex: 1;
-      min-height: 260px;
-      justify-content: flex-start;
+  }
+
+  .corruption-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    text-align: left;
+  }
+
+  .corruption-label {
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    color: #ff3d77;
+  }
+
+  .corruption-desc {
+    font-size: 0.58rem;
+    color: var(--color-text-dim);
+    line-height: 1.4;
+  }
+
+  .corruption-controls {
+    display: flex;
+    gap: 0.35rem;
+  }
+
+  .corr-btn {
+    all: unset;
+    cursor: pointer;
+    width: 1.9rem;
+    height: 1.9rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--r-sm);
+    border: 1px solid var(--color-border);
+    font-size: 1rem;
+    font-weight: 800;
+    color: var(--color-text-main);
+    transition: all var(--transition-fast);
+  }
+
+  .corr-btn:hover:not(:disabled) {
+    border-color: #ff3d77;
+    color: #ff3d77;
+  }
+
+  .corr-btn:disabled {
+    opacity: 0.3;
+    cursor: default;
+  }
+
+  /* --- Daily run button accent --- */
+  .btn.daily {
+    border-color: rgba(255, 215, 94, 0.4);
+  }
+
+  .btn.daily .label {
+    color: #ffd75e;
+  }
+
+  .btn.daily.used {
+    opacity: 0.6;
+  }
+
+  /* Wide screens: four cards per row */
+  @media (min-width: 720px) {
+    .char-grid {
+      grid-template-columns: repeat(4, 1fr);
+      max-width: 780px;
     }
   }
 </style>

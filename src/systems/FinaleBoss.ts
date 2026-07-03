@@ -74,7 +74,7 @@ export function FinaleBossSystem(dt: number, scene: THREE.Scene) {
       dlog('[BOSS] SYSTEM CORRUPTION destroyed!');
       addTrauma(1.0);
       playExplosion();
-      
+
       // Spawn 200 credits in total (5 shards of 40)
       const px = bossEntity.position.x;
       const pz = bossEntity.position.z;
@@ -246,7 +246,11 @@ export function FinaleBossSystem(dt: number, scene: THREE.Scene) {
     const dist = Math.sqrt(dx * dx + dz * dz);
 
     if (Math.abs(dist - currentRadius) < 0.6) {
-      const isInvuln = (player.invulnTimer && player.invulnTimer > 0) || uiState.showUpgrade || uiState.gameState === 'PAUSED' || (uiState.overloadActive && uiState.selectedCharacter === 'lash');
+      const isInvuln =
+        (player.invulnTimer && player.invulnTimer > 0) ||
+        uiState.showUpgrade ||
+        uiState.gameState === 'PAUSED' ||
+        (uiState.overloadActive && uiState.selectedCharacter === 'lash');
       if (!isInvuln) {
         const baseDamage = 15;
         const armor = player.stats?.armor || 0;

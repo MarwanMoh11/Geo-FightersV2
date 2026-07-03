@@ -1,7 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { updateVirtualJoystick, resetVirtualJoystick } from '../systems/InputSystem';
+  import {
+    updateVirtualJoystick,
+    resetVirtualJoystick,
+    triggerOverload,
+  } from '../systems/InputSystem';
   import { uiState } from '../core/UIState.svelte.ts';
+
+  const isTouchDevice =
+    typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
 
   // let joystickZone: HTMLElement; // Unused in this version as we bind events to div directly
   let joyCenterX = $state(0);
@@ -66,6 +73,8 @@
   }
 
   function updatePos(x: number, y: number) {
+    // Fixed origin: the stick stays planted where the touch began (a trailing
+    // origin was tried and felt disorienting — reverted by design).
     const dx = x - joyCenterX;
     const dy = y - joyCenterY;
     const distance = Math.min(Math.sqrt(dx * dx + dy * dy), maxRadius);
@@ -104,6 +113,22 @@
       </div>
     {/if}
   </div>
+
+  <!-- Overload trigger: touch equivalent of SPACE. Only materializes when the
+       ability is charged, so it never clutters the screen otherwise. -->
+  {#if isTouchDevice && uiState.overloadCharge >= 100 && !uiState.overloadActive}
+    <button
+      class="overload-btn"
+      ontouchstart={(e) => {
+        e.preventDefault();
+        triggerOverload();
+      }}
+      onclick={triggerOverload}
+      aria-label="Activate overload"
+    >
+      <span class="overload-bolt">⚡</span>
+    </button>
+  {/if}
 </div>
 
 <style>
@@ -120,20 +145,14 @@
     opacity: 1;
   }
 
+  /* Touch anywhere to steer: the whole screen is the joystick zone and the
+     stick spawns under the finger. UI buttons (pause, overload, modals) live
+     on higher layers, so they still win their taps. */
   .joystick-zone {
     position: absolute;
-    left: 0;
-    bottom: 0;
-    top: auto;
-    width: 50%;
-    height: 75%;
+    inset: 0;
     pointer-events: auto;
-  }
-
-  /* Inverted controls: move the steering zone to the right edge */
-  :global(body.inverted-controls) .joystick-zone {
-    left: auto;
-    right: 0;
+    z-index: 1;
   }
 
   .joystick-base {
@@ -158,6 +177,55 @@
     background: var(--color-primary);
     border-radius: 50%;
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  }
+
+  /* --- Overload trigger (appears only when charged) --- */
+  .overload-btn {
+    all: unset;
+    position: absolute;
+    z-index: 2; /* above the full-screen steering zone */
+    right: calc(1.1rem + var(--safe-right, 0px));
+    bottom: calc(7.5rem + var(--safe-bottom, 0px));
+    width: 4.2rem;
+    height: 4.2rem;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    pointer-events: auto;
+    cursor: pointer;
+    background: radial-gradient(circle at 35% 30%, rgba(255, 200, 60, 0.35), rgba(20, 14, 2, 0.85));
+    border: 2px solid #ffaa00;
+    box-shadow:
+      0 0 22px rgba(255, 170, 0, 0.55),
+      inset 0 0 14px rgba(255, 170, 0, 0.3);
+    animation: overload-throb 0.9s ease-in-out infinite;
+    touch-action: manipulation;
+  }
+
+  /* Joystick zone on the right? Mirror the button to the left thumb. */
+  :global(body.inverted-controls) .overload-btn {
+    right: auto;
+    left: calc(1.1rem + var(--safe-left, 0px));
+  }
+
+  .overload-btn:active {
+    transform: scale(0.92);
+  }
+
+  .overload-bolt {
+    font-size: 1.7rem;
+    filter: drop-shadow(0 0 8px rgba(255, 170, 0, 0.9));
+  }
+
+  /* Glow-only throb — animating transform would jitter the tap target */
+  @keyframes overload-throb {
+    50% {
+      box-shadow:
+        0 0 38px rgba(255, 170, 0, 0.9),
+        inset 0 0 22px rgba(255, 170, 0, 0.55);
+      border-color: #ffd75e;
+    }
   }
 
   /* Desktop Hide */

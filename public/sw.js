@@ -1,6 +1,7 @@
 /* GeoFighters service worker — app-shell + runtime caching for offline play.
-   Bump CACHE_VERSION whenever the caching strategy changes. */
-const CACHE_VERSION = 'geofighters-v1';
+   Bump CACHE_VERSION whenever the caching strategy changes OR when installed
+   clients must be forced off a stale bundle (activation purges old caches). */
+const CACHE_VERSION = 'geofighters-v2';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
