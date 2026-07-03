@@ -137,6 +137,12 @@ preloadTextures(updateLoadingProgress).then(async () => {
   onStateChange((newState, oldState) => {
     if (newState === 'PLAYING' && oldState === 'MENU') {
       initializePlayerForRun(scene);
+
+      // First solo run ever: show the one-time how-to-play overlay. Skipped in
+      // co-op (teammates are mid-run) and after the player has seen it once.
+      if (!uiState.isMultiplayer && localStorage.getItem('geo_onboarded') !== '1') {
+        uiState.showOnboarding = true;
+      }
     }
   });
 

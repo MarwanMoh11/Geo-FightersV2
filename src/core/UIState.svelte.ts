@@ -138,6 +138,9 @@ export const uiState = $state({
   unlocksThisRun: [] as string[], // achievement ids earned during the current run
   showRecords: false, // achievements/stats modal
 
+  // First-run tutorial overlay (shown once, then remembered)
+  showOnboarding: false,
+
   // Corruption dial (0-5 risk/reward, persisted)
   corruption: getLocalVal('geo_corruption', 0),
 
