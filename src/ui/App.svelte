@@ -12,6 +12,7 @@
   import VictoryChoiceModal from './modals/VictoryChoiceModal.svelte';
   import RecordsModal from './modals/RecordsModal.svelte';
   import MobileControls from './MobileControls.svelte';
+  import Onboarding from './Onboarding.svelte';
   import FPSCounter from './FPSCounter.svelte';
   import PwaLayer from './PwaLayer.svelte';
   import Toast from './Toast.svelte';
@@ -32,6 +33,8 @@
   <ChestCeremonyModal />
   <VictoryChoiceModal />
   <RecordsModal />
+
+  <Onboarding />
 
   <FPSCounter />
   <PwaLayer />
