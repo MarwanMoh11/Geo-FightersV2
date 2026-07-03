@@ -4,10 +4,14 @@
 import { dlog, dwarn } from '../core/debug';
 import { world } from '../core/world';
 import { getBlockingObstacles } from '../core/LevelData';
+import { getQualityProfile } from '../core/quality';
 
 // Canvas and context references
 let canvas: HTMLCanvasElement | null = null;
 let ctx: CanvasRenderingContext2D | null = null;
+
+// The minimap doesn't need 60fps — redraw at the quality profile's interval
+let lastDraw = 0;
 
 // Map scale: how many world units per pixel
 const SCALE = 800 / 150; // 800 world units / 150 canvas pixels
@@ -42,6 +46,10 @@ export function initMinimap(): void {
  */
 export function MinimapSystem(): void {
   if (!ctx || !canvas) return;
+
+  const now = performance.now();
+  if (now - lastDraw < getQualityProfile().minimapInterval * 1000) return;
+  lastDraw = now;
 
   const width = canvas.width;
   const height = canvas.height;

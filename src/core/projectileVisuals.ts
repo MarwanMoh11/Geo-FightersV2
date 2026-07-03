@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { world } from './world';
+import { getQualityProfile } from './quality';
 
 // --- GEOMETRY CACHE ---
 const sphereGeo = new THREE.SphereGeometry(0.3, 8, 8);
@@ -15,8 +16,6 @@ crescentGeo.rotateX(Math.PI / 2); // lie flat
 
 const hexGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.05, 6);
 hexGeo.rotateX(Math.PI / 2); // lie flat
-
-
 
 // --- MATERIAL CACHES ---
 const glowMaterials = new Map<number, THREE.MeshStandardMaterial>();
@@ -629,8 +628,9 @@ export function updateProjectileVisual(projectile: any, dt: number, scene: THREE
   }
 
   // 2. SPAWN LIGHTWEIGHT PARTICLE TRAILS
-  // Throttle trail spawn slightly to conserve performance (approx. 50% spawn chance per frame)
-  if (Math.random() > 0.45) {
+  // Throttled to conserve performance: ~55% spawn chance per frame at full
+  // quality, scaled down further on lower quality tiers
+  if (Math.random() < 0.55 * getQualityProfile().particleScale) {
     spawnTrailParticle(projectile.position, color, weaponId, scene);
   }
 }
