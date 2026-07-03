@@ -11,6 +11,7 @@
 
 import * as THREE from 'three';
 import { setMusicDucked } from '../core/audio';
+import { isWeaponUnlocked } from '../core/ProgressManager';
 import { world } from '../core/world';
 import type { WeaponSlot, PassiveSlot } from '../core/world';
 import { WEAPONS, getWeaponStatsAtLevel, canLevelUp, getBaseWeapons } from '../core/WeaponRegistry';
@@ -114,9 +115,11 @@ function generateUpgradePool(player: any): UpgradeOption[] {
     }
   }
 
-  // 2. New weapons (if slots available)
+  // 2. New weapons (if slots available). Locked weapons stay out of the pool
+  // until their achievement is earned — the unlock carrot.
   if (weaponSlots.length < MAX_WEAPON_SLOTS) {
     for (const def of getBaseWeapons()) {
+      if (!isWeaponUnlocked(def.id)) continue;
       if (!ownedWeaponIds.has(def.id)) {
         pool.push({
           type: 'weapon_new',
@@ -206,10 +209,7 @@ function selectWeightedChoices(pool: UpgradeOption[], count: number): UpgradeOpt
 }
 
 // --- UPGRADE APPLICATION ---
-export function selectUpgrade(option: UpgradeOption) {
-  const player = world.with('isLocalPlayer', 'weaponSlots', 'passiveSlots', 'stats').first;
-  if (!player) return;
-
+function applyOptionEffect(player: any, option: UpgradeOption) {
   switch (option.type) {
     case 'weapon_new':
       addNewWeapon(player, option.id);
@@ -230,6 +230,62 @@ export function selectUpgrade(option: UpgradeOption) {
 
   // Recalculate stats from passives
   recalculateStats(player);
+}
+
+/**
+ * Chest ceremony: roll `count` random upgrades from the current pool and
+ * apply them immediately (VS-style — chests pick for you). Returns what was
+ * granted so the ceremony modal can reveal it item by item.
+ */
+export function applyRandomChestRewards(
+  count: number,
+): { name: string; icon: string; detail: string }[] {
+  const player = world.with('isLocalPlayer', 'weaponSlots', 'passiveSlots', 'stats').first;
+  if (!player) return [];
+
+  const granted: { name: string; icon: string; detail: string }[] = [];
+  for (let i = 0; i < count; i++) {
+    const pool = generateUpgradePool(player);
+    // Chests prefer real upgrades; health only when nothing else remains.
+    const nonHealth = pool.filter((o) => o.type !== 'health');
+    const usable = nonHealth.length > 0 ? nonHealth : pool;
+    if (usable.length === 0) break;
+
+    const totalWeight = usable.reduce((sum, o) => sum + o.weight, 0);
+    let roll = Math.random() * totalWeight;
+    let picked = usable[0];
+    for (const o of usable) {
+      roll -= o.weight;
+      if (roll <= 0) {
+        picked = o;
+        break;
+      }
+    }
+
+    applyOptionEffect(player, picked);
+    granted.push({
+      name: picked.name,
+      icon: picked.icon || '📦',
+      detail:
+        picked.type === 'health'
+          ? 'HP restored'
+          : picked.nextLevel
+            ? `LV ${picked.currentLevel} → ${picked.nextLevel}`
+            : 'NEW',
+    });
+  }
+
+  // Keep the Svelte HUD inventory in sync with the silently-applied items.
+  uiState.weaponSlots = [...(player.weaponSlots || [])];
+  uiState.passiveSlots = [...(player.passiveSlots || [])];
+  return granted;
+}
+
+export function selectUpgrade(option: UpgradeOption) {
+  const player = world.with('isLocalPlayer', 'weaponSlots', 'passiveSlots', 'stats').first;
+  if (!player) return;
+
+  applyOptionEffect(player, option);
 
   if (pendingUpgradesCount > 0) {
     pendingUpgradesCount--;

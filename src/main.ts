@@ -93,6 +93,11 @@ preloadTextures(updateLoadingProgress).then(async () => {
   const { scene, camera, renderer } = await initRenderer();
   setNetworkScene(scene);
 
+  // Debug hook: expose UI state for the dev console / automated tests
+  if (DEBUG) {
+    (window as unknown as { uiState: typeof uiState }).uiState = uiState;
+  }
+
   // Renderer backend indicator (debug builds only)
   if (DEBUG) {
     const backendDebug = document.createElement('div');
@@ -206,7 +211,13 @@ function startGameLoop(
       shouldRunGame =
         (uiState.gameState === 'PLAYING' || uiState.gameState === 'PAUSED') && !isGameOver;
     } else {
-      shouldRunGame = isPlaying() && !isGamePaused && !isGameOver;
+      shouldRunGame =
+        isPlaying() &&
+        !isGamePaused &&
+        !isGameOver &&
+        !uiState.showVictoryChoice &&
+        !uiState.showChestCeremony &&
+        !uiState.showProtocolChoice;
     }
 
     if (!shouldRunGame) {

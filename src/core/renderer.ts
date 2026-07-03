@@ -96,11 +96,21 @@ export async function initRenderer() {
   // (Replaced GridHelper with textured ground plane in LevelSystem.ts)
 
   // 6. Responsive Window
-  window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
+  // iOS (especially installed PWAs) misreports innerHeight at boot and does
+  // not always fire `resize` when the browser chrome / home-indicator area
+  // settles — so also listen to visualViewport and re-measure shortly after
+  // load, or the canvas leaves an unused strip at the bottom of the screen.
+  const applySize = () => {
+    const w = window.visualViewport?.width ?? window.innerWidth;
+    const h = window.visualViewport?.height ?? window.innerHeight;
+    camera.aspect = w / h;
     camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-  });
+    renderer.setSize(w, h);
+  };
+  window.addEventListener('resize', applySize);
+  window.addEventListener('orientationchange', () => setTimeout(applySize, 250));
+  window.visualViewport?.addEventListener('resize', applySize);
+  setTimeout(applySize, 400); // iOS standalone: first paint often has stale metrics
 
   return { scene, camera, renderer };
 }

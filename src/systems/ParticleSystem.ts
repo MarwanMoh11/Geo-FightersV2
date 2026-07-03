@@ -21,8 +21,7 @@ const tempColor = new THREE.Color();
 export function ParticleSystem(dt: number, scene?: THREE.Scene) {
   // 1. Update active particles' physics, scale, and rotations
   for (const entity of world.with('isParticle', 'lifeTimer', 'maxLife')) {
-    if (entity.lifeTimer === undefined || entity.maxLife === undefined)
-      continue;
+    if (entity.lifeTimer === undefined || entity.maxLife === undefined) continue;
 
     // Calculate Progress (0.0 = New, 1.0 = Dead)
     const age = Math.min(entity.lifeTimer / entity.maxLife, 1);
@@ -94,26 +93,27 @@ export function ParticleSystem(dt: number, scene?: THREE.Scene) {
         instancedMesh = new THREE.InstancedMesh(explosionGeo, particleMaterial, maxParticles);
         instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         instancedMesh.frustumCulled = false;
-        
+
         // Pre-allocate instanceColor array to maximum size
         const defaultColor = new THREE.Color(0xffffff);
         for (let j = 0; j < maxParticles; j++) {
           instancedMesh.setColorAt(j, defaultColor);
         }
-        
+
         scene.add(instancedMesh);
       }
 
       // Calculate scale (shrinking with age)
-      const age = entity.lifeTimer !== undefined && entity.maxLife !== undefined
-        ? Math.min(entity.lifeTimer / entity.maxLife, 1)
-        : 0;
+      const age =
+        entity.lifeTimer !== undefined && entity.maxLife !== undefined
+          ? Math.min(entity.lifeTimer / entity.maxLife, 1)
+          : 0;
       const scaleBase = 1.0 - age * age;
       const scaleVal = Math.max(scaleBase, 0.001);
 
       // Compose matrix directly from entity properties
       tempPosition.copy(entity.position);
-      
+
       const sX = (entity.scaleX ?? 1.0) * scaleVal;
       const sY = (entity.scaleY ?? 1.0) * scaleVal;
       const sZ = (entity.scaleZ ?? 1.0) * scaleVal;

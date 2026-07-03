@@ -12,8 +12,11 @@ import * as THREE from 'three';
 import { world } from '../core/world';
 import { scanForEvolutions, selectEvolution } from '../core/EvolutionRegistry';
 import { WEAPONS, getWeaponStatsAtLevel } from '../core/WeaponRegistry';
-import { triggerLevelUp } from './UpgradeSystem';
+import { applyRandomChestRewards } from './UpgradeSystem';
 import { playChestOpen } from '../core/audio';
+import { recordChestOpened, recordEvolution } from '../core/ProgressManager';
+import { uiState } from '../core/UIState.svelte.ts';
+import { spawnCredit } from '../core/factories';
 import { haptics } from '../core/haptics';
 import { dlog } from '../core/debug';
 
@@ -33,6 +36,63 @@ export function resetGameTime() {
 
 export function getGameTime(): number {
   return gameTime;
+}
+
+// --- CHEST DROP GOVERNOR ---
+// Standard elites (firewalls especially) spawn in packs late game; without a
+// governor every kill drops a chest and the ceremony modal spams. Instead:
+// at most one elite chest per cooldown window — denied drops pay credits so
+// the kill still feels rewarding. Guaranteed drops (mini-bosses, vaults)
+// bypass the gate but reset the clock so trash chests don't stack on top.
+const ELITE_CHEST_COOLDOWN = 20; // seconds between standard-elite chests
+
+let lastChestDropTime = -999;
+
+/**
+ * Rarity scales with run time (fewer chests late, but better ones) and is
+ * nudged by luck and corruption. Early: mostly common. Past 6:00: mostly
+ * rare with a real epic chance.
+ */
+export function rollChestRarity(luck: number = 1): 'common' | 'rare' | 'epic' {
+  const t = gameTime;
+  // Base odds per phase: [epic, rare] thresholds, remainder = common.
+  let epicChance: number;
+  let rareChance: number;
+  if (t < 180) {
+    epicChance = 0.02;
+    rareChance = 0.18;
+  } else if (t < 360) {
+    epicChance = 0.08;
+    rareChance = 0.32;
+  } else {
+    epicChance = 0.18;
+    rareChance = 0.42;
+  }
+  // Luck (1.0 = neutral) and corruption sweeten the odds.
+  const bonus = (luck - 1) * 0.1 + uiState.corruption * 0.02;
+  epicChance += bonus;
+  rareChance += bonus;
+
+  const roll = Math.random();
+  if (roll < epicChance) return 'epic';
+  if (roll < epicChance + rareChance) return 'rare';
+  return 'common';
+}
+
+/**
+ * Gated chest drop for standard elites. Returns true if a chest dropped;
+ * callers should pay a small credit consolation when it returns false.
+ */
+export function tryDropEliteChest(scene: THREE.Scene, x: number, z: number, luck = 1): boolean {
+  if (gameTime - lastChestDropTime < ELITE_CHEST_COOLDOWN) return false;
+  lastChestDropTime = gameTime;
+  spawnChest(scene, x, z, rollChestRarity(luck));
+  return true;
+}
+
+/** Mark that a guaranteed chest (boss/vault) just dropped — resets the gate. */
+export function registerGuaranteedChestDrop(): void {
+  lastChestDropTime = gameTime;
 }
 
 // --- SHARED RESOURCES ---
@@ -125,6 +185,7 @@ export function ChestSystem(dt: number, scene: THREE.Scene) {
 function collectChest(chest: any, player: any, scene: THREE.Scene) {
   playChestOpen();
   haptics.reward();
+  recordChestOpened();
 
   // 1. EVOLUTION SCAN (only if time >= threshold)
   const candidates = scanForEvolutions(
@@ -138,13 +199,39 @@ function collectChest(chest: any, player: any, scene: THREE.Scene) {
     const selected = selectEvolution(candidates);
     if (selected) {
       performEvolution(player, selected.weaponSlotIndex, selected.evolution.evolvedWeaponId, scene);
+      recordEvolution();
       despawnChest(chest, scene);
       return;
     }
   }
 
-  // 2. FALLBACK: Grant upgrade selection
-  triggerLevelUp();
+  // 2. CHEST CEREMONY: jackpot roll of 1/3/5 instant upgrades (VS-style —
+  // the chest picks for you, the modal reveals them one by one).
+  const rarity: 'common' | 'rare' | 'epic' = chest.chestRarity || 'common';
+  const luck = player.stats?.luck || 1;
+  const jackpotBoost = (luck - 1) * 0.1; // luck nudges the good rolls
+  const roll = Math.random();
+  let count = 1;
+  if (rarity === 'epic') {
+    count = roll < 0.25 + jackpotBoost ? 5 : 3;
+  } else if (rarity === 'rare') {
+    count = roll < 0.08 + jackpotBoost ? 5 : roll < 0.4 + jackpotBoost ? 3 : 1;
+  } else {
+    count = roll < 0.03 + jackpotBoost ? 5 : roll < 0.18 + jackpotBoost ? 3 : 1;
+  }
+
+  const rewards = applyRandomChestRewards(count);
+  if (rewards.length > 0) {
+    uiState.chestRewards = rewards;
+    uiState.chestRarity = rarity;
+    uiState.showChestCeremony = true;
+  } else {
+    // Build is fully maxed — pay out credits instead so chests never whiff.
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      spawnCredit(scene, chest.position.x + Math.cos(a), chest.position.z + Math.sin(a), 5);
+    }
+  }
 
   despawnChest(chest, scene);
 }

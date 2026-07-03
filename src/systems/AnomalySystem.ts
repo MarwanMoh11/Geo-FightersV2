@@ -1,11 +1,80 @@
 import { world } from '../core/world';
-import { uiState } from '../core/UIState.svelte.ts';
+import { uiState, announce } from '../core/UIState.svelte.ts';
 import { spawnDamageNumber } from './DamageNumberSystem';
 import * as THREE from 'three';
 import { handleEnemyDeath } from './CollisionSystem';
+import { spawnEnemy, EnemyType } from '../core/factories';
+import { removeBody } from '../core/RapierWorld';
 
 let spawnTimer = 15.0; // spawn first anomaly after 15 seconds, then every 45 seconds
 let damageTimer = 0;
+
+// --- DATA VAULT (greed event) ---
+// A stationary loot piñata spawns every ~100s; crack it within the window for
+// a credit shower + guaranteed chest (payout handled in CollisionSystem).
+let vaultTimer = 60.0; // first vault at 1:00
+let activeVault: any = null;
+let vaultExpiry = 0;
+
+function spawnVault(scene: THREE.Scene, px: number, pz: number, gameTime: number): void {
+  const angle = Math.random() * Math.PI * 2;
+  const dist = 10 + Math.random() * 6;
+  const vault = spawnEnemy(
+    scene,
+    px + Math.cos(angle) * dist,
+    pz + Math.sin(angle) * dist,
+    EnemyType.FIREWALL,
+  );
+  if (!vault) return;
+
+  vault.isVault = true;
+  vault.moveSpeed = 0;
+  const hp = Math.round(180 * (1 + gameTime / 240)); // scale with run time
+  vault.health = { current: hp, max: hp };
+  vault.xpValue = 50;
+
+  // Gold tint so it reads as loot, not threat (clone materials — enemy
+  // meshes share materials across instances).
+  vault.transform?.traverse((obj: THREE.Object3D) => {
+    const mesh = obj as THREE.Mesh;
+    if (mesh.isMesh && mesh.material) {
+      const mat = (mesh.material as THREE.MeshStandardMaterial).clone();
+      if (mat.color) mat.color.setHex(0xffcc33);
+      if (mat.emissive) mat.emissive.setHex(0xaa8800);
+      mesh.material = mat;
+    }
+  });
+
+  activeVault = vault;
+  vaultExpiry = 18.0;
+  announce('DATA VAULT DETECTED');
+}
+
+function tickVault(dt: number, scene: THREE.Scene): void {
+  if (!activeVault) return;
+
+  // Cracked? CollisionSystem removed it via handleEnemyDeath.
+  if (!activeVault.health || activeVault.health.current <= 0) {
+    activeVault = null;
+    return;
+  }
+
+  vaultExpiry -= dt;
+  // Blink faster as the window closes.
+  if (activeVault.transform && vaultExpiry < 6) {
+    activeVault.transform.visible = Math.floor(vaultExpiry * (vaultExpiry < 3 ? 8 : 4)) % 2 === 0;
+  }
+  if (vaultExpiry <= 0) {
+    if (activeVault.transform) {
+      activeVault.transform.visible = true;
+      scene.remove(activeVault.transform);
+    }
+    if (activeVault.rigidBody) removeBody(activeVault.rigidBody);
+    world.remove(activeVault);
+    activeVault = null;
+    announce('VAULT ESCAPED');
+  }
+}
 
 const zoneGeo = new THREE.PlaneGeometry(6, 6);
 
@@ -14,6 +83,14 @@ export function AnomalySystem(dt: number, scene: THREE.Scene) {
 
   const player = world.with('isLocalPlayer', 'position', 'health').first;
   if (!player || !player.health) return;
+
+  // 0. Data vault greed event
+  vaultTimer -= dt;
+  if (vaultTimer <= 0 && !activeVault && !uiState.isMultiplayer) {
+    vaultTimer = 100.0;
+    spawnVault(scene, player.position.x, player.position.z, uiState.gameTime);
+  }
+  tickVault(dt, scene);
 
   // 1. Tick Spawner
   spawnTimer -= dt;
@@ -39,7 +116,7 @@ export function AnomalySystem(dt: number, scene: THREE.Scene) {
     });
     const mesh = new THREE.Mesh(zoneGeo, mat);
     mesh.rotation.x = -Math.PI / 2;
-    
+
     // Position near player
     const ax = player.position.x + (Math.random() - 0.5) * 16;
     const az = player.position.z + (Math.random() - 0.5) * 16;
@@ -123,7 +200,12 @@ export function AnomalySystem(dt: number, scene: THREE.Scene) {
       const zx = zone.position.x;
       const zz = zone.position.z;
 
-      if (ex >= zx - halfSize && ex <= zx + halfSize && ez >= zz - halfSize && ez <= zz + halfSize) {
+      if (
+        ex >= zx - halfSize &&
+        ex <= zx + halfSize &&
+        ez >= zz - halfSize &&
+        ez <= zz + halfSize
+      ) {
         if (zone.anomalyType === 'defrag') enemyInsideDefrag = true;
         if (zone.anomalyType === 'leak') enemyInsideLeak = true;
       }

@@ -98,6 +98,17 @@ export function initPWA() {
               }
             });
           });
+
+          // iOS resumes installed PWAs from memory without a navigation, so
+          // updates would never be discovered — check whenever the app
+          // returns to the foreground.
+          document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+              reg.update().catch(() => {
+                /* best-effort */
+              });
+            }
+          });
         })
         .catch(() => {
           /* registration is best-effort */

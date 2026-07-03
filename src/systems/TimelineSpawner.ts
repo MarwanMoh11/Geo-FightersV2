@@ -20,6 +20,7 @@ import {
   selectEntryByWeight,
 } from '../core/SpawnTimeline';
 import type { FormationType, SpawnEntry } from '../core/SpawnTimeline';
+import { uiState } from '../core/UIState.svelte.ts';
 import * as THREE from 'three';
 
 // --- CONFIGURATION ---
@@ -66,8 +67,11 @@ export function TimelineSpawnerSystem(dt: number, scene: THREE.Scene): void {
   if (spawnTimer <= 0) {
     spawnTimer = CONFIG.SPAWN_CHECK_INTERVAL;
 
-    // 4. Get active spawn entries from timeline
-    const activeEntries = getActiveEntries(STAGE_1_TIMELINE, gameTime);
+    // 4. Get active spawn entries from timeline. In endless mode the clock
+    // runs past the timeline's end — keep serving the final phase's pool.
+    const timelineEnd = 599;
+    const queryTime = uiState.endlessMode ? Math.min(gameTime, timelineEnd) : gameTime;
+    const activeEntries = getActiveEntries(STAGE_1_TIMELINE, queryTime);
     if (activeEntries.length === 0) return;
 
     // 5. Count current enemies
@@ -78,8 +82,15 @@ export function TimelineSpawnerSystem(dt: number, scene: THREE.Scene): void {
     let spawnBudget =
       CONFIG.BASE_BUDGET + Math.pow(minutesElapsed, CONFIG.BUDGET_EXPONENT) * CONFIG.BUDGET_SCALE;
 
-    // Apply difficulty multipliers
-    spawnBudget *= CONFIG.CURSE_MULTIPLIER * CONFIG.STAGE_MULTIPLIER;
+    // Apply difficulty multipliers.
+    // Corruption: +25% spawn pressure per level, the player's chosen bet.
+    // Curse: per-run stat from characters/passives/protocols (1.0 = normal).
+    // Endless: pressure keeps climbing after the 10:00 victory.
+    const corruptionMult = 1 + uiState.corruption * 0.25;
+    const curseMult = (player as { stats?: { curse?: number } }).stats?.curse ?? 1.0;
+    const endlessMult = uiState.endlessMode ? 1 + Math.max(0, gameTime - 600) / 90 : 1;
+    spawnBudget *=
+      CONFIG.CURSE_MULTIPLIER * CONFIG.STAGE_MULTIPLIER * corruptionMult * curseMult * endlessMult;
 
     // Add accumulated budget (dam breaking effect)
     spawnBudget += accumulatedBudget;
