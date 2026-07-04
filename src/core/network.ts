@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { world } from './world';
 import { uiState, showToast, announce } from './UIState.svelte';
 import { setGameState } from './GameState';
-import { spawnPlayer, spawnEnemy, spawnXP } from './factories';
+import { spawnPlayer, spawnEnemy, spawnXP, spawnCredit } from './factories';
 import { spawnChest, openChestLocally } from '../systems/ChestSystem';
 import { spawnClientBoss, removeClientBoss } from '../systems/FinaleBoss';
 import { removeBody, createDynamicBody, isRapierInitialized } from './RapierWorld';
@@ -11,7 +11,10 @@ import { removeBody, createDynamicBody, isRapierInitialized } from './RapierWorl
 // Player collider radius (matches spawnPlayer in factories) — used to give
 // remote players a body on the host so they take damage.
 const PLAYER_RADIUS = 0.8;
-import { playLevelUp, playChestOpen } from './audio';
+import { playLevelUp, playChestOpen, playHurt } from './audio';
+import { addTrauma } from '../systems/CameraSystem';
+import { spawnDamageNumber } from '../systems/DamageNumberSystem';
+import { haptics } from './haptics';
 import { triggerLevelUp } from '../systems/UpgradeSystem';
 import { getCharacter } from './CharacterRegistry';
 import { WEAPONS, getWeaponStatsAtLevel } from './WeaponRegistry';
@@ -360,6 +363,13 @@ function setupSocketListeners() {
     // Remember who hosts (clients address their P2P state updates to them)
     hostConnId = lobby.players.find((p: any) => p.isHost)?.connectionId || '';
 
+    // Reset the snapshot sequence counters for the new game. Without this, a
+    // client that already played one game keeps a high lastHostSeqSeen and
+    // rejects every snapshot of the next game (whose host counts up from 1).
+    clientSeq = 0;
+    hostSeq = 0;
+    lastHostSeqSeen = 0;
+
     // Host spawns remote avatars now, spread around the spawn point, tinted
     // by each player's chosen character.
     if (uiState.isHost && activeScene) {
@@ -524,11 +534,28 @@ function handleHostState(state: any) {
 
     if (pConnId === socket?.id) {
       // Local player on a client: host is authoritative for health/XP/level
-      const local = world.with('isLocalPlayer', 'health', 'level').first;
+      const local: any = world.with('isLocalPlayer', 'health', 'level').first;
       if (local) {
         if (local.health) {
+          // Detect damage from the host-authoritative HP and reconstruct the
+          // hit feedback locally — the host applies the damage, but all the
+          // juice (red vignette, shake, hurt sound, haptics, damage number)
+          // fires on the host's screen, so the joining player felt nothing.
+          const prevHp = local.health.current;
           local.health.current = pHealth.current;
           local.health.max = pHealth.max;
+          const dropped = prevHp - pHealth.current;
+          // Skip the very first snapshot (baseline) so joining doesn't flash.
+          if (local._netDmgInit && dropped >= 1 && pHealth.current > 0) {
+            local.hitFlashTimer = 0.15;
+            local.invulnTimer = 0.4; // brief blink; host owns the real i-frames
+            uiState.damageFlash++;
+            addTrauma(0.4);
+            playHurt();
+            haptics.hit();
+            spawnDamageNumber(local.position, dropped, 'player');
+          }
+          local._netDmgInit = true;
         }
         // XP bar mirrors the host's tally (clients don't collect XP locally)
         if (pData.x !== undefined) local.xp = pData.x;
@@ -667,6 +694,27 @@ function handleHostState(state: any) {
   for (const obsoleteXP of xpMap.values()) {
     if (obsoleteXP.transform) activeScene?.remove(obsoleteXP.transform);
     world.remove(obsoleteXP);
+  }
+
+  // 3b. Sync Cyber Credits (so the joining player sees dropped currency too)
+  const creditMap = new Map<number, any>();
+  for (const c of world.with('isCredit')) {
+    creditMap.set(c.id!, c);
+  }
+  (state.credits || []).forEach((cData: any) => {
+    const cId = cData.i;
+    let credit = creditMap.get(cId);
+    if (!credit) {
+      credit = spawnCredit(activeScene!, cData.p[0], cData.p[1], cData.v || 1);
+      if (credit) credit.id = cId;
+    }
+    if (credit) {
+      credit.position.set(cData.p[0], credit.position.y, cData.p[1]);
+      creditMap.delete(cId);
+    }
+  });
+  for (const obsolete of creditMap.values()) {
+    world.remove(obsolete);
   }
 
   // 4. Sync Chests
@@ -874,6 +922,13 @@ export function sendHostUpdate() {
     v: x.xpValue || 5,
   }));
 
+  // Gather active cyber credits (so clients render dropped currency)
+  const credits = Array.from(world.with('isCredit', 'position')).map((c: any) => ({
+    i: c.id,
+    p: [Math.round(c.position.x * 10) / 10, Math.round(c.position.z * 10) / 10],
+    v: c.creditValue || 1,
+  }));
+
   // Gather active chests
   const chests = Array.from(world.with('isChest', 'position', 'chestRarity')).map((c: any) => ({
     i: c.id,
@@ -896,6 +951,7 @@ export function sendHostUpdate() {
     players,
     enemies,
     xp,
+    credits,
     chests,
     boss,
     gameTime: uiState.gameTime,
