@@ -6,7 +6,11 @@ import { setGameState } from './GameState';
 import { spawnPlayer, spawnEnemy, spawnXP } from './factories';
 import { spawnChest, openChestLocally } from '../systems/ChestSystem';
 import { spawnClientBoss, removeClientBoss } from '../systems/FinaleBoss';
-import { removeBody } from './RapierWorld';
+import { removeBody, createDynamicBody, isRapierInitialized } from './RapierWorld';
+
+// Player collider radius (matches spawnPlayer in factories) — used to give
+// remote players a body on the host so they take damage.
+const PLAYER_RADIUS = 0.8;
 import { playLevelUp, playChestOpen } from './audio';
 import { triggerLevelUp } from '../systems/UpgradeSystem';
 import { getCharacter } from './CharacterRegistry';
@@ -196,6 +200,18 @@ function ensureRemotePlayer(connId: string, x: number, z: number, name?: string,
       player.playerName = name || 'PLAYER';
       player.kills = 0;
       if (ch) applyCharacterTint(player, ch);
+
+      // HOST ONLY: give remote players a physics collider so the host's
+      // authoritative collision simulation actually hits them. spawnPlayer only
+      // creates a body for the LOCAL player, so without this only the host ever
+      // took contact/projectile damage. (Clients don't simulate damage, so they
+      // don't need remote-player colliders.)
+      if (uiState.isHost && isRapierInitialized() && player.id !== undefined && !player.rigidBody) {
+        const { rigidBody, collider } = createDynamicBody(x, z, PLAYER_RADIUS, player.id);
+        player.rigidBody = rigidBody;
+        player.collider = collider;
+      }
+
       remotePlayers.set(connId, player);
       uiState.remotePlayersCount = remotePlayers.size;
     }
