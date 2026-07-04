@@ -7,13 +7,36 @@
   } from '../../core/ProgressManager';
   import { getTodaysQuests } from '../../core/DailyManager';
   import { playMenuClick } from '../../core/audio';
+  import { fetchLeaderboard, type LeaderboardEntry } from '../../core/leaderboard';
+  import { getCharacter } from '../../core/CharacterRegistry';
   import { fade, fly } from 'svelte/transition';
 
-  let tab = $state<'achievements' | 'stats'>('achievements');
+  let tab = $state<'achievements' | 'stats' | 'global'>('achievements');
 
   // Snapshot when opened (stats don't change while the modal is up)
   let stats = $derived(uiState.showRecords ? getLifetimeStats() : null);
   let quests = $derived(uiState.showRecords ? getTodaysQuests() : []);
+
+  // Global leaderboard: fetched lazily the first time the tab is opened
+  let board = $state<LeaderboardEntry[]>([]);
+  let boardState = $state<'idle' | 'loading' | 'loaded' | 'empty' | 'error'>('idle');
+
+  async function loadBoard() {
+    boardState = 'loading';
+    try {
+      const entries = await fetchLeaderboard(25);
+      board = entries;
+      boardState = entries.length ? 'loaded' : 'empty';
+    } catch {
+      boardState = 'error';
+    }
+  }
+
+  $effect(() => {
+    if (uiState.showRecords && tab === 'global' && boardState === 'idle') {
+      loadBoard();
+    }
+  });
 
   function close() {
     playMenuClick();
@@ -21,6 +44,8 @@
   }
 
   const fmt = (n: number) => n.toLocaleString('en-US');
+  const mmss = (s: number) =>
+    `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 </script>
 
 {#if uiState.showRecords && stats}
@@ -38,6 +63,9 @@
           </button>
           <button class="tab" class:active={tab === 'stats'} onclick={() => (tab = 'stats')}>
             STATS
+          </button>
+          <button class="tab" class:active={tab === 'global'} onclick={() => (tab = 'global')}>
+            GLOBAL
           </button>
         </div>
       </header>
@@ -79,7 +107,7 @@
               {/if}
             </div>
           {/each}
-        {:else}
+        {:else if tab === 'stats'}
           <div class="stats-grid">
             <div class="s">
               <span class="k">ENEMIES DESTROYED</span><span class="v">{fmt(stats.kills)}</span>
@@ -120,6 +148,36 @@
               <span class="k">DAILY STREAK</span><span class="v">{fmt(stats.dailyStreak)}</span>
             </div>
           </div>
+        {:else}
+          <!-- GLOBAL LEADERBOARD -->
+          <div class="lb-head">
+            <span class="lb-col rank">#</span>
+            <span class="lb-col who">FIGHTER</span>
+            <span class="lb-col time">TIME</span>
+            <span class="lb-col num">LV</span>
+            <span class="lb-col num">☠</span>
+          </div>
+          {#if boardState === 'loading'}
+            <div class="lb-note"><span class="spin"></span> Fetching global runs…</div>
+          {:else if boardState === 'error'}
+            <div class="lb-note">Couldn't reach the leaderboard server.</div>
+          {:else if boardState === 'empty'}
+            <div class="lb-note">No runs posted yet — be the first. Survive past 0:30 to rank.</div>
+          {:else}
+            {#each board as e, i (e.ts)}
+              <div class="lb-row" class:top={i < 3}>
+                <span class="lb-col rank">{i + 1}</span>
+                <span class="lb-col who">
+                  <span class="lb-char">{getCharacter(e.character).icon}</span>
+                  <span class="lb-name">{e.name}</span>
+                  {#if e.victory}<span class="lb-win" title="Survived to 10:00">👑</span>{/if}
+                </span>
+                <span class="lb-col time tnum">{mmss(e.time)}</span>
+                <span class="lb-col num tnum">{e.level}</span>
+                <span class="lb-col num tnum">{fmt(e.kills)}</span>
+              </div>
+            {/each}
+          {/if}
         {/if}
       </div>
 
@@ -303,5 +361,84 @@
     letter-spacing: 0.1em;
     color: #04060f;
     background: var(--color-primary);
+  }
+
+  /* ---- Global leaderboard ---- */
+  .lb-head,
+  .lb-row {
+    display: grid;
+    grid-template-columns: 1.6rem 1fr 2.6rem 1.8rem 2.6rem;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .lb-head {
+    padding: 0 0.6rem 0.3rem;
+    font-size: 0.5rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    color: var(--color-text-dim);
+  }
+  .lb-row {
+    padding: 0.5rem 0.6rem;
+    border-radius: var(--r-md);
+    border: 1px solid var(--color-border);
+    font-size: 0.68rem;
+  }
+  .lb-row.top {
+    border-color: rgba(255, 215, 94, 0.35);
+    background: rgba(255, 215, 94, 0.05);
+  }
+  .lb-col.rank {
+    font-weight: 800;
+    color: var(--color-text-dim);
+  }
+  .lb-row.top .lb-col.rank {
+    color: #ffd75e;
+  }
+  .lb-col.who {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+  }
+  .lb-name {
+    font-weight: 700;
+    color: var(--color-text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .lb-col.time {
+    color: var(--color-primary);
+    font-weight: 700;
+    text-align: right;
+  }
+  .lb-col.num {
+    text-align: right;
+    color: var(--color-text-dim);
+  }
+  .lb-note {
+    padding: 1.4rem 0.6rem;
+    text-align: center;
+    font-size: 0.66rem;
+    color: var(--color-text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+  .spin {
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(255, 255, 255, 0.15);
+    border-top-color: var(--color-primary);
+    border-radius: 50%;
+    display: inline-block;
+    animation: lb-spin 0.8s linear infinite;
+  }
+  @keyframes lb-spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 </style>
