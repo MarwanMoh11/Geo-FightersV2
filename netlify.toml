@@ -4,6 +4,9 @@
 
 [build.environment]
   NODE_VERSION = "22"
+  # Signaling server for co-op multiplayer (Hugging Face Space). Public URL,
+  # safe to commit. Vite inlines VITE_* env vars into the build at build time.
+  VITE_SIGNALING_SERVER_URL = "https://MarwanMo11-geofighters-signaling.hf.space"
 
 [[redirects]]
   from = "/*"
