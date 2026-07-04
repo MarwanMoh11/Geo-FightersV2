@@ -143,6 +143,26 @@
     </button>
   </div>
 
+  <!-- Co-op transport indicator: direct P2P (with measured ping) vs relay -->
+  {#if uiState.isMultiplayer}
+    <div
+      class="net-chip"
+      class:p2p={uiState.netTransport === 'p2p'}
+      class:mixed={uiState.netTransport === 'mixed'}
+      title={uiState.netTransport === 'relay'
+        ? 'Traffic routed through the signaling server'
+        : 'Direct peer-to-peer connection'}
+    >
+      {#if uiState.netTransport === 'relay'}
+        ☁ RELAY
+      {:else}
+        ⚡ {uiState.netTransport === 'mixed' ? 'MIXED' : 'P2P'}{uiState.netRtt >= 0
+          ? ` · ${uiState.netRtt}ms`
+          : ''}
+      {/if}
+    </div>
+  {/if}
+
   <!-- Co-op teammate roster: name, health, kills; DOWN + revive channel -->
   {#if teammates.length > 0}
     <div class="party">
@@ -211,6 +231,33 @@
     gap: 0.4rem;
     width: 150px;
     pointer-events: none;
+  }
+
+  .net-chip {
+    position: absolute;
+    left: max(0.75rem, var(--safe-left, 0px));
+    top: 7.1rem;
+    width: 150px;
+    box-sizing: border-box;
+    padding: 0.22rem 0.5rem;
+    border-radius: var(--r-pill);
+    border: 1px solid var(--color-border);
+    background: rgba(0, 0, 0, 0.35);
+    font-size: 0.52rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    color: var(--color-text-dim);
+    text-align: center;
+    pointer-events: none;
+    font-variant-numeric: tabular-nums;
+  }
+  .net-chip.p2p {
+    color: #00ff88;
+    border-color: rgba(0, 255, 136, 0.35);
+  }
+  .net-chip.mixed {
+    color: #ffd75e;
+    border-color: rgba(255, 215, 94, 0.35);
   }
   .mate {
     background: rgba(8, 12, 22, 0.55);

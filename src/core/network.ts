@@ -16,6 +16,7 @@ import { triggerLevelUp } from '../systems/UpgradeSystem';
 import { getCharacter } from './CharacterRegistry';
 import { WEAPONS, getWeaponStatsAtLevel } from './WeaponRegistry';
 import { submitRunToLeaderboard } from './leaderboard';
+import { initRtc, closeRtc, closeRtcPeer, rtcSendStateTo } from './rtc';
 import type { WeaponSlot } from './world';
 
 let socket: Socket | null = null;
@@ -23,6 +24,25 @@ let activeScene: THREE.Scene | null = null;
 
 // Map to track remote player entities: connectionId -> entity
 export const remotePlayers = new Map<string, any>();
+
+// --- P2P / DUAL-TRANSPORT STATE ---
+// State snapshots flow P2P-first (WebRTC, unreliable/unordered) and fall back
+// to the socket relay per peer. Because the same snapshot can arrive on both
+// paths (mixed parties) and the P2P channel may reorder, every snapshot carries
+// a sequence number and receivers keep only the newest.
+let hostConnId = ''; // who clients address their state updates to
+let clientSeq = 0; // our outgoing client-update counter
+let hostSeq = 0; // host's outgoing snapshot counter
+let lastHostSeqSeen = 0; // newest host snapshot we've applied (client side)
+
+/** Messages arriving over the P2P data channel (same shape as socket relays). */
+function handleRtcMessage(type: string, data: any, fromId: string) {
+  if (type === 'cu' && uiState.isHost) {
+    handleClientState(fromId, data);
+  } else if (type === 'hu' && !uiState.isHost) {
+    handleHostState(data);
+  }
+}
 
 // Rebuild the live party roster (co-op teammate HUD + end-of-run scoreboard)
 // from a host players payload. Entry fields: { c, n, h, m, l, k, d, r, ch }.
@@ -137,6 +157,11 @@ export function startPartyGame() {
 
 // 3. Disconnect from room/server
 export function disconnectNetwork() {
+  closeRtc();
+  hostConnId = '';
+  clientSeq = 0;
+  hostSeq = 0;
+  lastHostSeqSeen = 0;
   if (socket) {
     socket.disconnect();
     socket = null;
@@ -332,6 +357,9 @@ function setupSocketListeners() {
     uiState.lobby = { players: lobby.players, started: true };
     uiState.networkStatus = 'connected';
 
+    // Remember who hosts (clients address their P2P state updates to them)
+    hostConnId = lobby.players.find((p: any) => p.isHost)?.connectionId || '';
+
     // Host spawns remote avatars now, spread around the spawn point, tinted
     // by each player's chosen character.
     if (uiState.isHost && activeScene) {
@@ -351,6 +379,18 @@ function setupSocketListeners() {
       }
     }
 
+    // Open direct P2P channels for the 30Hz state sync (relay stays as
+    // fallback per-peer). Host offers to every client; clients answer.
+    if (socket) {
+      const selfId = socket.id;
+      const clientIds = uiState.isHost
+        ? lobby.players
+            .filter((p: any) => p.connectionId !== selfId)
+            .map((p: any) => p.connectionId)
+        : [];
+      initRtc(socket, uiState.roomCode, clientIds, handleRtcMessage);
+    }
+
     setGameState('PLAYING');
     announce('PARTY DEPLOYED');
   });
@@ -368,6 +408,7 @@ function setupSocketListeners() {
     console.log(`[Network] Player left: ${playerId}`);
     const p = remotePlayers.get(playerId);
     if (p?.playerName) showToast(`${p.playerName} left the party`);
+    closeRtcPeer(playerId);
     removeRemotePlayer(playerId);
   });
 
@@ -377,274 +418,299 @@ function setupSocketListeners() {
     setGameState('MENU');
   });
 
-  // Client updates on Host
+  // Client updates on Host (relay path; P2P path calls handleClientState directly)
   socket.on('client-state-update', ({ playerId, state }) => {
-    const player = ensureRemotePlayer(
-      playerId,
-      state.position?.x ?? 0,
-      state.position?.z ?? 0,
-      state.name,
-      state.character,
-    );
-    if (!player) return;
-
-    // Dead players are host-authoritative: ignore client-reported position
-    // while dead so the ghost stays where it fell for revives... actually
-    // ghosts may roam; accept position but never health.
-    if (player.position) {
-      player.position.set(state.position.x, 0.5, state.position.z);
-      if (player.transform) {
-        player.transform.position.copy(player.position);
-      }
-    }
-    if (player.velocity) {
-      player.velocity.set(state.velocity.x, 0, state.velocity.z);
-    }
-    if (player.aimTarget) {
-      player.aimTarget.set(state.aimTarget.x, 0.5, state.aimTarget.z);
-    }
-    if (player.input) {
-      player.input.x = state.input.x;
-      player.input.y = state.input.y;
-      player.input.isShooting = state.input.isShooting;
-    }
-    player.facingRight = state.facingRight;
-    // NOTE: CURRENT health is HOST-authoritative in co-op (the host simulates
-    // all damage; accepting client HP would let a lagging client "undo" hits).
-    // MAX health is build-derived (protocols/shop), so the client reports it.
-    if (player.health && typeof state.healthMax === 'number' && state.healthMax > 0) {
-      if (player.health.max !== state.healthMax) {
-        const wasFull = player.health.current >= player.health.max;
-        player.health.max = state.healthMax;
-        player.health.current = wasFull
-          ? state.healthMax
-          : Math.min(player.health.current, state.healthMax);
-      }
-    }
-    player.level = state.level;
-    player.score = state.score;
-    player.isUpgrading = state.isUpgrading;
-    if (state.name) player.playerName = state.name;
-    if (state.character && player.character !== state.character) {
-      applyCharacterTint(player, state.character);
-    }
-    if (state.stats) {
-      player.stats = state.stats;
-    }
-
-    // Reconcile the client's build so their upgrades actually fire host-side
-    if (state.weaponSlots) {
-      const sig = state.weaponSlots.map((s: WeaponSlot) => `${s.weaponId}:${s.level}`).join(';');
-      if (player._weaponSig !== sig) {
-        player._weaponSig = sig;
-        player.weaponSlots = state.weaponSlots;
-        reconcileRemoteWeapons(player, state.weaponSlots);
-      }
-    }
+    handleClientState(playerId, state);
   });
 
-  // Host updates on Client
+  // Host updates on Client (relay path; P2P path calls handleHostState directly)
   socket.on('host-state-update', ({ state }) => {
-    if (!activeScene) return;
+    handleHostState(state);
+  });
+  bindRemainingListeners(socket);
+}
 
-    // 1. Sync Players
-    state.players.forEach((pData: any) => {
-      const pConnId = pData.c;
-      const pPos = { x: pData.p[0], z: pData.p[1] };
-      const pVel = { x: pData.v[0], z: pData.v[1] };
-      const pFacingRight = pData.f === 1;
-      const pHealth = { current: pData.h, max: pData.m };
-      const pLevel = pData.l;
-      const pScore = pData.s;
+/** HOST: apply one client's state update (from relay or P2P). */
+function handleClientState(playerId: string, state: any) {
+  const player = ensureRemotePlayer(
+    playerId,
+    state.position?.x ?? 0,
+    state.position?.z ?? 0,
+    state.name,
+    state.character,
+  );
+  if (!player) return;
 
-      if (pConnId === socket?.id) {
-        // Local player on a client: host is authoritative for health/XP/level
-        const local = world.with('isLocalPlayer', 'health', 'level').first;
-        if (local) {
-          if (local.health) {
-            local.health.current = pHealth.current;
-            local.health.max = pHealth.max;
-          }
-          // XP bar mirrors the host's tally (clients don't collect XP locally)
-          if (pData.x !== undefined) local.xp = pData.x;
-          if (pData.xm !== undefined) local.xpMax = pData.xm;
-          local.kills = pData.k || 0;
-          uiState.kills = local.kills ?? 0;
-          if (pLevel > (local.level || 1)) {
-            // Host says we leveled — open the local upgrade modal
-            local.level = pLevel;
-            playLevelUp();
-            triggerLevelUp();
-          }
+  // Unordered/dual transport: only apply snapshots newer than the last one
+  if (typeof state.seq === 'number') {
+    if (state.seq <= (player._netSeq || 0)) return;
+    player._netSeq = state.seq;
+  }
+
+  // Dead players are host-authoritative: ignore client-reported position
+  // while dead so the ghost stays where it fell for revives... actually
+  // ghosts may roam; accept position but never health.
+  if (player.position) {
+    player.position.set(state.position.x, 0.5, state.position.z);
+    if (player.transform) {
+      player.transform.position.copy(player.position);
+    }
+  }
+  if (player.velocity) {
+    player.velocity.set(state.velocity.x, 0, state.velocity.z);
+  }
+  if (player.aimTarget) {
+    player.aimTarget.set(state.aimTarget.x, 0.5, state.aimTarget.z);
+  }
+  if (player.input) {
+    player.input.x = state.input.x;
+    player.input.y = state.input.y;
+    player.input.isShooting = state.input.isShooting;
+  }
+  player.facingRight = state.facingRight;
+  // NOTE: CURRENT health is HOST-authoritative in co-op (the host simulates
+  // all damage; accepting client HP would let a lagging client "undo" hits).
+  // MAX health is build-derived (protocols/shop), so the client reports it.
+  if (player.health && typeof state.healthMax === 'number' && state.healthMax > 0) {
+    if (player.health.max !== state.healthMax) {
+      const wasFull = player.health.current >= player.health.max;
+      player.health.max = state.healthMax;
+      player.health.current = wasFull
+        ? state.healthMax
+        : Math.min(player.health.current, state.healthMax);
+    }
+  }
+  player.level = state.level;
+  player.score = state.score;
+  player.isUpgrading = state.isUpgrading;
+  if (state.name) player.playerName = state.name;
+  if (state.character && player.character !== state.character) {
+    applyCharacterTint(player, state.character);
+  }
+  if (state.stats) {
+    player.stats = state.stats;
+  }
+
+  // Reconcile the client's build so their upgrades actually fire host-side
+  if (state.weaponSlots) {
+    const sig = state.weaponSlots.map((s: WeaponSlot) => `${s.weaponId}:${s.level}`).join(';');
+    if (player._weaponSig !== sig) {
+      player._weaponSig = sig;
+      player.weaponSlots = state.weaponSlots;
+      reconcileRemoteWeapons(player, state.weaponSlots);
+    }
+  }
+}
+
+/** CLIENT: apply a host snapshot (from relay or P2P). */
+function handleHostState(state: any) {
+  if (!activeScene) return;
+
+  // Unordered/dual transport: only apply snapshots newer than the last one
+  if (typeof state.seq === 'number') {
+    if (state.seq <= lastHostSeqSeen) return;
+    lastHostSeqSeen = state.seq;
+  }
+
+  // 1. Sync Players
+  state.players.forEach((pData: any) => {
+    const pConnId = pData.c;
+    const pPos = { x: pData.p[0], z: pData.p[1] };
+    const pVel = { x: pData.v[0], z: pData.v[1] };
+    const pFacingRight = pData.f === 1;
+    const pHealth = { current: pData.h, max: pData.m };
+    const pLevel = pData.l;
+    const pScore = pData.s;
+
+    if (pConnId === socket?.id) {
+      // Local player on a client: host is authoritative for health/XP/level
+      const local = world.with('isLocalPlayer', 'health', 'level').first;
+      if (local) {
+        if (local.health) {
+          local.health.current = pHealth.current;
+          local.health.max = pHealth.max;
         }
-        return;
-      }
-
-      // Remote player on client — smooth toward the host position instead of
-      // snapping at network rate (NetSmoothingSystem lerps every frame)
-      const player = ensureRemotePlayer(pConnId, pPos.x, pPos.z, pData.n, pData.ch);
-      if (player) {
-        player.netX = pPos.x;
-        player.netZ = pPos.z;
-        player.velocity.set(pVel.x, 0, pVel.z);
-        player.facingRight = pFacingRight;
-        if (player.health) {
-          player.health.current = pHealth.current;
-          player.health.max = pHealth.max;
+        // XP bar mirrors the host's tally (clients don't collect XP locally)
+        if (pData.x !== undefined) local.xp = pData.x;
+        if (pData.xm !== undefined) local.xpMax = pData.xm;
+        local.kills = pData.k || 0;
+        uiState.kills = local.kills ?? 0;
+        if (pLevel > (local.level || 1)) {
+          // Host says we leveled — open the local upgrade modal
+          local.level = pLevel;
+          playLevelUp();
+          triggerLevelUp();
         }
-        player.level = pLevel;
-        player.score = pScore;
-        player.kills = pData.k || 0;
-        if (pData.ch && player.character !== pData.ch) applyCharacterTint(player, pData.ch);
       }
-    });
-
-    // Remove any players that are no longer in host list
-    const activeConnIds = new Set(state.players.map((p: any) => p.c));
-    for (const connId of remotePlayers.keys()) {
-      if (!activeConnIds.has(connId) && socket && connId !== socket.id) {
-        removeRemotePlayer(connId);
-      }
+      return;
     }
 
-    // 2. Sync Enemies
-    // Skip the boss here — it is flagged `isEnemy` but synced separately (2b).
-    const enemyMap = new Map<number, any>();
-    for (const e of world.with('isEnemy')) {
-      if (e.isBoss) continue;
-      enemyMap.set(e.id!, e);
-    }
-
-    state.enemies.forEach((eData: any) => {
-      const eId = eData.i;
-      const eType = eData.t;
-      const ePos = { x: eData.p[0], z: eData.p[1] };
-      const eHealth = { current: eData.h, max: eData.h };
-      const eFacingRight = eData.f === 1;
-      const eHitFlashTimer = eData.fl === 1 ? 0.1 : 0;
-
-      let enemy = enemyMap.get(eId);
-      if (!enemy) {
-        // Spawn local representation at the reported spot (no lerp-in from 0,0)
-        enemy = spawnEnemy(activeScene!, ePos.x, ePos.z, eType);
-        if (enemy) {
-          enemy.id = eId;
-          enemy.position.set(ePos.x, 0.5, ePos.z);
-        }
+    // Remote player on client — smooth toward the host position instead of
+    // snapping at network rate (NetSmoothingSystem lerps every frame)
+    const player = ensureRemotePlayer(pConnId, pPos.x, pPos.z, pData.n, pData.ch);
+    if (player) {
+      player.netX = pPos.x;
+      player.netZ = pPos.z;
+      player.velocity.set(pVel.x, 0, pVel.z);
+      player.facingRight = pFacingRight;
+      if (player.health) {
+        player.health.current = pHealth.current;
+        player.health.max = pHealth.max;
       }
-
-      if (enemy) {
-        // Smooth toward host position rather than snapping at 30Hz
-        enemy.netX = ePos.x;
-        enemy.netZ = ePos.z;
-        if (enemy.health) {
-          enemy.health.current = eHealth.current;
-          enemy.health.max = eHealth.max;
-        }
-        enemy.facingRight = eFacingRight;
-        enemy.hitFlashTimer = eHitFlashTimer;
-        enemyMap.delete(eId);
-      }
-    });
-
-    // Despawn enemies no longer mentioned by Host
-    for (const obsoleteEnemy of enemyMap.values()) {
-      if (obsoleteEnemy.transform) activeScene?.remove(obsoleteEnemy.transform);
-      if (obsoleteEnemy.rigidBody) removeBody(obsoleteEnemy.rigidBody);
-      world.remove(obsoleteEnemy);
+      player.level = pLevel;
+      player.score = pScore;
+      player.kills = pData.k || 0;
+      if (pData.ch && player.character !== pData.ch) applyCharacterTint(player, pData.ch);
     }
-
-    // 2b. Sync Boss (host-authoritative; visual mirror on the client)
-    const existingBoss = world.with('isBoss', 'position', 'health').first;
-    if (state.boss) {
-      const bx = state.boss.p[0];
-      const bz = state.boss.p[1];
-      const boss =
-        existingBoss ?? spawnClientBoss(activeScene!, bx, bz, state.boss.h, state.boss.m);
-      if (boss) {
-        boss.netX = bx;
-        boss.netZ = bz;
-        if (boss.health) {
-          boss.health.current = state.boss.h;
-          boss.health.max = state.boss.m;
-        }
-      }
-    } else if (existingBoss) {
-      removeClientBoss(activeScene!, existingBoss);
-    }
-
-    // 3. Sync Loot/XP
-    const xpMap = new Map<number, any>();
-    for (const x of world.with('isXP')) {
-      xpMap.set(x.id!, x);
-    }
-
-    state.xp.forEach((xData: any) => {
-      const xId = xData.i;
-      const xPos = { x: xData.p[0], z: xData.p[1] };
-      const xValue = xData.v;
-
-      let xp = xpMap.get(xId);
-      if (!xp) {
-        xp = spawnXP(activeScene!, xPos.x, xPos.z, xValue);
-        if (xp) {
-          xp.id = xId;
-        }
-      }
-      if (xp) {
-        xp.position.set(xPos.x, 0.5, xPos.z);
-        if (xp.transform) {
-          xp.transform.position.copy(xp.position);
-        }
-        xpMap.delete(xId);
-      }
-    });
-
-    for (const obsoleteXP of xpMap.values()) {
-      if (obsoleteXP.transform) activeScene?.remove(obsoleteXP.transform);
-      world.remove(obsoleteXP);
-    }
-
-    // 4. Sync Chests
-    const chestMap = new Map<number, any>();
-    for (const c of world.with('isChest')) {
-      chestMap.set(c.id!, c);
-    }
-
-    state.chests.forEach((cData: any) => {
-      const cId = cData.i;
-      const cPos = { x: cData.p[0], z: cData.p[1] };
-      const cRarity = cData.r;
-
-      let chest = chestMap.get(cId);
-      if (!chest) {
-        chest = spawnChest(activeScene!, cPos.x, cPos.z, cRarity);
-        if (chest) {
-          chest.id = cId;
-        }
-      }
-      if (chest) {
-        chest.position.set(cPos.x, 0.4, cPos.z);
-        if (chest.transform) {
-          chest.transform.position.copy(chest.position);
-        }
-        chestMap.delete(cId);
-      }
-    });
-
-    for (const obsoleteChest of chestMap.values()) {
-      if (obsoleteChest.transform) activeScene?.remove(obsoleteChest.transform);
-      world.remove(obsoleteChest);
-    }
-
-    // 5. Sync Global State
-    uiState.gameTime = state.gameTime;
-    uiState.bossHealth = state.bossHealth;
-
-    // 6. Party roster (names, health, kills, dead/revive) for HUD + scoreboard
-    rebuildPartyFromPayload(state.players);
   });
 
+  // Remove any players that are no longer in host list
+  const activeConnIds = new Set(state.players.map((p: any) => p.c));
+  for (const connId of remotePlayers.keys()) {
+    if (!activeConnIds.has(connId) && socket && connId !== socket.id) {
+      removeRemotePlayer(connId);
+    }
+  }
+
+  // 2. Sync Enemies
+  // Skip the boss here — it is flagged `isEnemy` but synced separately (2b).
+  const enemyMap = new Map<number, any>();
+  for (const e of world.with('isEnemy')) {
+    if (e.isBoss) continue;
+    enemyMap.set(e.id!, e);
+  }
+
+  state.enemies.forEach((eData: any) => {
+    const eId = eData.i;
+    const eType = eData.t;
+    const ePos = { x: eData.p[0], z: eData.p[1] };
+    const eHealth = { current: eData.h, max: eData.h };
+    const eFacingRight = eData.f === 1;
+    const eHitFlashTimer = eData.fl === 1 ? 0.1 : 0;
+
+    let enemy = enemyMap.get(eId);
+    if (!enemy) {
+      // Spawn local representation at the reported spot (no lerp-in from 0,0)
+      enemy = spawnEnemy(activeScene!, ePos.x, ePos.z, eType);
+      if (enemy) {
+        enemy.id = eId;
+        enemy.position.set(ePos.x, 0.5, ePos.z);
+      }
+    }
+
+    if (enemy) {
+      // Smooth toward host position rather than snapping at 30Hz
+      enemy.netX = ePos.x;
+      enemy.netZ = ePos.z;
+      if (enemy.health) {
+        enemy.health.current = eHealth.current;
+        enemy.health.max = eHealth.max;
+      }
+      enemy.facingRight = eFacingRight;
+      enemy.hitFlashTimer = eHitFlashTimer;
+      enemyMap.delete(eId);
+    }
+  });
+
+  // Despawn enemies no longer mentioned by Host
+  for (const obsoleteEnemy of enemyMap.values()) {
+    if (obsoleteEnemy.transform) activeScene?.remove(obsoleteEnemy.transform);
+    if (obsoleteEnemy.rigidBody) removeBody(obsoleteEnemy.rigidBody);
+    world.remove(obsoleteEnemy);
+  }
+
+  // 2b. Sync Boss (host-authoritative; visual mirror on the client)
+  const existingBoss = world.with('isBoss', 'position', 'health').first;
+  if (state.boss) {
+    const bx = state.boss.p[0];
+    const bz = state.boss.p[1];
+    const boss = existingBoss ?? spawnClientBoss(activeScene!, bx, bz, state.boss.h, state.boss.m);
+    if (boss) {
+      boss.netX = bx;
+      boss.netZ = bz;
+      if (boss.health) {
+        boss.health.current = state.boss.h;
+        boss.health.max = state.boss.m;
+      }
+    }
+  } else if (existingBoss) {
+    removeClientBoss(activeScene!, existingBoss);
+  }
+
+  // 3. Sync Loot/XP
+  const xpMap = new Map<number, any>();
+  for (const x of world.with('isXP')) {
+    xpMap.set(x.id!, x);
+  }
+
+  state.xp.forEach((xData: any) => {
+    const xId = xData.i;
+    const xPos = { x: xData.p[0], z: xData.p[1] };
+    const xValue = xData.v;
+
+    let xp = xpMap.get(xId);
+    if (!xp) {
+      xp = spawnXP(activeScene!, xPos.x, xPos.z, xValue);
+      if (xp) {
+        xp.id = xId;
+      }
+    }
+    if (xp) {
+      xp.position.set(xPos.x, 0.5, xPos.z);
+      if (xp.transform) {
+        xp.transform.position.copy(xp.position);
+      }
+      xpMap.delete(xId);
+    }
+  });
+
+  for (const obsoleteXP of xpMap.values()) {
+    if (obsoleteXP.transform) activeScene?.remove(obsoleteXP.transform);
+    world.remove(obsoleteXP);
+  }
+
+  // 4. Sync Chests
+  const chestMap = new Map<number, any>();
+  for (const c of world.with('isChest')) {
+    chestMap.set(c.id!, c);
+  }
+
+  state.chests.forEach((cData: any) => {
+    const cId = cData.i;
+    const cPos = { x: cData.p[0], z: cData.p[1] };
+    const cRarity = cData.r;
+
+    let chest = chestMap.get(cId);
+    if (!chest) {
+      chest = spawnChest(activeScene!, cPos.x, cPos.z, cRarity);
+      if (chest) {
+        chest.id = cId;
+      }
+    }
+    if (chest) {
+      chest.position.set(cPos.x, 0.4, cPos.z);
+      if (chest.transform) {
+        chest.transform.position.copy(chest.position);
+      }
+      chestMap.delete(cId);
+    }
+  });
+
+  for (const obsoleteChest of chestMap.values()) {
+    if (obsoleteChest.transform) activeScene?.remove(obsoleteChest.transform);
+    world.remove(obsoleteChest);
+  }
+
+  // 5. Sync Global State
+  uiState.gameTime = state.gameTime;
+  uiState.bossHealth = state.bossHealth;
+
+  // 6. Party roster (names, health, kills, dead/revive) for HUD + scoreboard
+  rebuildPartyFromPayload(state.players);
+}
+
+/** Listeners for low-rate reliable traffic — these stay on the socket relay. */
+function bindRemainingListeners(socket: Socket) {
   // Remote player fired — spawn a visual-only projectile for them.
   socket.on('remote-shoot', (pData: any) => {
     if (!activeScene) return;
@@ -715,44 +781,47 @@ export function sendClientUpdate() {
     'score',
   ).first;
   if (localPlayer) {
-    socket.emit('client-update', {
-      roomCode: uiState.roomCode,
-      state: {
-        position: {
-          x: Math.round(localPlayer.position.x * 10) / 10,
-          z: Math.round(localPlayer.position.z * 10) / 10,
-        },
-        velocity: {
-          x: Math.round(localPlayer.velocity.x * 10) / 10,
-          z: Math.round(localPlayer.velocity.z * 10) / 10,
-        },
-        aimTarget: {
-          x: Math.round((localPlayer.aimTarget?.x || 0) * 10) / 10,
-          z: Math.round((localPlayer.aimTarget?.z || 0) * 10) / 10,
-        },
-        input: {
-          x: localPlayer.input?.x || 0,
-          y: localPlayer.input?.y || 0,
-          isShooting: localPlayer.input?.isShooting || false,
-        },
-        facingRight: localPlayer.facingRight,
-        healthMax: localPlayer.health?.max || 100,
-        level: localPlayer.level || 1,
-        score: localPlayer.score || 0,
-        name: uiState.playerName,
-        character: uiState.selectedCharacter,
-        weaponSlots: localPlayer.weaponSlots || [],
-        // Tell the host when we're in ANY blocking modal so it grants us the
-        // co-op safety bubble (no contact damage while we pick upgrades / open
-        // a chest / choose a protocol). The host reads this into isUpgrading.
-        isUpgrading:
-          uiState.showUpgrade ||
-          uiState.showChestCeremony ||
-          uiState.showProtocolChoice ||
-          uiState.gameState === 'PAUSED',
-        stats: localPlayer.stats,
+    const state = {
+      seq: ++clientSeq, // receivers keep only the newest (unordered P2P + dual transport)
+      position: {
+        x: Math.round(localPlayer.position.x * 10) / 10,
+        z: Math.round(localPlayer.position.z * 10) / 10,
       },
-    });
+      velocity: {
+        x: Math.round(localPlayer.velocity.x * 10) / 10,
+        z: Math.round(localPlayer.velocity.z * 10) / 10,
+      },
+      aimTarget: {
+        x: Math.round((localPlayer.aimTarget?.x || 0) * 10) / 10,
+        z: Math.round((localPlayer.aimTarget?.z || 0) * 10) / 10,
+      },
+      input: {
+        x: localPlayer.input?.x || 0,
+        y: localPlayer.input?.y || 0,
+        isShooting: localPlayer.input?.isShooting || false,
+      },
+      facingRight: localPlayer.facingRight,
+      healthMax: localPlayer.health?.max || 100,
+      level: localPlayer.level || 1,
+      score: localPlayer.score || 0,
+      name: uiState.playerName,
+      character: uiState.selectedCharacter,
+      weaponSlots: localPlayer.weaponSlots || [],
+      // Tell the host when we're in ANY blocking modal so it grants us the
+      // co-op safety bubble (no contact damage while we pick upgrades / open
+      // a chest / choose a protocol). The host reads this into isUpgrading.
+      isUpgrading:
+        uiState.showUpgrade ||
+        uiState.showChestCeremony ||
+        uiState.showProtocolChoice ||
+        uiState.gameState === 'PAUSED',
+      stats: localPlayer.stats,
+    };
+
+    // P2P-first: direct data channel to the host; relay only when it isn't open
+    if (!(hostConnId && rtcSendStateTo(hostConnId, 'cu', state))) {
+      socket.emit('client-update', { roomCode: uiState.roomCode, state });
+    }
   }
 }
 
@@ -822,18 +891,27 @@ export function sendHostUpdate() {
       }
     : null;
 
-  socket.emit('host-update', {
-    roomCode: uiState.roomCode,
-    state: {
-      players,
-      enemies,
-      xp,
-      chests,
-      boss,
-      gameTime: uiState.gameTime,
-      bossHealth: uiState.bossHealth,
-    },
-  });
+  const state = {
+    seq: ++hostSeq, // receivers keep only the newest (unordered P2P + dual transport)
+    players,
+    enemies,
+    xp,
+    chests,
+    boss,
+    gameTime: uiState.gameTime,
+    bossHealth: uiState.bossHealth,
+  };
+
+  // P2P-first: push the snapshot straight to every client with an open data
+  // channel. Only touch the relay if at least one client is still on it — the
+  // seq number lets P2P clients discard the duplicate relay copy.
+  let anyOnRelay = false;
+  for (const connId of remotePlayers.keys()) {
+    if (!rtcSendStateTo(connId, 'hu', state)) anyOnRelay = true;
+  }
+  if (anyOnRelay || remotePlayers.size === 0) {
+    socket.emit('host-update', { roomCode: uiState.roomCode, state });
+  }
 }
 
 // 6. Broadcast Shoot Event

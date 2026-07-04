@@ -145,6 +145,12 @@ export const uiState = $state({
   lastRunRank: 0,
   lastRunRankTotal: 0,
 
+  // Co-op transport: 'p2p' = direct WebRTC to every peer, 'mixed' = some peers
+  // on P2P, 'relay' = all traffic through the signaling server. netRtt is the
+  // best measured P2P round-trip in ms (-1 = unknown).
+  netTransport: 'relay' as 'relay' | 'p2p' | 'mixed',
+  netRtt: -1,
+
   // Corruption dial (0-5 risk/reward, persisted)
   corruption: getLocalVal('geo_corruption', 0),
 
