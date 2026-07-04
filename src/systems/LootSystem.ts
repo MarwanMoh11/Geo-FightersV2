@@ -48,6 +48,9 @@ let lastCollectTime = -Infinity;
 
 const _activePlayers: any[] = [];
 
+// Clock for client-side gem spin in LootRenderSystem
+let lootRenderLast = performance.now();
+
 // Reusable math objects to prevent per-frame allocations during rendering
 const tempPosition = new THREE.Vector3();
 const tempScale = new THREE.Vector3();
@@ -290,6 +293,24 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
     credit.rotationX = (credit.rotationX ?? 0) + 3 * dt;
   }
 
+  // Rendering of XP/credit instances is done by LootRenderSystem so it can run
+  // on clients too (which don't simulate loot but must still draw the synced
+  // gems). Host/solo calls it right after this simulation pass.
+}
+
+/**
+ * Draw the XP + credit instanced meshes. Runs for EVERYONE — the joining
+ * player mirrors the host's XP/credit entities but never runs LootSystem's
+ * simulation, so without this they saw no orbs at all.
+ */
+export function LootRenderSystem(scene: THREE.Scene): void {
+  // Clients don't run LootSystem, so the gems' idle spin isn't advanced there —
+  // do it here (host/solo already spun them in the simulation pass above).
+  const spinOnRender = uiState.isMultiplayer && !uiState.isHost;
+  const now = performance.now();
+  const rdt = Math.min(0.05, (now - lootRenderLast) / 1000);
+  lootRenderLast = now;
+
   // Scene change check: clear cached InstancedMesh if scene changes
   if (xpInstancedMesh && xpInstancedMesh.parent !== scene) {
     xpInstancedMesh = null;
@@ -302,6 +323,10 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
   let xpCount = 0;
   for (const entity of world.with('isXP', 'particleColor')) {
     if (xpCount >= MAX_XP_INSTANCES) break;
+    if (spinOnRender) {
+      entity.rotationY = (entity.rotationY ?? 0) + 3 * rdt;
+      entity.rotationX = (entity.rotationX ?? 0) + 2 * rdt;
+    }
 
     if (!xpInstancedMesh) {
       xpInstancedMesh = new THREE.InstancedMesh(xpGeo, xpBaseMat, MAX_XP_INSTANCES);
@@ -346,6 +371,10 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
   let creditCount = 0;
   for (const entity of world.with('isCredit')) {
     if (creditCount >= MAX_CREDIT_INSTANCES) break;
+    if (spinOnRender) {
+      entity.rotationY = (entity.rotationY ?? 0) + 4 * rdt;
+      entity.rotationX = (entity.rotationX ?? 0) + 3 * rdt;
+    }
 
     if (!creditInstancedMesh) {
       creditInstancedMesh = new THREE.InstancedMesh(creditGeo, creditBaseMat, MAX_CREDIT_INSTANCES);

@@ -35,7 +35,7 @@ import { CollisionSystem } from './systems/CollisionSystem';
 import { TimelineSpawnerSystem } from './systems/TimelineSpawner';
 import { ParticleSystem } from './systems/ParticleSystem';
 import { CameraSystem } from './systems/CameraSystem';
-import { LootSystem } from './systems/LootSystem';
+import { LootSystem, LootRenderSystem } from './systems/LootSystem';
 import { ChestSystem } from './systems/ChestSystem';
 import { UISystem } from './systems/UISystem';
 import { isGamePaused } from './systems/UpgradeSystem';
@@ -279,6 +279,9 @@ function startGameLoop(
     if (!isMultiplayer || isHost) {
       LootSystem(dt, scene);
     }
+    // ...but the instanced XP/credit gems are DRAWN for everyone, or the
+    // joining player sees no orbs at all.
+    LootRenderSystem(scene);
     PassiveEffectsSystem(dt); // Apply health regen, etc. (host/solo only inside)
     OrbitalSystem(dt); // Update orbital weapon projectiles
     OverloadSystem(dt, scene);
