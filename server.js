@@ -33,10 +33,11 @@ function saveLeaderboard() {
 /** Validate + insert a run, keep the list sorted and capped. Returns the rank. */
 function addLeaderboardEntry(raw) {
   const entry = {
-    name: String(raw.name ?? 'ANON')
-      .slice(0, 12)
-      .replace(/[^\w \-]/g, '')
-      .trim() || 'ANON',
+    name:
+      String(raw.name ?? 'ANON')
+        .slice(0, 12)
+        .replace(/[^\w \-]/g, '')
+        .trim() || 'ANON',
     time: Math.max(0, Math.min(36000, Math.round(Number(raw.time) || 0))),
     level: Math.max(1, Math.min(999, Math.round(Number(raw.level) || 1))),
     kills: Math.max(0, Math.min(1000000, Math.round(Number(raw.kills) || 0))),
@@ -69,7 +70,10 @@ const server = createServer((req, res) => {
 
   // GET /leaderboard[?limit=N] — top runs
   if (req.method === 'GET' && url === '/leaderboard') {
-    const limit = Math.max(1, Math.min(100, parseInt((req.url.split('limit=')[1] || '25'), 10) || 25));
+    const limit = Math.max(
+      1,
+      Math.min(100, parseInt(req.url.split('limit=')[1] || '25', 10) || 25),
+    );
     res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ entries: leaderboard.slice(0, limit), total: leaderboard.length }));
     return;
@@ -265,6 +269,16 @@ io.on('connection', (socket) => {
     const room = rooms.get(roomCode);
     if (room && room.hostId === socket.id && room.players.has(targetId)) {
       io.to(targetId).emit('game-event', { eventType, data });
+    }
+  });
+
+  // 6c. WebRTC signaling relay: forwards SDP offers/answers + ICE candidates
+  // between room members so peers can open direct P2P data channels. Once the
+  // P2P link is up, gameplay traffic bypasses this server entirely.
+  socket.on('rtc-signal', ({ roomCode, targetId, data }) => {
+    const room = rooms.get(roomCode);
+    if (room && room.players.has(socket.id) && room.players.has(targetId)) {
+      io.to(targetId).emit('rtc-signal', { fromId: socket.id, data });
     }
   });
 
