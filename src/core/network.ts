@@ -11,6 +11,7 @@ import { playLevelUp, playChestOpen } from './audio';
 import { triggerLevelUp } from '../systems/UpgradeSystem';
 import { getCharacter } from './CharacterRegistry';
 import { WEAPONS, getWeaponStatsAtLevel } from './WeaponRegistry';
+import { submitRunToLeaderboard } from './leaderboard';
 import type { WeaponSlot } from './world';
 
 let socket: Socket | null = null;
@@ -62,6 +63,11 @@ const getSocketUrl = (): string => {
   );
   return window.location.origin.replace('5173', '3001');
 };
+
+/** Resolved base URL of the signaling/leaderboard server (same host socket.io uses). */
+export function getServerBaseUrl(): string {
+  return getSocketUrl();
+}
 
 export function setNetworkScene(scene: THREE.Scene) {
   activeScene = scene;
@@ -648,13 +654,15 @@ function setupSocketListeners() {
   socket.on('game-event', ({ eventType, data }) => {
     switch (eventType) {
       case 'game-over':
-        setGameState('GAME_OVER');
         uiState.isGameOver = true;
+        submitRunToLeaderboard(); // clients end via this event, not triggerGameOver
+        setGameState('GAME_OVER');
         break;
       case 'victory':
-        setGameState('GAME_OVER');
         uiState.isGameOver = true;
         uiState.isVictory = true;
+        submitRunToLeaderboard();
+        setGameState('GAME_OVER');
         break;
       case 'chest-opened':
         // Targeted at THIS client: you touched the chest — roll your rewards
