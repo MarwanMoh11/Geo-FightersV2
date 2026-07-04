@@ -75,6 +75,15 @@
         </div>
       </div>
 
+      {#if uiState.lastRunRank > 0}
+        <div class="rank-badge" class:podium={uiState.lastRunRank <= 3}>
+          🌐 GLOBAL RANK <strong>#{uiState.lastRunRank}</strong>
+          {#if uiState.lastRunRankTotal > 0}<span class="rank-of"
+              >of {uiState.lastRunRankTotal}</span
+            >{/if}
+        </div>
+      {/if}
+
       {#if scoreboard.length > 0}
         <div class="squad-board">
           <div class="squad-heading">SQUAD SCOREBOARD</div>
@@ -263,6 +272,34 @@
     letter-spacing: 0.12em;
     text-transform: uppercase;
     opacity: 0.7;
+  }
+
+  /* --- Global rank badge --- */
+  .rank-badge {
+    text-align: center;
+    padding: 0.6rem;
+    border-radius: 10px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--color-text-dim);
+    border: 1px solid var(--color-border);
+    background: rgba(255, 255, 255, 0.02);
+  }
+  .rank-badge strong {
+    color: var(--color-primary);
+    font-size: 0.95rem;
+  }
+  .rank-badge.podium {
+    border-color: rgba(255, 215, 94, 0.4);
+    background: rgba(255, 215, 94, 0.06);
+  }
+  .rank-badge.podium strong {
+    color: #ffd75e;
+  }
+  .rank-of {
+    opacity: 0.7;
+    margin-left: 0.2rem;
   }
 
   /* --- Squad scoreboard (co-op) --- */

@@ -1,11 +1,107 @@
 import { createServer } from 'http';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { Server } from 'socket.io';
 
 const PORT = process.env.PORT || 3001;
 const MAX_PLAYERS = 4;
 
+// --- GLOBAL LEADERBOARD -----------------------------------------------------
+// Best runs across all players. Ranked by time survived, then kills. Stored in
+// a JSON file so it survives within the container's lifetime (HF free tier
+// storage is ephemeral across full rebuilds/sleeps — good enough for a board).
+const LEADERBOARD_FILE = process.env.LEADERBOARD_FILE || './leaderboard.json';
+const LEADERBOARD_MAX = 100;
+let leaderboard = [];
+
+try {
+  if (existsSync(LEADERBOARD_FILE)) {
+    leaderboard = JSON.parse(readFileSync(LEADERBOARD_FILE, 'utf-8'));
+    if (!Array.isArray(leaderboard)) leaderboard = [];
+  }
+} catch {
+  leaderboard = [];
+}
+
+function saveLeaderboard() {
+  try {
+    writeFileSync(LEADERBOARD_FILE, JSON.stringify(leaderboard));
+  } catch {
+    /* ephemeral / read-only FS — keep the in-memory copy */
+  }
+}
+
+/** Validate + insert a run, keep the list sorted and capped. Returns the rank. */
+function addLeaderboardEntry(raw) {
+  const entry = {
+    name: String(raw.name ?? 'ANON')
+      .slice(0, 12)
+      .replace(/[^\w \-]/g, '')
+      .trim() || 'ANON',
+    time: Math.max(0, Math.min(36000, Math.round(Number(raw.time) || 0))),
+    level: Math.max(1, Math.min(999, Math.round(Number(raw.level) || 1))),
+    kills: Math.max(0, Math.min(1000000, Math.round(Number(raw.kills) || 0))),
+    character: String(raw.character ?? 'cypher').slice(0, 20),
+    victory: !!raw.victory,
+    ts: Date.now(),
+  };
+  leaderboard.push(entry);
+  leaderboard.sort((a, b) => b.time - a.time || b.kills - a.kills);
+  if (leaderboard.length > LEADERBOARD_MAX) leaderboard.length = LEADERBOARD_MAX;
+  saveLeaderboard();
+  return { rank: leaderboard.indexOf(entry) + 1, total: leaderboard.length };
+}
+
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
 const server = createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  const url = (req.url || '/').split('?')[0];
+
+  // CORS preflight
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, CORS_HEADERS);
+    res.end();
+    return;
+  }
+
+  // GET /leaderboard[?limit=N] — top runs
+  if (req.method === 'GET' && url === '/leaderboard') {
+    const limit = Math.max(1, Math.min(100, parseInt((req.url.split('limit=')[1] || '25'), 10) || 25));
+    res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ entries: leaderboard.slice(0, limit), total: leaderboard.length }));
+    return;
+  }
+
+  // POST /leaderboard — submit a finished run
+  if (req.method === 'POST' && url === '/leaderboard') {
+    let body = '';
+    let tooBig = false;
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > 2048) {
+        tooBig = true;
+        req.destroy();
+      }
+    });
+    req.on('end', () => {
+      if (tooBig) return;
+      try {
+        const result = addLeaderboardEntry(JSON.parse(body));
+        res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, ...result }));
+      } catch {
+        res.writeHead(400, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'bad payload' }));
+      }
+    });
+    return;
+  }
+
+  // Health/banner
+  res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'text/plain' });
   res.end('Geo-Fighters V2.0 Multiplayer Server\n');
 });
 
