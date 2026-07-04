@@ -6,6 +6,7 @@ import { stopMusic, playExplosion, playGameOver, playVictory } from '../core/aud
 import { addTrauma } from './CameraSystem';
 import { recordRunEnd } from '../core/ProgressManager';
 import { onRunEnded } from '../core/DailyManager';
+import { submitRunToLeaderboard } from '../core/leaderboard';
 import { dlog } from '../core/debug';
 
 export let isGameOver = false;
@@ -31,6 +32,7 @@ export function triggerGameOver() {
   uiState.isVictory = uiState.endlessMode;
   recordRunEnd(uiState.gameTime, uiState.level, uiState.endlessMode);
   onRunEnded();
+  submitRunToLeaderboard();
 
   // Let the death land: explosion + heavy shake, music cuts out, somber sting
   addTrauma(1.0);
@@ -71,6 +73,7 @@ export function endRunAsVictory() {
   captureFinalStats();
   uiState.isVictory = true;
   onRunEnded();
+  submitRunToLeaderboard();
   setGameState('GAME_OVER');
 
   dlog('[VICTORY] Player survived the corruption!');

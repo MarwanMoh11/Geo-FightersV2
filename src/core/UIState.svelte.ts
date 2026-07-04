@@ -141,6 +141,10 @@ export const uiState = $state({
   // First-run tutorial overlay (shown once, then remembered)
   showOnboarding: false,
 
+  // Global leaderboard: rank of the run that just ended (0 = none/unranked)
+  lastRunRank: 0,
+  lastRunRankTotal: 0,
+
   // Corruption dial (0-5 risk/reward, persisted)
   corruption: getLocalVal('geo_corruption', 0),
 
