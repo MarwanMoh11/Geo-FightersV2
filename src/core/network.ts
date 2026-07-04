@@ -38,21 +38,29 @@ function rebuildPartyFromPayload(players: any[]) {
 
 // Helper to determine socket URL
 const getSocketUrl = (): string => {
+  // 1. Explicit per-user override (Settings → Signaling beacon) always wins.
   if (uiState.customServerUrl) {
     return uiState.customServerUrl;
   }
+  // 2. An explicitly configured server (VITE_SIGNALING_SERVER_URL, e.g. the HF
+  //    Space) is used everywhere — including localhost dev — so a local build
+  //    can join the same hosted server as the deployed game. Set it in a
+  //    .env.local for local runs; netlify.toml sets it for production.
+  const envUrl = import.meta.env.VITE_SIGNALING_SERVER_URL as string | undefined;
+  if (envUrl) {
+    return envUrl;
+  }
+  // 3. No server configured: on localhost fall back to a local signaling
+  //    server (npm run server), otherwise guess from the page origin.
   const isLocal =
     window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
   if (isLocal) {
     return 'http://localhost:3001';
   }
-  const envUrl = import.meta.env.VITE_SIGNALING_SERVER_URL;
-  if (!envUrl) {
-    console.warn(
-      '[Network] VITE_SIGNALING_SERVER_URL is not set. Falling back to relative origin replace.',
-    );
-  }
-  return (envUrl as string) || window.location.origin.replace('5173', '3001');
+  console.warn(
+    '[Network] VITE_SIGNALING_SERVER_URL is not set. Falling back to relative origin replace.',
+  );
+  return window.location.origin.replace('5173', '3001');
 };
 
 export function setNetworkScene(scene: THREE.Scene) {
