@@ -20,6 +20,7 @@ import { getCharacter } from './CharacterRegistry';
 import { WEAPONS, getWeaponStatsAtLevel } from './WeaponRegistry';
 import { submitRunToLeaderboard } from './leaderboard';
 import { initRtc, closeRtc, closeRtcPeer, rtcSendStateTo } from './rtc';
+import { spawnClientDeathFx, playLocalXpPickup } from '../systems/ClientCombatFxSystem';
 import type { WeaponSlot } from './world';
 
 let socket: Socket | null = null;
@@ -625,8 +626,18 @@ function handleHostState(state: any) {
     }
   });
 
-  // Despawn enemies no longer mentioned by Host
+  // Despawn enemies no longer mentioned by Host. If the removal happened near
+  // the local player it's a KILL (not a far-off despawn) — play death FX so the
+  // joiner sees/hears enemies pop like in single-player.
+  const localForFx = world.with('isLocalPlayer', 'position').first;
   for (const obsoleteEnemy of enemyMap.values()) {
+    if (localForFx && obsoleteEnemy.position) {
+      const dx = obsoleteEnemy.position.x - localForFx.position.x;
+      const dz = obsoleteEnemy.position.z - localForFx.position.z;
+      if (dx * dx + dz * dz < 26 * 26) {
+        spawnClientDeathFx(obsoleteEnemy.position, obsoleteEnemy.baseColor ?? 0xff0055, activeScene!);
+      }
+    }
     if (obsoleteEnemy.transform) activeScene?.remove(obsoleteEnemy.transform);
     if (obsoleteEnemy.rigidBody) removeBody(obsoleteEnemy.rigidBody);
     world.remove(obsoleteEnemy);
@@ -678,6 +689,12 @@ function handleHostState(state: any) {
   });
 
   for (const obsoleteXP of xpMap.values()) {
+    // XP removed right next to us = we just collected it → play the pickup blip.
+    if (localForFx && obsoleteXP.position) {
+      const dx = obsoleteXP.position.x - localForFx.position.x;
+      const dz = obsoleteXP.position.z - localForFx.position.z;
+      if (dx * dx + dz * dz < 3 * 3) playLocalXpPickup();
+    }
     if (obsoleteXP.transform) activeScene?.remove(obsoleteXP.transform);
     world.remove(obsoleteXP);
   }
