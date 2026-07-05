@@ -31,6 +31,12 @@ export type Entity = {
   // Network smoothing targets (clients lerp remote entities toward these)
   netX?: number;
   netZ?: number;
+  // Client-side cosmetic knockback impulse (units/s, decays fast) so hits on
+  // synced enemies read as an instant shove instead of a filtered 30Hz drift
+  fxKickX?: number;
+  fxKickZ?: number;
+  // Client-side mirror of a host-simulated entity (e.g. enemy projectiles)
+  _epMirror?: boolean;
   isEnemy?: boolean;
   isProjectile?: boolean;
   isEnemyProjectile?: boolean;
