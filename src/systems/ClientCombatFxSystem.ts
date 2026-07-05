@@ -94,6 +94,18 @@ export function ClientCombatFxSystem(_dt: number, scene: THREE.Scene): void {
     spawnImpactFX(p.position, scene, p.weaponId, p.weapon?.bulletColor, 2);
     hitEnemy.hitFlashTimer = 0.1;
     if (hitEnemy.id !== undefined) hitList.push(hitEnemy.id);
+
+    // Local knockback shove: the host's real knockback reaches us filtered
+    // through the 30Hz position lerp (reads as mushy drift), so kick the
+    // enemy immediately in the bullet's direction. NetSmoothingSystem applies
+    // and decays the impulse; the authoritative position reasserts right after.
+    const kv = p.velocity;
+    if (kv && (kv.x !== 0 || kv.z !== 0)) {
+      const kb = p.projectile!.knockback ?? 5;
+      const inv = 1 / (Math.hypot(kv.x, kv.z) || 1);
+      hitEnemy.fxKickX = (hitEnemy.fxKickX ?? 0) + kv.x * inv * kb;
+      hitEnemy.fxKickZ = (hitEnemy.fxKickZ ?? 0) + kv.z * inv * kb;
+    }
     if (now - lastImpactSound > IMPACT_SOUND_INTERVAL) {
       lastImpactSound = now;
       playCollect(0.85); // short, dry "tick" — reuses the pickup blip low-pitched
