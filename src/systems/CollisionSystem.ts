@@ -29,6 +29,7 @@ import { spawnDamageNumber } from './DamageNumberSystem';
 import { haptics } from '../core/haptics';
 import { dlog } from '../core/debug';
 import { scaleParticleCount } from '../core/quality';
+import { sendDirectEvent } from '../core/network';
 import {
   removeBody,
   getEventQueue,
@@ -191,6 +192,47 @@ function handleProjectileEnemyCollision(bullet: any, enemy: any, scene: THREE.Sc
 // How long the player is untouchable after taking a hit
 const PLAYER_IFRAME_DURATION = 0.8;
 
+/**
+ * Play the "I got hit" feedback for a player after damage is applied.
+ * - Local player (host or solo): fire the effects right here, like single-player.
+ * - Remote player (host is simulating their damage): send a targeted event to
+ *   THAT player's client so it plays the same juice at its own position. This
+ *   is why the joining player now feels hits identically to the host — and it
+ *   stops the host's own screen from flashing when a teammate is hit.
+ * `dirX/dirZ` point from the damage source toward the player (knockback dir).
+ */
+function applyPlayerHitFeedback(
+  player: any,
+  damage: number,
+  trauma: number,
+  dirX: number,
+  dirZ: number,
+  knockStrength: number,
+) {
+  player.hitFlashTimer = 0.15; // flash the avatar on this machine's screen
+
+  if (player.isLocalPlayer) {
+    reportDamageTaken(damage);
+    addTrauma(trauma);
+    playHurt();
+    haptics.hit();
+    spawnDamageNumber(player.position, damage, 'player');
+    uiState.damageFlash++; // drives the HUD red vignette
+    if (!player.knockback) player.knockback = new THREE.Vector3();
+    _tempVec.set(dirX, 0, dirZ).normalize().multiplyScalar(knockStrength);
+    player.knockback.add(_tempVec);
+  } else if (uiState.isHost && player.connectionId) {
+    // Remote player, host-side: their client owns the feedback + knockback.
+    sendDirectEvent(player.connectionId, 'player-hit', {
+      d: Math.round(damage),
+      t: trauma,
+      kx: Math.round(dirX * 100) / 100,
+      kz: Math.round(dirZ * 100) / 100,
+      ks: knockStrength,
+    });
+  }
+}
+
 function handleEnemyPlayerCollision(enemy: any, player: any, _scene: THREE.Scene) {
   if (!enemy.health || enemy.health.current <= 0 || !player.health || player.health.current <= 0)
     return;
@@ -217,21 +259,12 @@ function handleEnemyPlayerCollision(enemy: any, player: any, _scene: THREE.Scene
 
   player.health.current -= actualDamage;
   player.invulnTimer = PLAYER_IFRAME_DURATION;
-  player.hitFlashTimer = 0.15;
-  reportDamageTaken(actualDamage);
-  addTrauma(0.45);
-  playHurt();
-  haptics.hit();
-  spawnDamageNumber(player.position, actualDamage, 'player');
-  uiState.damageFlash++; // drives the HUD red vignette
 
   const dx = player.position.x - enemy.position.x;
   const dz = player.position.z - enemy.position.z;
 
-  // Knock the player away from the impact (decays in PlayerControlSystem)
-  if (!player.knockback) player.knockback = new THREE.Vector3();
-  _tempVec.set(dx, 0, dz).normalize().multiplyScalar(9);
-  player.knockback.add(_tempVec);
+  // Feedback (local: play now; remote: sent to their client) + knockback
+  applyPlayerHitFeedback(player, actualDamage, 0.45, dx, dz, 9);
 
   // Knock enemy back a bit
   _pushDir.set(-dx, 0, -dz).normalize().multiplyScalar(5);
@@ -278,20 +311,11 @@ function handleEnemyProjectilePlayerCollision(bullet: any, player: any, scene: T
 
   player.health.current -= actualDamage;
   player.invulnTimer = PLAYER_IFRAME_DURATION;
-  player.hitFlashTimer = 0.15;
-  reportDamageTaken(actualDamage);
-  addTrauma(0.35);
-  playHurt();
-  haptics.hit();
-  spawnDamageNumber(player.position, actualDamage, 'player');
-  uiState.damageFlash++; // drives the HUD red vignette
 
-  // Knock the player back slightly based on bullet velocity
-  if (bullet.velocity) {
-    if (!player.knockback) player.knockback = new THREE.Vector3();
-    _tempVec.copy(bullet.velocity).normalize().multiplyScalar(6);
-    player.knockback.add(_tempVec);
-  }
+  // Knockback direction follows the bullet's travel
+  const bvx = bullet.velocity?.x || 0;
+  const bvz = bullet.velocity?.z || 0;
+  applyPlayerHitFeedback(player, actualDamage, 0.35, bvx, bvz, 6);
 
   // Clear projectile
   despawn(bullet, scene);
