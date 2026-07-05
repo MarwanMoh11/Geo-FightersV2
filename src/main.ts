@@ -53,6 +53,7 @@ import { initParticleComputeSystem, ParticleComputeSystem } from './systems/Part
 import { initEnemyComputeSystem, EnemyComputeSystem } from './systems/EnemyComputeSystem';
 import { initDamageNumbers, DamageNumberSystem } from './systems/DamageNumberSystem';
 import { CoopSystem } from './systems/CoopSystem';
+import { ClientCombatFxSystem } from './systems/ClientCombatFxSystem';
 
 // --- AUDIO UNLOCK & MUSIC START ---
 const unlockAudio = () => {
@@ -294,6 +295,9 @@ function startGameLoop(
     } else {
       // Client: ease remote players/enemies/boss toward their net targets
       NetSmoothingSystem(dt);
+      // Cosmetic combat feedback (bullet impacts/flash) so the joiner's fight
+      // feels like single-player; damage/kills stay host-authoritative.
+      ClientCombatFxSystem(dt, scene);
     }
 
     // Sync network states (throttled to 30Hz to prevent packet flooding)
