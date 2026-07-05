@@ -537,25 +537,11 @@ function handleHostState(state: any) {
       const local: any = world.with('isLocalPlayer', 'health', 'level').first;
       if (local) {
         if (local.health) {
-          // Detect damage from the host-authoritative HP and reconstruct the
-          // hit feedback locally — the host applies the damage, but all the
-          // juice (red vignette, shake, hurt sound, haptics, damage number)
-          // fires on the host's screen, so the joining player felt nothing.
-          const prevHp = local.health.current;
+          // HP is host-authoritative; the full hit *feedback* arrives as a
+          // targeted 'player-hit' event (see game-event handler) so it plays at
+          // the exact moment and carries knockback — no fragile HP-delta guess.
           local.health.current = pHealth.current;
           local.health.max = pHealth.max;
-          const dropped = prevHp - pHealth.current;
-          // Skip the very first snapshot (baseline) so joining doesn't flash.
-          if (local._netDmgInit && dropped >= 1 && pHealth.current > 0) {
-            local.hitFlashTimer = 0.15;
-            local.invulnTimer = 0.4; // brief blink; host owns the real i-frames
-            uiState.damageFlash++;
-            addTrauma(0.4);
-            playHurt();
-            haptics.hit();
-            spawnDamageNumber(local.position, dropped, 'player');
-          }
-          local._netDmgInit = true;
         }
         // XP bar mirrors the host's tally (clients don't collect XP locally)
         if (pData.x !== undefined) local.xp = pData.x;
@@ -804,6 +790,26 @@ function bindRemainingListeners(socket: Socket) {
           showToast(`📦 ${data.name} opened a ${data.rarity || ''} chest`);
         }
         break;
+      case 'player-hit': {
+        // The host (authoritative for our damage) tells us we were hit — play
+        // the exact same feedback single-player does, at our own position.
+        const me = world.with('isLocalPlayer', 'position', 'health').first;
+        if (me && me.health && me.health.current > 0) {
+          me.hitFlashTimer = 0.15;
+          uiState.damageFlash++;
+          addTrauma(data?.t ?? 0.4);
+          playHurt();
+          haptics.hit();
+          spawnDamageNumber(me.position, data?.d ?? 1, 'player');
+          if (data?.kx !== undefined) {
+            if (!me.knockback) me.knockback = new THREE.Vector3();
+            me.knockback.add(
+              new THREE.Vector3(data.kx, 0, data.kz).normalize().multiplyScalar(data.ks ?? 8),
+            );
+          }
+        }
+        break;
+      }
       case 'player-down':
         if (data?.name) announce(`${data.name} IS DOWN`);
         break;

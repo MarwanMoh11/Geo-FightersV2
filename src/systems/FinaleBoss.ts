@@ -30,7 +30,7 @@ import { spawnDamageNumber } from './DamageNumberSystem';
 import { uiState } from '../core/UIState.svelte';
 import { haptics } from '../core/haptics';
 import { createCustomProjectileMesh } from '../core/projectileVisuals';
-import { broadcastGameEvent } from '../core/network';
+import { broadcastGameEvent, sendDirectEvent } from '../core/network';
 
 // --- BOSS STATE ---
 let bossSpawned = false;
@@ -276,15 +276,25 @@ export function FinaleBossSystem(dt: number, scene: THREE.Scene) {
       p.invulnTimer = 0.8;
       p.hitFlashTimer = 0.15;
       if (p.id !== undefined) sw.hitList.push(p.id);
+
+      // Local player feels it now; a remote player's client is notified so the
+      // shockwave hits feel identical there (host doesn't flash for teammates).
       if (p.isLocalPlayer) {
         playHurt();
         haptics.hit();
         uiState.damageFlash++;
+        spawnDamageNumber(p.position, actualDamage, 'player');
+        if (!p.knockback) p.knockback = new THREE.Vector3();
+        p.knockback.add(new THREE.Vector3(dx, 0, dz).normalize().multiplyScalar(10));
+      } else if (uiState.isHost && p.connectionId) {
+        sendDirectEvent(p.connectionId, 'player-hit', {
+          d: Math.round(actualDamage),
+          t: 0.5,
+          kx: Math.round(dx * 100) / 100,
+          kz: Math.round(dz * 100) / 100,
+          ks: 10,
+        });
       }
-      spawnDamageNumber(p.position, actualDamage, 'player');
-
-      if (!p.knockback) p.knockback = new THREE.Vector3();
-      p.knockback.add(new THREE.Vector3(dx, 0, dz).normalize().multiplyScalar(10));
     }
   }
 }
