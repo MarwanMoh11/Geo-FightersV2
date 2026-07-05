@@ -561,7 +561,7 @@ export function handleEnemyDeath(
   despawn(enemy, scene);
 }
 
-function spawnImpactFX(
+export function spawnImpactFX(
   pos: THREE.Vector3,
   _scene: THREE.Scene,
   weaponId?: string,
