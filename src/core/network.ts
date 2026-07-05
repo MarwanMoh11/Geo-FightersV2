@@ -21,6 +21,7 @@ import { WEAPONS, getWeaponStatsAtLevel } from './WeaponRegistry';
 import { submitRunToLeaderboard } from './leaderboard';
 import { initRtc, closeRtc, closeRtcPeer, rtcSendStateTo } from './rtc';
 import { spawnClientDeathFx, playLocalXpPickup } from '../systems/ClientCombatFxSystem';
+import { createCustomProjectileMesh } from './projectileVisuals';
 import type { WeaponSlot } from './world';
 
 let socket: Socket | null = null;
@@ -594,6 +595,11 @@ function handleHostState(state: any) {
     enemyMap.set(e.id!, e);
   }
 
+  // Amortize mesh construction: a big wave can introduce 30+ new enemies in a
+  // single snapshot and building all their models in one frame is a visible
+  // hitch. Cap spawns per snapshot — stragglers arrive on the next one (33ms).
+  let spawnBudget = 12;
+
   state.enemies.forEach((eData: any) => {
     const eId = eData.i;
     const eType = eData.t;
@@ -604,6 +610,7 @@ function handleHostState(state: any) {
 
     let enemy = enemyMap.get(eId);
     if (!enemy) {
+      if (spawnBudget-- <= 0) return; // defer to the next snapshot
       // Spawn local representation at the reported spot (no lerp-in from 0,0)
       enemy = spawnEnemy(activeScene!, ePos.x, ePos.z, eType);
       if (enemy) {
@@ -630,17 +637,64 @@ function handleHostState(state: any) {
   // the local player it's a KILL (not a far-off despawn) — play death FX so the
   // joiner sees/hears enemies pop like in single-player.
   const localForFx = world.with('isLocalPlayer', 'position').first;
+  // Cap death FX per snapshot so a huge wave-clear doesn't flood particles
+  let deathFxBudget = 6;
   for (const obsoleteEnemy of enemyMap.values()) {
-    if (localForFx && obsoleteEnemy.position) {
+    if (localForFx && obsoleteEnemy.position && deathFxBudget > 0) {
       const dx = obsoleteEnemy.position.x - localForFx.position.x;
       const dz = obsoleteEnemy.position.z - localForFx.position.z;
       if (dx * dx + dz * dz < 26 * 26) {
+        deathFxBudget--;
         spawnClientDeathFx(obsoleteEnemy.position, obsoleteEnemy.baseColor ?? 0xff0055, activeScene!);
       }
     }
     if (obsoleteEnemy.transform) activeScene?.remove(obsoleteEnemy.transform);
     if (obsoleteEnemy.rigidBody) removeBody(obsoleteEnemy.rigidBody);
     world.remove(obsoleteEnemy);
+  }
+
+  // 2c. Sync enemy projectiles (boss glitch ring). Without this the joiner is
+  // hit by bullets they literally cannot see — dodging was impossible. Mirrors
+  // fly by dead reckoning (straight lines) with a snap correction when they
+  // drift, and despawn when the host stops reporting them.
+  const epMap = new Map<number, any>();
+  for (const p of world.with('isEnemyProjectile')) {
+    if (p._epMirror) epMap.set(p.id!, p);
+  }
+  (state.ep || []).forEach((d: any) => {
+    let m = epMap.get(d.i);
+    if (!m) {
+      const dir = new THREE.Vector3(d.v[0], 0, d.v[1]);
+      if (dir.lengthSq() === 0) dir.set(0, 0, 1);
+      const mesh = createCustomProjectileMesh(
+        'smart_rail_needles',
+        0xff3333,
+        0.15,
+        0.8,
+        dir.clone().normalize(),
+      );
+      mesh.position.set(d.p[0], 0.5, d.p[1]);
+      activeScene!.add(mesh);
+      m = world.add({
+        isEnemyProjectile: true,
+        _epMirror: true,
+        position: mesh.position,
+        velocity: new THREE.Vector3(d.v[0], 0, d.v[1]),
+        transform: mesh,
+      } as any);
+      m.id = d.i;
+    } else {
+      // Dead reckoning correction: only snap when meaningfully off-course
+      const ex = m.position.x - d.p[0];
+      const ez = m.position.z - d.p[1];
+      if (ex * ex + ez * ez > 2 * 2) m.position.set(d.p[0], 0.5, d.p[1]);
+      m.velocity.set(d.v[0], 0, d.v[1]);
+      epMap.delete(d.i);
+    }
+  });
+  for (const gone of epMap.values()) {
+    if (gone.transform) activeScene?.remove(gone.transform);
+    world.remove(gone);
   }
 
   // 2b. Sync Boss (host-authoritative; visual mirror on the client)
@@ -952,6 +1006,14 @@ export function sendHostUpdate() {
     v: c.creditValue || 1,
   }));
 
+  // Gather enemy projectiles (boss glitch ring) so clients can SEE and dodge
+  // the bullets that damage them
+  const ep = Array.from(world.with('isEnemyProjectile', 'position', 'velocity')).map((p: any) => ({
+    i: p.id,
+    p: [Math.round(p.position.x * 10) / 10, Math.round(p.position.z * 10) / 10],
+    v: [Math.round(p.velocity.x * 10) / 10, Math.round(p.velocity.z * 10) / 10],
+  }));
+
   // Gather active chests
   const chests = Array.from(world.with('isChest', 'position', 'chestRarity')).map((c: any) => ({
     i: c.id,
@@ -975,6 +1037,7 @@ export function sendHostUpdate() {
     enemies,
     xp,
     credits,
+    ep,
     chests,
     boss,
     gameTime: uiState.gameTime,
@@ -1043,6 +1106,8 @@ export function NetSmoothingSystem(dt: number) {
   if (!uiState.isMultiplayer || uiState.isHost) return;
   const t = Math.min(1, dt * NET_LERP_RATE);
 
+  const kickDecay = Math.exp(-6 * dt);
+
   for (const e of world.with('netX', 'position')) {
     const dx = (e.netX ?? e.position.x) - e.position.x;
     const dz = (e.netZ ?? e.position.z) - e.position.z;
@@ -1055,6 +1120,20 @@ export function NetSmoothingSystem(dt: number) {
       e.position.x += dx * t;
       e.position.z += dz * t;
     }
+
+    // Cosmetic knockback impulse from local bullet hits: instant shove that
+    // decays fast while the authoritative lerp pulls the enemy back in line.
+    if (e.fxKickX || e.fxKickZ) {
+      e.position.x += (e.fxKickX ?? 0) * dt;
+      e.position.z += (e.fxKickZ ?? 0) * dt;
+      e.fxKickX = (e.fxKickX ?? 0) * kickDecay;
+      e.fxKickZ = (e.fxKickZ ?? 0) * kickDecay;
+      if (Math.abs(e.fxKickX) < 0.05 && Math.abs(e.fxKickZ) < 0.05) {
+        e.fxKickX = 0;
+        e.fxKickZ = 0;
+      }
+    }
+
     if (e.transform) {
       e.transform.position.x = e.position.x;
       e.transform.position.z = e.position.z;
