@@ -239,6 +239,14 @@ export function stopMusic(): void {
   if (musicGainNode && ctx) {
     musicGainNode.gain.setTargetAtTime(0, ctx.currentTime, 0.08);
   }
+  // Tear down the lookahead scheduler — otherwise its interval keeps waking
+  // the CPU every tick forever after the music ends (battery drain), and
+  // startMusic() could never re-arm cleanly.
+  if (musicTimer !== null) {
+    clearInterval(musicTimer);
+    musicTimer = null;
+  }
+  isMusicPlaying = false;
 }
 
 export function resumeMusic(): void {
@@ -368,6 +376,7 @@ const BASS_PATTERN: (0 | 7 | 12 | null)[] = [
 ];
 
 let isMusicPlaying = false;
+let musicTimer: ReturnType<typeof setInterval> | null = null;
 let nextNoteTime = 0;
 let stepIndex = 0; // global sixteenth counter
 
@@ -390,7 +399,7 @@ export function startMusic() {
   nextNoteTime = c.currentTime + 0.06;
   stepIndex = 0;
 
-  setInterval(() => {
+  musicTimer = setInterval(() => {
     if (!ctx || ctx.state !== 'running' || isMusicStopped) return;
     // Catch up after background throttling without machine-gunning old steps.
     if (nextNoteTime < ctx.currentTime - 0.25) {

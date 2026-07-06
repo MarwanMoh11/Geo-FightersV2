@@ -256,7 +256,11 @@ export function openChestLocally(
   // 1. EVOLUTION SCAN (only if time >= threshold). Clients use the synced
   // uiState.gameTime (their local ChestSystem clock never ticks).
   const timeNow = uiState.isMultiplayer && !uiState.isHost ? uiState.gameTime : gameTime;
-  const candidates = scanForEvolutions(player.weaponSlots || [], player.passiveSlots || [], timeNow);
+  const candidates = scanForEvolutions(
+    player.weaponSlots || [],
+    player.passiveSlots || [],
+    timeNow,
+  );
 
   if (candidates.length > 0 && scene) {
     const selected = selectEvolution(candidates);

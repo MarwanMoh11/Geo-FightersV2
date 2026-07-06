@@ -2,10 +2,18 @@ import { world } from '../core/world';
 import { uiState } from '../core/UIState.svelte.ts';
 import { playOverloadTrigger } from '../core/audio';
 
+// Ultimate duration per character (seconds). GHOST's phase-walk is short and
+// total — anything longer would trivialize the horde.
+const OVERLOAD_DURATION: Record<string, number> = {
+  ghost: 4.0,
+};
+const DEFAULT_OVERLOAD_DURATION = 7.0;
+
 export function triggerOverload() {
   if (uiState.overloadCharge >= 100 && !uiState.overloadActive && uiState.gameState === 'PLAYING') {
     uiState.overloadActive = true;
-    uiState.overloadTimer = 7.0;
+    uiState.overloadTimer =
+      OVERLOAD_DURATION[uiState.selectedCharacter] ?? DEFAULT_OVERLOAD_DURATION;
     uiState.overloadCharge = 0;
     playOverloadTrigger();
   }
