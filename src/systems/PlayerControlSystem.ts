@@ -25,8 +25,8 @@ export function PlayerControlSystem(dt: number) {
     if (uiState.overloadActive) {
       if (uiState.selectedCharacter === 'rail') {
         speedMult = 0;
-      } else if (uiState.selectedCharacter === 'lash') {
-        speedMult *= 1.5;
+      } else if (uiState.selectedCharacter === 'lash' || uiState.selectedCharacter === 'ghost') {
+        speedMult *= 1.5; // sprint ults: Lash's static field, Ghost's phase-walk
       }
     }
     if (uiState.insideDefragZone) {

@@ -645,7 +645,11 @@ function handleHostState(state: any) {
       const dz = obsoleteEnemy.position.z - localForFx.position.z;
       if (dx * dx + dz * dz < 26 * 26) {
         deathFxBudget--;
-        spawnClientDeathFx(obsoleteEnemy.position, obsoleteEnemy.baseColor ?? 0xff0055, activeScene!);
+        spawnClientDeathFx(
+          obsoleteEnemy.position,
+          obsoleteEnemy.baseColor ?? 0xff0055,
+          activeScene!,
+        );
       }
     }
     if (obsoleteEnemy.transform) activeScene?.remove(obsoleteEnemy.transform);
