@@ -154,6 +154,9 @@ export const uiState = $state({
   // Corruption dial (0-5 risk/reward, persisted)
   corruption: getLocalVal('geo_corruption', 0),
 
+  // FLUX Chaos Surge: which effect the roulette rolled ('' = none active)
+  fluxEffect: '' as '' | 'nuke' | 'frenzy' | 'heal' | 'gold',
+
   // Data protocol (run modifier picked at run start)
   activeProtocolId: '' as string,
   showProtocolChoice: false,

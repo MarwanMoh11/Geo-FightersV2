@@ -51,7 +51,14 @@ export const STAT_CAPS = {
 
 // --- DEFAULT STATS ---
 export function getDefaultStats(): PlayerStats {
-  const up = uiState.permanentUpgrades || { might: 0, maxHealth: 0, armor: 0, moveSpeed: 0, magnet: 0, luck: 0 };
+  const up = uiState.permanentUpgrades || {
+    might: 0,
+    maxHealth: 0,
+    armor: 0,
+    moveSpeed: 0,
+    magnet: 0,
+    luck: 0,
+  };
   return {
     // Offensive (all start at 1.0 = no bonus)
     might: 1.0 + up.might * 0.1, // +10% per level

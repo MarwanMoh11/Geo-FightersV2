@@ -20,14 +20,7 @@ let lastDraw = 0;
 const SCALE = 80 / 150;
 
 // Elite / mini-boss enemy types worth an off-screen direction arrow
-const ELITE_TYPES = new Set([
-  'firewall',
-  'enforcer',
-  'warden',
-  'colossus',
-  'hydra',
-  'overseer',
-]);
+const ELITE_TYPES = new Set(['firewall', 'enforcer', 'warden', 'colossus', 'hydra', 'overseer']);
 
 // Colors
 const COLORS = {
@@ -73,7 +66,8 @@ export function MinimapSystem(): void {
   const cy = height / 2;
 
   // Radar is centered on the local player (fall back to any player)
-  const local = world.with('isLocalPlayer', 'position').first ?? world.with('isPlayer', 'position').first;
+  const local =
+    world.with('isLocalPlayer', 'position').first ?? world.with('isPlayer', 'position').first;
   const ox = local ? local.position.x : 0;
   const oz = local ? local.position.z : 0;
 
@@ -161,12 +155,7 @@ export function MinimapSystem(): void {
   if (local) drawPlayerDot(ctx, cx, cy, COLORS.player);
 }
 
-function drawPlayerDot(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  color: string,
-): void {
+function drawPlayerDot(ctx: CanvasRenderingContext2D, x: number, y: number, color: string): void {
   ctx.fillStyle = color;
   ctx.beginPath();
   ctx.arc(x, y, 4, 0, Math.PI * 2);

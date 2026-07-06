@@ -67,6 +67,15 @@ export function WeaponSystem(dt: number, scene: THREE.Scene) {
       if (uiState.overloadActive && uiState.selectedCharacter === 'rail' && player.isLocalPlayer) {
         tickDt = dt * 4;
       }
+      // FLUX Chaos Surge rolled FRENZY: weapons tick 3× for the duration
+      if (
+        uiState.overloadActive &&
+        uiState.selectedCharacter === 'flux' &&
+        uiState.fluxEffect === 'frenzy' &&
+        player.isLocalPlayer
+      ) {
+        tickDt = dt * 3;
+      }
       if (uiState.insideOverclockZone && player.isLocalPlayer) {
         tickDt *= 2.0;
       }
