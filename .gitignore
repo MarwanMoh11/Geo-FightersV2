@@ -47,3 +47,6 @@ desktop.ini
 # Hugging Face deployment workspace
 hf_space/
 
+
+# Local browser performance captures
+Firefox*profile.json
