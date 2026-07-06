@@ -16,6 +16,18 @@ let vaultTimer = 60.0; // first vault at 1:00
 let activeVault: any = null;
 let vaultExpiry = 0;
 
+/** Full reset for a no-reload restart (entities are swept by the run reset). */
+export function resetAnomalySystem(): void {
+  spawnTimer = 15.0;
+  damageTimer = 0;
+  vaultTimer = 60.0;
+  activeVault = null;
+  vaultExpiry = 0;
+  uiState.insideOverclockZone = false;
+  uiState.insideDefragZone = false;
+  uiState.insideLeakZone = false;
+}
+
 function spawnVault(scene: THREE.Scene, px: number, pz: number, gameTime: number): void {
   const angle = Math.random() * Math.PI * 2;
   const dist = 10 + Math.random() * 6;

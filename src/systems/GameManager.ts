@@ -12,6 +12,12 @@ import { dlog } from '../core/debug';
 export let isGameOver = false;
 export let isVictory = false;
 
+/** Clear the end-of-run flags so a fresh run can start without a page reload. */
+export function resetGameFlags(): void {
+  isGameOver = false;
+  isVictory = false;
+}
+
 function captureFinalStats() {
   const player = world.with('isPlayer', 'level', 'score').first;
   uiState.level = player?.level || uiState.level;
