@@ -43,7 +43,9 @@ export function CoopSystem(dt: number) {
     if (isDead && !ghost._downAnnounced) {
       ghost._downAnnounced = true;
       ghost.reviveProgress = 0;
-      const name = ghost.isLocalPlayer ? uiState.playerName || 'HOST' : ghost.playerName || 'PLAYER';
+      const name = ghost.isLocalPlayer
+        ? uiState.playerName || 'HOST'
+        : ghost.playerName || 'PLAYER';
       announce(`${name} IS DOWN`);
       broadcastGameEvent('player-down', { name });
     }

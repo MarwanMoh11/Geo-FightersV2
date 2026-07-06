@@ -426,8 +426,8 @@ export function checkAABBCollision(
   entityRadius: number,
   obstacle: Obstacle,
 ): { colliding: boolean; pushX: number; pushZ: number } {
-  const halfW = obstacle.halfWidth ?? (obstacle.width / 2);
-  const halfD = obstacle.halfDepth ?? (obstacle.depth / 2);
+  const halfW = obstacle.halfWidth ?? obstacle.width / 2;
+  const halfD = obstacle.halfDepth ?? obstacle.depth / 2;
 
   // Early-out broadphase: check if the circle can possibly intersect the AABB
   const dx = entityX - obstacle.x;
