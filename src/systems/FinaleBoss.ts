@@ -542,6 +542,12 @@ function resetBossMaterials(container: THREE.Object3D) {
 }
 
 // --- DESPAWN BOSS ---
+/** Full reset for a no-reload restart: forget the boss and re-arm the spawn. */
+export function resetFinaleBoss(scene: THREE.Scene): void {
+  despawnBoss(scene);
+  bossSpawned = false;
+}
+
 function despawnBoss(scene: THREE.Scene) {
   if (bossEntity) {
     if (bossEntity.transform) scene.remove(bossEntity.transform);

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { uiState } from '../../core/UIState.svelte.ts';
   import { setGameState } from '../../core/GameState';
+  import { resetRun } from '../../core/runReset';
   import { fade, scale } from 'svelte/transition';
 
   function resume() {
@@ -16,7 +17,7 @@
   }
 
   function backToMenu() {
-    location.reload();
+    resetRun(); // abandon the run in place — no page reload
   }
 </script>
 

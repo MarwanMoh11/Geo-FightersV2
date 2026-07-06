@@ -1,14 +1,19 @@
 <script lang="ts">
   import { uiState } from '../../core/UIState.svelte.ts';
   import { getNearestLocked, ACHIEVEMENTS } from '../../core/ProgressManager';
+  import { resetRun } from '../../core/runReset';
   import { fade, fly } from 'svelte/transition';
 
   let leaving = $state(false);
 
   function restart() {
-    // Brief fade-out before the hard reset so the click feels acknowledged
+    // Brief fade-out so the click feels acknowledged, then an IN-PLACE run
+    // reset (no page reload — instant, keeps the app alive on mobile wrappers)
     leaving = true;
-    setTimeout(() => location.reload(), 250);
+    setTimeout(() => {
+      resetRun();
+      leaving = false;
+    }, 250);
   }
 
   // The "one more run" tease: what was earned + what's almost earned.

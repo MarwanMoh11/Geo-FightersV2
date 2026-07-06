@@ -21,6 +21,13 @@ export interface LeaderboardEntry {
 const MIN_SUBMIT_TIME = 30;
 let submittedThisSession = false;
 
+/** New run started (no-reload restart): allow the next result to submit. */
+export function resetRunSubmission(): void {
+  submittedThisSession = false;
+  uiState.lastRunRank = 0;
+  uiState.lastRunRankTotal = 0;
+}
+
 /** POST the just-finished run. Fire-and-forget; records rank in uiState. */
 export function submitRunToLeaderboard(): void {
   if (submittedThisSession) return;

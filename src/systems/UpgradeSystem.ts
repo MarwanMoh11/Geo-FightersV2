@@ -63,6 +63,15 @@ export interface UpgradeOption {
 export let isGamePaused = false;
 let pendingUpgradesCount = 0;
 
+/** Clear upgrade-modal state for a no-reload restart (dying mid-choice etc). */
+export function resetUpgradeState(): void {
+  isGamePaused = false;
+  pendingUpgradesCount = 0;
+  setMusicDucked(false);
+  uiState.showUpgrade = false;
+  uiState.upgradeChoices = [];
+}
+
 // --- PUBLIC API ---
 export function triggerLevelUp() {
   const player = world.with('isLocalPlayer', 'weaponSlots', 'passiveSlots', 'stats').first;
