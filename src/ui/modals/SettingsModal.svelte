@@ -129,6 +129,31 @@
             </div>
             <div class="setting-item">
               <div class="info">
+                <label for="fpsLimitSelect">FPS LIMIT</label>
+              </div>
+              <div class="segmented" id="fpsLimitSelect">
+                {#each [30, 60, 0] as cap (cap)}
+                  <button
+                    class="seg-btn"
+                    class:active={settings.fpsLimit === cap}
+                    onclick={() => updateSetting('fpsLimit', cap as GameSettings['fpsLimit'])}
+                  >
+                    {cap === 0 ? 'MAX' : cap}
+                  </button>
+                {/each}
+              </div>
+              <p class="hint">
+                {#if settings.fpsLimit === 30}
+                  Best battery life — great for long mobile sessions.
+                {:else if settings.fpsLimit === 60}
+                  Smooth and efficient (recommended).
+                {:else}
+                  Uncapped — uses your display's full refresh rate. Drains battery.
+                {/if}
+              </p>
+            </div>
+            <div class="setting-item">
+              <div class="info">
                 <label for="fpsToggle">SHOW FPS</label>
               </div>
               <button

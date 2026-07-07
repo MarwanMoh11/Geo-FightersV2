@@ -20,28 +20,33 @@ Effort key: **S** ≤ half a day · **M** 1–2 days · **L** ≥ 3 days
 
 ## Phase 0 — Bugs to fix before anything else (P0)
 
-| # | Bug | Where | Effort |
-|---|-----|-------|--------|
-| 0.1 | **Music scheduler interval leak** — `startMusic()` creates a new `setInterval` on every call and never stores/clears it. Every menu→run→menu cycle stacks another永 interval; they all keep firing (CPU + battery) and multiply schedule work when music resumes. Store the handle; create once or clear on stop. | `src/core/audio.ts:393` | S |
-| 0.2 | **5 of 8 characters have no space-bar ability.** Overload charge builds and the button fires for NOVA, BYTE, GHOST, TITAN, FLUX — and nothing happens. Implemented: cypher (shockwave), rail (bubble + 4× fire), lash (tears + speed). Design + implement the missing five (suggestions: NOVA = expanding gravity-well that pulls enemies; BYTE = magnet-vortex that vacuums all XP/credits on map; GHOST = 4s phase-walk, untargetable + speed; TITAN = ground slam, radial knockback + armor buff; FLUX = chaos roulette that re-rolls into a random doubled ult). | `src/systems/OverloadSystem.ts` | L |
-| 0.3 | **"Play again" reloads the page** (`location.reload()` in GameOverModal). In co-op this destroys the room and kicks the party. Implement a real run-reset (return party to lobby, reset world state in place). Also required for mobile stores — full reloads feel broken in a wrapped app. | `src/ui/modals/GameOverModal.svelte`, factories/GameState | M |
-| 0.4 | **Repo hygiene:** 3 untracked 13–22 MB `Firefox … profile.json` files in the root (add to .gitignore); pre-existing prettier/lint errors in `LevelData.ts`, `PlayerStats.ts`, `OverloadSystem.ts`; heavy `any` usage in systems (tighten gradually). | root, various | S |
-| 0.5 | **Leaderboard durability + abuse:** HF free-tier storage is ephemeral (board wipes on rebuild/sleep) and POST has no rate-limit or profanity filter. Move storage to a durable free tier (Supabase/Neon/Cloudflare KV) or at least periodic JSON backup; add per-IP rate limit + name filter. | `server.js` | M |
+> **Status (2026-07-06): COMPLETE except 0.5's durable-storage half.**
+
+| # | Bug | Where | Effort | Status |
+|---|-----|-------|--------|--------|
+| 0.1 | **Music scheduler interval leak** — the lookahead `setInterval` was immortal (kept waking the CPU forever after music stopped) and `startMusic` couldn't re-arm. Handle now stored + cleared in `stopMusic`. | `src/core/audio.ts` | S | ✅ `e1fc310` |
+| 0.2 | **5 of 8 characters had no space-bar ability.** Shipped: NOVA Singularity (gravity well + core grinder), BYTE Salvage Vortex (map-wide loot vacuum), GHOST Phase Shift (4s untouchable sprint), TITAN Seismic Slam (quake + knockback + armor plate), FLUX Chaos Surge (nuke/frenzy/heal/gold roulette). Per-char durations, announce callouts, damage host/solo-gated for co-op. Bonus: fixed latent bug where never-hit enemies were immune to Cypher's nuke (blast query required `stunTimer`). | `src/systems/OverloadSystem.ts` | L | ✅ `e1fc310` |
+| 0.3 | **"Play again" reloaded the page.** New `src/core/runReset.ts` sweeps all run entities + physics bodies, resets every stateful module (clock, spawner, anomalies, flow, upgrade queue, boss, leaderboard once-guard), and lands on MENU in one frame; MP leaves the room cleanly. Wired into GameOver + Pause modals. Verified: second run on the same page is fully fresh. | `src/core/runReset.ts` | M | ✅ `1203f15` |
+| 0.4 | **Repo hygiene:** Firefox captures gitignored; repo-wide prettier pass → 0 lint errors (105 `any` warnings remain — tighten gradually). | root, various | S | ✅ |
+| 0.5 | **Leaderboard durability + abuse:** POST clamps input but storage is ephemeral on HF free tier and there's no per-IP rate limit / profanity filter. Needs a durable store (Supabase/Neon/Cloudflare KV — owner to provision) + server-side limiter. | `server.js` | M | ⏸️ pending service choice |
 
 ## Phase 1 — Battery & performance (mobile-critical)
+
+> **Status (2026-07-07): 1.1–1.5 SHIPPED; 1.6 deferred.**
+> Measured on a 165 Hz display: menu 160→30 fps, in-game 160→59 fps (default).
 
 The engine already has: quality tiers (auto/low/med/high), adaptive dynamic
 resolution, instanced enemies/particles/loot, spatial-hash separation, throttled
 minimap/HUD. Remaining wins, in impact order:
 
-| # | Item | Detail | Effort |
-|---|------|--------|--------|
-| 1.1 | **Frame-rate cap** | rAF currently runs at display refresh — observed 160 fps on a 165 Hz monitor; a phone at 120 Hz burns battery for zero gameplay benefit in a 60 fps-class game. Add a frame limiter (accumulate dt, skip render below budget): settings **30 / 60 / Uncapped**, default 60, and auto-30 when `navigator.getBattery()` reports save-mode/low battery ("Battery saver"). | M |
-| 1.2 | **Menu/pause power mode** | The full 3D scene renders at max fps behind the menu and while paused. Cap menu/paused rendering at ~30 fps (or render-on-demand). Biggest idle-drain fix. | S |
-| 1.3 | **Force websocket transport** | socket.io defaults to long-polling first; `transports: ['websocket']` cuts handshake chatter and radio wake-ups. | S |
-| 1.4 | **`powerPreference` hint** | Pass `powerPreference: 'high-performance'` on desktop, `'default'` on mobile when creating the renderer, so phones don't pin the big GPU core. | S |
-| 1.5 | **Audio idle suspend** | When muted/backgrounded, `ctx.suspend()` instead of only zeroing gains — a running AudioContext keeps a hardware audio thread alive. (Resume-on-focus already exists.) | S |
-| 1.6 | **Asset budget check** | rapier wasm chunk is 2 MB gz — acceptable, but lazy-load it after first paint on portals (loading bar already staged). | M |
+| # | Item | Detail | Effort | Status |
+|---|------|--------|--------|--------|
+| 1.1 | **Frame-rate cap** | Frame limiter in the game loop skips frames before any work happens (clock keeps accumulating → simulation stays real-time). Settings → Display → **FPS LIMIT 30/60/MAX**, default 60. Dynamic resolution is skipped when intentionally capped ≤30 so the cap isn't misread as GPU overload. Verified: 30→31fps, 60→59fps, MAX→164fps. | M | ✅ |
+| 1.2 | **Menu/pause power mode** | Anything outside PLAYING is force-capped at 30 fps regardless of the setting. Verified: menu reads 30 (was 160). | S | ✅ |
+| 1.3 | **Websocket-first transport** | `transports: ['websocket','polling']` — skips the long-polling handshake, keeps polling as a strict-proxy fallback. | S | ✅ |
+| 1.4 | **`powerPreference` hint** | All three renderer constructors: `'low-power'` on mobile, `'high-performance'` on desktop. | S | ✅ |
+| 1.5 | **Audio idle suspend** | Backgrounding now suspends the AudioContext (not just gain=0) — releases the OS audio hardware thread; resume on focus restores it. | S | ✅ |
+| 1.6 | **Asset budget check** | rapier wasm chunk is 2 MB gz — acceptable, but lazy-load it after first paint on portals (loading bar already staged). | M | deferred |
 
 ## Phase 2 — Multiplayer resilience (make co-op shippable-quality)
 

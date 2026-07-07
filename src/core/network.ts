@@ -121,7 +121,7 @@ export function hostRoom() {
   uiState.networkStatus = 'connecting';
 
   if (!socket) {
-    socket = io(getSocketUrl());
+    socket = io(getSocketUrl(), { transports: ['websocket', 'polling'] });
     setupSocketListeners();
   }
 
@@ -136,7 +136,7 @@ export function joinRoom(roomCode: string) {
   uiState.networkStatus = 'connecting';
 
   if (!socket) {
-    socket = io(getSocketUrl());
+    socket = io(getSocketUrl(), { transports: ['websocket', 'polling'] });
     setupSocketListeners();
   }
 

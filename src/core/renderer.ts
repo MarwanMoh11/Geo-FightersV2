@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { getQualityProfile, initDynamicResolution, applyPixelRatio } from './quality';
+import { getQualityProfile, initDynamicResolution, applyPixelRatio, isMobile } from './quality';
 import { onSettingsChange } from './SettingsManager';
 
 // Feature detection: Check if WebGPU is available
@@ -32,7 +32,11 @@ export async function initRenderer() {
         `[Renderer] WebGPU is available. Quality: ${quality.tier}. Attempting to initialize...`,
       );
       const { WebGPURenderer } = await import('three/webgpu');
-      renderer = new WebGPURenderer({ antialias: quality.antialias, forceWebGL: false });
+      renderer = new WebGPURenderer({
+        antialias: quality.antialias,
+        forceWebGL: false,
+        powerPreference: isMobile ? 'low-power' : 'high-performance',
+      });
       await renderer.init();
 
       // Check if WebGPU actually initialized or fell back to WebGL
@@ -46,11 +50,17 @@ export async function initRenderer() {
       }
     } catch (error) {
       console.warn('[Renderer] WebGPU initialization failed, falling back to WebGL:', error);
-      renderer = new THREE.WebGLRenderer({ antialias: quality.antialias });
+      renderer = new THREE.WebGLRenderer({
+        antialias: quality.antialias,
+        powerPreference: isMobile ? 'low-power' : 'high-performance',
+      });
     }
   } else {
     console.log(`[Renderer] WebGPU not available, using WebGL renderer. Quality: ${quality.tier}`);
-    renderer = new THREE.WebGLRenderer({ antialias: quality.antialias });
+    renderer = new THREE.WebGLRenderer({
+      antialias: quality.antialias,
+      powerPreference: isMobile ? 'low-power' : 'high-performance',
+    });
   }
 
   renderer.shadowMap.enabled = quality.shadows;

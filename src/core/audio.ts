@@ -209,10 +209,18 @@ export function muteForBackground(): void {
   if (masterGainNode && ctx) {
     masterGainNode.gain.setValueAtTime(0, ctx.currentTime);
   }
+  // Fully suspend the context: a muted-but-running AudioContext keeps the OS
+  // audio hardware thread alive, which costs real battery in the background.
+  if (ctx && ctx.state === 'running') {
+    void ctx.suspend();
+  }
 }
 
 export function unmuteFromBackground(): void {
   backgroundMuted = false;
+  if (ctx && ctx.state === 'suspended') {
+    void ctx.resume();
+  }
   if (masterGainNode && ctx) {
     masterGainNode.gain.setValueAtTime(masterVolume, ctx.currentTime);
   }
