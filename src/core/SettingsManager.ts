@@ -12,6 +12,7 @@ export interface GameSettings {
   screenShake: boolean;
   showFps: boolean;
   qualityLevel: 'auto' | 'low' | 'medium' | 'high';
+  fpsLimit: 0 | 30 | 60; // 0 = uncapped (display refresh); 60 default saves battery
 
   // Gameplay
   autoAimStrength: number; // 0-100
@@ -33,6 +34,7 @@ const DEFAULT_SETTINGS: GameSettings = {
   screenShake: true,
   showFps: false,
   qualityLevel: 'auto',
+  fpsLimit: 60,
 
   // Gameplay
   autoAimStrength: 50,
@@ -159,6 +161,11 @@ export function isScreenShakeEnabled(): boolean {
 
 export function shouldShowFps(): boolean {
   return settings.showFps;
+}
+
+/** Frame cap in fps; 0 = uncapped. Read per-frame — no cloning. */
+export function getFpsLimit(): number {
+  return settings.fpsLimit;
 }
 
 export function shouldShowDamageNumbers(): boolean {
