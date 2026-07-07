@@ -14,6 +14,7 @@ import { isPlaying, onStateChange, setGameState } from './core/GameState';
 import { uiState } from './core/UIState.svelte.ts';
 import { DEBUG, dlog } from './core/debug';
 import { initPWA } from './core/pwa';
+import { getFpsLimit } from './core/SettingsManager';
 import { initPortal, portalLoadingFinished } from './core/portal';
 import { updateDynamicResolution } from './core/quality';
 
@@ -210,8 +211,27 @@ function startGameLoop(
   let netSyncTimer = 0;
   const NET_SYNC_INTERVAL = 1 / 30; // 30Hz throttled network sync
 
+  // --- FRAME LIMITER (battery) ---
+  // rAF fires at display refresh (120-165Hz on modern screens) — pure battery
+  // burn for a 60fps-class game. Frames outside the budget are skipped before
+  // any work happens; the clock keeps accumulating so simulation stays
+  // real-time. Menus/pause force a 30fps ceiling regardless of the setting.
+  const MENU_FPS = 30;
+  let nextFrameAt = 0;
+
   function animate() {
     requestAnimationFrame(animate);
+
+    const userCap = getFpsLimit(); // 0 = uncapped
+    const inGame = uiState.gameState === 'PLAYING';
+    const cap = inGame ? userCap : userCap > 0 ? Math.min(userCap, MENU_FPS) : MENU_FPS;
+    if (cap > 0) {
+      const now = performance.now();
+      const budget = 1000 / cap;
+      if (now < nextFrameAt) return; // skip: too early for the next frame
+      // Drift-free schedule; resync after long stalls (tab switch etc.)
+      nextFrameAt = nextFrameAt + budget > now ? nextFrameAt + budget : now + budget;
+    }
 
     const rawDt = clock.getDelta();
     const dt = Math.min(rawDt, MAX_DT);
@@ -220,8 +240,12 @@ function startGameLoop(
     updateFPS(performance.now());
 
     // Adaptive resolution: feed the un-clamped frame time so sustained slowness
-    // scales the render resolution down (and back up when there's headroom)
-    updateDynamicResolution(rawDt);
+    // scales the render resolution down (and back up when there's headroom).
+    // Skip while intentionally capped below its "slow" threshold (menu 30fps /
+    // a user 30fps cap) or it would misread the cap as GPU overload.
+    if (inGame && (userCap === 0 || userCap >= 60)) {
+      updateDynamicResolution(rawDt);
+    }
 
     const isMultiplayer = uiState.isMultiplayer;
 
