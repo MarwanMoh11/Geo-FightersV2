@@ -9,6 +9,7 @@ import { getTierForValue, bankXP, MAX_ACTIVE_XP } from './XPManager';
 import { createDynamicBody, isRapierInitialized } from './RapierWorld';
 import { uiState } from './UIState.svelte';
 import { partyHpMultiplier } from './difficulty';
+import { getQualityProfile } from './quality';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 
 // Player/enemy collision radii
@@ -918,11 +919,16 @@ export function spawnCredit(_scene: THREE.Scene, x: number, z: number, value: nu
   });
 }
 
-// --- CACHE & TYPES ---
-// --- GEOMETRY PRE-MERGING FOR ENEMY TYPES ---
+// --- ENEMY VISUALS (Phase 1.8 bestiary) ---
+// Every enemy type is one merged geometry pair: a SOLID layer (lit, standard
+// material, baked vertex-color gradients) plus a GLOW layer (additive,
+// unlit) that carries eyes, cores, seams and vents. Both layers render as
+// InstancedMesh — the whole horde costs at most 2 draw calls per type, and
+// geometry detail is paid once no matter how many enemies are alive.
 export interface CachedGeom {
   solid: THREE.BufferGeometry;
-  wire?: THREE.BufferGeometry;
+  glow?: THREE.BufferGeometry;
+  wire?: THREE.BufferGeometry; // legacy layer, kept for compatibility
 }
 export const cachedEnemyGeometries = new Map<string, CachedGeom>();
 
@@ -962,601 +968,658 @@ function createColoredGeometry(
   return g;
 }
 
-function pregenerateAllEnemyGeometries(): void {
-  // 1. GLITCH
-  const glitchSolidParts: THREE.BufferGeometry[] = [];
-  const voxelOffsets = [
-    new THREE.Vector3(0.05, -0.05, 0.05),
-    new THREE.Vector3(-0.05, 0.08, -0.05),
-    new THREE.Vector3(0.08, 0.05, -0.08),
-    new THREE.Vector3(-0.08, -0.08, 0.08),
-    new THREE.Vector3(0, 0, 0),
-  ];
-  voxelOffsets.forEach((offset) => {
-    glitchSolidParts.push(
-      createColoredGeometry(
-        boxGeometry,
-        0x00ff88,
-        getModelMatrix(offset, new THREE.Vector3().setScalar(0.15)),
-      ),
-    );
-  });
-  const shardOffsets = [
-    new THREE.Vector3(-0.1, 0.1, -0.35),
-    new THREE.Vector3(0.15, -0.1, -0.45),
-    new THREE.Vector3(-0.05, -0.15, -0.55),
-  ];
-  shardOffsets.forEach((offset) => {
-    glitchSolidParts.push(
-      createColoredGeometry(
-        boxGeometry,
-        0x00ff88,
-        getModelMatrix(offset, new THREE.Vector3(0.04, 0.04, 0.12)),
-      ),
-    );
-  });
-  const glitchSolid = BufferGeometryUtils.mergeGeometries(glitchSolidParts);
-
-  const glitchWireParts: THREE.BufferGeometry[] = [];
-  glitchWireParts.push(
-    createColoredGeometry(
-      octahedronGeometry,
-      0x00ff88,
-      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.45)),
-    ),
-  );
-  glitchWireParts.push(
-    createColoredGeometry(
-      octahedronGeometry,
-      0x00aa66,
-      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.55)),
-    ),
-  );
-  const glitchWire = BufferGeometryUtils.mergeGeometries(glitchWireParts);
-  cachedEnemyGeometries.set(EnemyType.GLITCH, { solid: glitchSolid, wire: glitchWire });
-
-  // 2. VIRUS
-  const virusParts: THREE.BufferGeometry[] = [];
-  virusParts.push(
-    createColoredGeometry(
-      icosahedronGeometry,
-      0xff0055,
-      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.26)),
-    ),
-  );
-  virusParts.push(
-    createColoredGeometry(
-      sphereGeometry,
-      0x550022,
-      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.15)),
-    ),
-  );
-
-  const virusSpikeVertices = [
-    new THREE.Vector3(0, 1, 1.618),
-    new THREE.Vector3(0, 1, -1.618),
-    new THREE.Vector3(0, -1, 1.618),
-    new THREE.Vector3(0, -1, -1.618),
-    new THREE.Vector3(1, 1.618, 0),
-    new THREE.Vector3(1, -1.618, 0),
-    new THREE.Vector3(-1, 1.618, 0),
-    new THREE.Vector3(-1, -1.618, 0),
-    new THREE.Vector3(1.618, 0, 1),
-    new THREE.Vector3(1.618, 0, -1),
-    new THREE.Vector3(-1.618, 0, 1),
-    new THREE.Vector3(-1.618, 0, -1),
-  ];
-  virusSpikeVertices.forEach((v) => {
-    v.normalize();
-    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), v);
-
-    const basePos = v.clone().multiplyScalar(0.28);
-    const baseMatrix = new THREE.Matrix4().compose(basePos, q, new THREE.Vector3(0.02, 0.16, 0.02));
-    virusParts.push(createColoredGeometry(cylinderYGeometry, 0x442233, baseMatrix));
-
-    const tipPos = v.clone().multiplyScalar(0.37);
-    const tipMatrix = new THREE.Matrix4().compose(tipPos, q, new THREE.Vector3().setScalar(0.04));
-    virusParts.push(createColoredGeometry(sphereGeometry, 0xff0088, tipMatrix));
-  });
-
-  for (let i = 0; i < 8; i++) {
-    const angle = (i / 8) * Math.PI * 2;
-    const radius = 0.38;
-    const height = Math.sin(angle * 2) * 0.25;
-    const pos = new THREE.Vector3(Math.cos(angle) * radius, height, Math.sin(angle) * radius);
-    virusParts.push(
-      createColoredGeometry(
-        sphereGeometry,
-        0xff55aa,
-        getModelMatrix(pos, new THREE.Vector3().setScalar(0.03)),
-      ),
-    );
+/** Bake a vertical dark→hot vertex-color gradient (free richness at render time). */
+function createGradientGeometry(
+  geom: THREE.BufferGeometry,
+  bottomHex: number,
+  topHex: number,
+  matrix?: THREE.Matrix4,
+): THREE.BufferGeometry {
+  let g = geom.clone();
+  if (matrix) {
+    g.applyMatrix4(matrix);
   }
-  const virusSolid = BufferGeometryUtils.mergeGeometries(virusParts);
-  cachedEnemyGeometries.set(EnemyType.VIRUS, { solid: virusSolid });
+  if (g.index) {
+    g = g.toNonIndexed();
+  }
+  g.computeBoundingBox();
+  const bb = g.boundingBox!;
+  const span = Math.max(1e-5, bb.max.y - bb.min.y);
+  const pos = g.attributes.position;
+  const cBottom = new THREE.Color(bottomHex);
+  const cTop = new THREE.Color(topHex);
+  const tmp = new THREE.Color();
+  const colors = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const t = (pos.getY(i) - bb.min.y) / span;
+    tmp.copy(cBottom).lerp(cTop, t);
+    colors[i * 3] = tmp.r;
+    colors[i * 3 + 1] = tmp.g;
+    colors[i * 3 + 2] = tmp.b;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  return g;
+}
 
-  // 3. FIREWALL
-  const firewallParts: THREE.BufferGeometry[] = [];
-  firewallParts.push(
-    createColoredGeometry(
-      boxGeometry,
-      0x332211,
-      getModelMatrix(new THREE.Vector3(-0.4, 0, 0), new THREE.Vector3(0.15, 0.9, 0.15)),
-    ),
-  );
-  firewallParts.push(
-    createColoredGeometry(
-      boxGeometry,
-      0x332211,
-      getModelMatrix(new THREE.Vector3(0.4, 0, 0), new THREE.Vector3(0.15, 0.9, 0.15)),
-    ),
-  );
-  firewallParts.push(
-    createColoredGeometry(
-      boxGeometry,
-      0xffaa00,
-      getModelMatrix(new THREE.Vector3(-0.4, 0, 0), new THREE.Vector3(0.02, 0.8, 0.16)),
-    ),
-  );
-  firewallParts.push(
-    createColoredGeometry(
-      boxGeometry,
-      0xffaa00,
-      getModelMatrix(new THREE.Vector3(0.4, 0, 0), new THREE.Vector3(0.02, 0.8, 0.16)),
-    ),
-  );
-  firewallParts.push(
-    createColoredGeometry(
-      sphereGeometry,
-      0xffaa00,
-      getModelMatrix(new THREE.Vector3(-0.4, 0.48, 0), new THREE.Vector3().setScalar(0.06)),
-    ),
-  );
-  firewallParts.push(
-    createColoredGeometry(
-      sphereGeometry,
-      0xffaa00,
-      getModelMatrix(new THREE.Vector3(0.4, 0.48, 0), new THREE.Vector3().setScalar(0.06)),
-    ),
-  );
-  for (let r = 0; r < 2; r++) {
-    for (let c = 0; c < 3; c++) {
-      const pos = new THREE.Vector3((c - 1) * 0.24, (r - 0.5) * 0.3, 0);
-      firewallParts.push(
-        createColoredGeometry(
+// Tiny builder helpers so each design below reads as a parts list
+type Parts = THREE.BufferGeometry[];
+const V3 = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+const S3 = (s: number) => new THREE.Vector3(s, s, s);
+
+function pregenerateAllEnemyGeometries(): void {
+  // 1. GLITCH — a torn fragment of corrupted data: jagged shard cluster with
+  //    glow slivers that read as the render tearing itself apart.
+  {
+    const solid: Parts = [];
+    const glow: Parts = [];
+    const shards: [number, number, number, number, number, number, number, number, number][] = [
+      // sx, sy, sz, px, py, pz, rx, ry, rz
+      [0.3, 0.06, 0.18, 0, 0, 0, 0.4, 0.7, 0.2],
+      [0.22, 0.05, 0.13, 0.12, 0.09, -0.06, -0.5, 1.9, 0.6],
+      [0.26, 0.04, 0.1, -0.11, -0.07, 0.08, 0.9, -0.8, -0.4],
+      [0.18, 0.05, 0.1, 0.05, -0.12, -0.1, -1.1, 0.3, 0.9],
+      [0.14, 0.04, 0.09, -0.06, 0.14, 0.03, 0.2, -1.4, -0.7],
+    ];
+    for (const [sx, sy, sz, px, py, pz, rx, ry, rz] of shards) {
+      solid.push(
+        createGradientGeometry(
           boxGeometry,
-          0xff5500,
-          getModelMatrix(pos, new THREE.Vector3(0.22, 0.22, 0.05)),
+          0x032213,
+          0x00cc66,
+          getModelMatrix(V3(px, py, pz), V3(sx, sy, sz), new THREE.Euler(rx, ry, rz)),
         ),
       );
     }
-  }
-  const firewallSolid = BufferGeometryUtils.mergeGeometries(firewallParts);
-  cachedEnemyGeometries.set(EnemyType.FIREWALL, { solid: firewallSolid });
-
-  // 4. ENFORCER
-  const enforcerParts: THREE.BufferGeometry[] = [];
-  enforcerParts.push(
-    createColoredGeometry(
-      cylinderYGeometry,
-      0x223344,
-      getModelMatrix(
-        new THREE.Vector3(),
-        new THREE.Vector3(0.18, 0.38, 0.18),
-        new THREE.Euler(Math.PI / 2, 0, 0),
-      ),
-    ),
-  );
-  enforcerParts.push(
-    createColoredGeometry(
-      boxGeometry,
-      0x223344,
-      getModelMatrix(new THREE.Vector3(0, 0, 0.22), new THREE.Vector3(0.35, 0.28, 0.05)),
-    ),
-  );
-  enforcerParts.push(
-    createColoredGeometry(
-      boxGeometry,
-      0x00ffcc,
-      getModelMatrix(new THREE.Vector3(0, 0.12, 0.22), new THREE.Vector3(0.37, 0.03, 0.06)),
-    ),
-  );
-  enforcerParts.push(
-    createColoredGeometry(
-      boxGeometry,
-      0x223344,
-      getModelMatrix(
-        new THREE.Vector3(-0.245, 0, 0.17),
-        new THREE.Vector3(0.16, 0.28, 0.04),
-        new THREE.Euler(0, Math.PI / 5, 0),
-      ),
-    ),
-  );
-  enforcerParts.push(
-    createColoredGeometry(
-      boxGeometry,
-      0x223344,
-      getModelMatrix(
-        new THREE.Vector3(0.245, 0, 0.17),
-        new THREE.Vector3(0.16, 0.28, 0.04),
-        new THREE.Euler(0, -Math.PI / 5, 0),
-      ),
-    ),
-  );
-  enforcerParts.push(
-    createColoredGeometry(
-      cylinderZGeometry,
-      0x223344,
-      getModelMatrix(new THREE.Vector3(-0.26, -0.05, 0.05), new THREE.Vector3(0.03, 0.03, 0.28)),
-    ),
-  );
-  enforcerParts.push(
-    createColoredGeometry(
-      cylinderZGeometry,
-      0x223344,
-      getModelMatrix(new THREE.Vector3(0.26, -0.05, 0.05), new THREE.Vector3(0.03, 0.03, 0.28)),
-    ),
-  );
-  enforcerParts.push(
-    createColoredGeometry(
-      cylinderYGeometry,
-      0x223344,
-      getModelMatrix(new THREE.Vector3(0, -0.2, -0.05), new THREE.Vector3(0.1, 0.12, 0.1)),
-    ),
-  );
-  enforcerParts.push(
-    createColoredGeometry(
-      coneZGeometry,
-      0x00ffcc,
-      getModelMatrix(
-        new THREE.Vector3(0, -0.25, -0.05),
-        new THREE.Vector3(0.06, 0.06, 0.18),
-        new THREE.Euler(0, Math.PI, 0),
-      ),
-    ),
-  );
-  enforcerParts.push(
-    createColoredGeometry(
-      boxGeometry,
-      0x00ffcc,
-      getModelMatrix(new THREE.Vector3(-0.45, 0, 0), new THREE.Vector3(0.08, 0.15, 0.02)),
-    ),
-  );
-  enforcerParts.push(
-    createColoredGeometry(
-      boxGeometry,
-      0x00ffcc,
-      getModelMatrix(new THREE.Vector3(0.45, 0, 0), new THREE.Vector3(0.08, 0.15, 0.02)),
-    ),
-  );
-  const enforcerSolid = BufferGeometryUtils.mergeGeometries(enforcerParts);
-  cachedEnemyGeometries.set(EnemyType.ENFORCER, { solid: enforcerSolid });
-
-  // 5. COLOSSUS
-  const colossusParts: THREE.BufferGeometry[] = [];
-  colossusParts.push(
-    createColoredGeometry(
-      cylinderYGeometry,
-      0x111111,
-      getModelMatrix(new THREE.Vector3(0, -0.2, 0), new THREE.Vector3(0.35, 0.18, 0.35)),
-    ),
-  );
-  colossusParts.push(
-    createColoredGeometry(
-      cylinderYGeometry,
-      0x444444,
-      getModelMatrix(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0.26, 0.18, 0.26)),
-    ),
-  );
-  colossusParts.push(
-    createColoredGeometry(
-      cylinderYGeometry,
-      0x111111,
-      getModelMatrix(new THREE.Vector3(0, 0.2, 0), new THREE.Vector3(0.16, 0.18, 0.16)),
-    ),
-  );
-  colossusParts.push(
-    createColoredGeometry(
-      cylinderYGeometry,
-      0x111111,
-      getModelMatrix(
-        new THREE.Vector3(-0.08, 0.28, -0.08),
-        new THREE.Vector3(0.03, 0.16, 0.03),
-        new THREE.Euler(Math.PI / 6, 0, 0),
-      ),
-    ),
-  );
-  const smoke0Pos = new THREE.Vector3(-0.08, 0.28, -0.08).add(
-    new THREE.Vector3(0, 0.1, -0.05).applyEuler(new THREE.Euler(Math.PI / 6, 0, 0)),
-  );
-  colossusParts.push(
-    createColoredGeometry(
-      coneZGeometry,
-      0x00ff88,
-      getModelMatrix(
-        smoke0Pos,
-        new THREE.Vector3(0.025, 0.025, 0.1),
-        new THREE.Euler(Math.PI / 6, 0, 0),
-      ),
-    ),
-  );
-  colossusParts.push(
-    createColoredGeometry(
-      cylinderYGeometry,
-      0x111111,
-      getModelMatrix(
-        new THREE.Vector3(0.08, 0.28, -0.08),
-        new THREE.Vector3(0.03, 0.16, 0.03),
-        new THREE.Euler(Math.PI / 6, 0, 0),
-      ),
-    ),
-  );
-  const smoke1Pos = new THREE.Vector3(0.08, 0.28, -0.08).add(
-    new THREE.Vector3(0, 0.1, -0.05).applyEuler(new THREE.Euler(Math.PI / 6, 0, 0)),
-  );
-  colossusParts.push(
-    createColoredGeometry(
-      coneZGeometry,
-      0x00ff88,
-      getModelMatrix(
-        smoke1Pos,
-        new THREE.Vector3(0.025, 0.025, 0.1),
-        new THREE.Euler(Math.PI / 6, 0, 0),
-      ),
-    ),
-  );
-  for (let i = 0; i < 4; i++) {
-    const angle = (i / 4) * Math.PI * 2 + Math.PI / 4;
-    const pos = new THREE.Vector3(Math.cos(angle) * 0.35, -0.16, Math.sin(angle) * 0.35);
-    colossusParts.push(
-      createColoredGeometry(
-        sphereGeometry,
-        0x00ff88,
-        getModelMatrix(pos, new THREE.Vector3().setScalar(0.04)),
+    solid.push(
+      createGradientGeometry(
+        octahedronGeometry,
+        0x054427,
+        0x00ee77,
+        getModelMatrix(V3(0, 0, 0), new THREE.Vector3(0.12, 0.2, 0.09)),
       ),
     );
+    // Glow: torn slivers + hot core + a trail of escaping fragments
+    const slivers: [number, number, number, number][] = [
+      [0.09, 0.05, 0.6, 0.4],
+      [-0.12, -0.02, -0.5, -0.7],
+      [0.02, 0.12, 0.2, -1.1],
+      [-0.05, -0.11, -0.9, 0.8],
+    ];
+    for (const [px, py, rz, rx] of slivers) {
+      glow.push(
+        createColoredGeometry(
+          boxGeometry,
+          0x00ff88,
+          getModelMatrix(
+            V3(px, py, 0),
+            new THREE.Vector3(0.018, 0.3, 0.018),
+            new THREE.Euler(rx, 0, rz),
+          ),
+        ),
+      );
+    }
+    glow.push(createColoredGeometry(boxGeometry, 0x99ffcc, getModelMatrix(V3(0, 0, 0), S3(0.08))));
+    for (let i = 0; i < 3; i++) {
+      glow.push(
+        createColoredGeometry(
+          octahedronGeometry,
+          0x00ff88,
+          getModelMatrix(V3((i % 2 ? -1 : 1) * 0.07, i * 0.05 - 0.05, -0.34 - i * 0.1), S3(0.028)),
+        ),
+      );
+    }
+    cachedEnemyGeometries.set(EnemyType.GLITCH, {
+      solid: BufferGeometryUtils.mergeGeometries(solid),
+      glow: BufferGeometryUtils.mergeGeometries(glow),
+    });
   }
-  const colossusSolid = BufferGeometryUtils.mergeGeometries(colossusParts);
-  cachedEnemyGeometries.set(EnemyType.COLOSSUS, { solid: colossusSolid });
 
-  // 6. WARDEN
-  const wardenParts: THREE.BufferGeometry[] = [];
-  wardenParts.push(
-    createColoredGeometry(
-      octahedronGeometry,
-      0xff00cc,
-      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.24)),
-    ),
-  );
-  wardenParts.push(
-    createColoredGeometry(
-      sphereGeometry,
-      0x00ffff,
-      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.12)),
-    ),
-  );
-  wardenParts.push(
-    createColoredGeometry(
-      torusGeometry,
-      0x00ffff,
-      getModelMatrix(
-        new THREE.Vector3(),
-        new THREE.Vector3().setScalar(0.42),
-        new THREE.Euler(Math.PI / 2, 0, 0),
+  // 2. VIRUS — a pathogen: asymmetric hot-tipped spikes around a sickly body,
+  //    nucleus burning on the glow layer.
+  {
+    const solid: Parts = [];
+    const glow: Parts = [];
+    solid.push(
+      createGradientGeometry(
+        icosahedronGeometry,
+        0x40001a,
+        0xcc1140,
+        getModelMatrix(V3(0, 0, 0), S3(0.26)),
       ),
-    ),
-  );
-  wardenParts.push(
-    createColoredGeometry(
-      torusGeometry,
-      0x00ffff,
-      getModelMatrix(
-        new THREE.Vector3(),
-        new THREE.Vector3().setScalar(0.38),
-        new THREE.Euler(0, Math.PI / 2, 0),
+    );
+    const spikeDirs = [
+      V3(0, 1, 1.618),
+      V3(0, 1, -1.618),
+      V3(0, -1, 1.618),
+      V3(0, -1, -1.618),
+      V3(1, 1.618, 0),
+      V3(1, -1.618, 0),
+      V3(-1, 1.618, 0),
+      V3(-1, -1.618, 0),
+      V3(1.618, 0, 1),
+      V3(1.618, 0, -1),
+      V3(-1.618, 0, 1),
+      V3(-1.618, 0, -1),
+    ];
+    spikeDirs.forEach((v, i) => {
+      v.normalize();
+      const len = [0.13, 0.19, 0.16][i % 3]; // asymmetry: three spike lengths
+      const q = new THREE.Quaternion().setFromUnitVectors(V3(0, 1, 0), v);
+      const m = new THREE.Matrix4().compose(
+        v.clone().multiplyScalar(0.26 + len * 0.5),
+        q,
+        new THREE.Vector3(0.018, len, 0.018),
+      );
+      solid.push(createColoredGeometry(cylinderYGeometry, 0x551133, m));
+      glow.push(
+        createColoredGeometry(
+          octahedronGeometry,
+          0xff66aa,
+          getModelMatrix(v.clone().multiplyScalar(0.28 + len), S3(0.03)),
+        ),
+      );
+    });
+    glow.push(
+      createColoredGeometry(sphereGeometry, 0xff2266, getModelMatrix(V3(0, 0, 0), S3(0.14))),
+    );
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      glow.push(
+        createColoredGeometry(
+          octahedronGeometry,
+          0xff88bb,
+          getModelMatrix(
+            V3(Math.cos(a) * 0.24, Math.sin(a * 2) * 0.1, Math.sin(a) * 0.24),
+            S3(0.02),
+          ),
+        ),
+      );
+    }
+    cachedEnemyGeometries.set(EnemyType.VIRUS, {
+      solid: BufferGeometryUtils.mergeGeometries(solid),
+      glow: BufferGeometryUtils.mergeGeometries(glow),
+    });
+  }
+
+  // 3. FIREWALL — a literal gate, wider than tall: heavy pillars and lintel
+  //    framing a burning grid inset on the glow layer.
+  {
+    const solid: Parts = [];
+    const glow: Parts = [];
+    for (const side of [-1, 1]) {
+      solid.push(
+        createGradientGeometry(
+          boxGeometry,
+          0x140a04,
+          0x66290a,
+          getModelMatrix(V3(0.48 * side, 0, 0), new THREE.Vector3(0.16, 0.66, 0.16)),
+        ),
+      );
+      solid.push(
+        createColoredGeometry(
+          boxGeometry,
+          0x1c1008,
+          getModelMatrix(V3(0.48 * side, -0.36, 0), new THREE.Vector3(0.22, 0.08, 0.22)),
+        ),
+      );
+      glow.push(
+        createColoredGeometry(
+          sphereGeometry,
+          0xffaa00,
+          getModelMatrix(V3(0.48 * side, 0.36, 0), S3(0.045)),
+        ),
+      );
+    }
+    solid.push(
+      createGradientGeometry(
+        boxGeometry,
+        0x33150a,
+        0x66290a,
+        getModelMatrix(V3(0, 0.36, 0), new THREE.Vector3(1.1, 0.14, 0.18)),
       ),
-    ),
-  );
-  wardenParts.push(
-    createColoredGeometry(
-      torusGeometry,
-      0x00ffff,
-      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.46)),
-    ),
-  );
-  for (let i = 0; i < 4; i++) {
-    const angle = (i / 4) * Math.PI * 2;
-    const pos = new THREE.Vector3(Math.cos(angle) * 0.52, 0, Math.sin(angle) * 0.52);
-    wardenParts.push(
+    );
+    for (const y of [-0.12, 0.04, 0.2]) {
+      glow.push(
+        createColoredGeometry(
+          boxGeometry,
+          0xff5500,
+          getModelMatrix(V3(0, y, 0), new THREE.Vector3(0.8, 0.028, 0.05)),
+        ),
+      );
+    }
+    for (const x of [-0.27, -0.09, 0.09, 0.27]) {
+      glow.push(
+        createColoredGeometry(
+          boxGeometry,
+          0xff7700,
+          getModelMatrix(V3(x, 0.03, 0), new THREE.Vector3(0.028, 0.5, 0.05)),
+        ),
+      );
+    }
+    for (const x of [-0.3, 0, 0.3]) {
+      glow.push(
+        createColoredGeometry(
+          octahedronGeometry,
+          0xffaa33,
+          getModelMatrix(V3(x, 0.46, 0), S3(0.03)),
+        ),
+      );
+    }
+    cachedEnemyGeometries.set(EnemyType.FIREWALL, {
+      solid: BufferGeometryUtils.mergeGeometries(solid),
+      glow: BufferGeometryUtils.mergeGeometries(glow),
+    });
+  }
+
+  // 4. ENFORCER — a riot knight: the body hides behind a big frontal energy
+  //    shield whose glowing frame explains its projectile-blocking mechanic.
+  {
+    const solid: Parts = [];
+    const glow: Parts = [];
+    solid.push(
+      createGradientGeometry(
+        cylinderYGeometry,
+        0x0e1a24,
+        0x2e4054,
+        getModelMatrix(V3(0, 0, -0.12), new THREE.Vector3(0.14, 0.3, 0.14)),
+      ),
+    );
+    solid.push(
+      createGradientGeometry(
+        boxGeometry,
+        0x16242f,
+        0x33465a,
+        getModelMatrix(V3(0, 0.22, -0.1), new THREE.Vector3(0.13, 0.1, 0.12)),
+      ),
+    );
+    solid.push(
+      createColoredGeometry(
+        boxGeometry,
+        0x0c141c,
+        getModelMatrix(V3(0, 0, 0.2), new THREE.Vector3(0.56, 0.42, 0.05)),
+      ),
+    );
+    for (const side of [-1, 1]) {
+      solid.push(
+        createColoredGeometry(
+          cylinderZGeometry,
+          0x1a2836,
+          getModelMatrix(V3(0.17 * side, 0, 0.05), new THREE.Vector3(0.024, 0.024, 0.24)),
+        ),
+      );
+      solid.push(
+        createColoredGeometry(
+          boxGeometry,
+          0x22303e,
+          getModelMatrix(V3(0.17 * side, 0.16, -0.1), new THREE.Vector3(0.1, 0.06, 0.1)),
+        ),
+      );
+    }
+    // Shield frame + chevron + visor: the glow layer sells the wall of light
+    glow.push(
+      createColoredGeometry(
+        boxGeometry,
+        0x00ffcc,
+        getModelMatrix(V3(0, 0.21, 0.23), new THREE.Vector3(0.56, 0.025, 0.02)),
+      ),
+    );
+    glow.push(
+      createColoredGeometry(
+        boxGeometry,
+        0x00ffcc,
+        getModelMatrix(V3(0, -0.21, 0.23), new THREE.Vector3(0.56, 0.025, 0.02)),
+      ),
+    );
+    for (const side of [-1, 1]) {
+      glow.push(
+        createColoredGeometry(
+          boxGeometry,
+          0x00ffcc,
+          getModelMatrix(V3(0.27 * side, 0, 0.23), new THREE.Vector3(0.025, 0.42, 0.02)),
+        ),
+      );
+      glow.push(
+        createColoredGeometry(
+          boxGeometry,
+          0x00ffcc,
+          getModelMatrix(
+            V3(-0.05 * side, -0.02, 0.235),
+            new THREE.Vector3(0.16, 0.03, 0.02),
+            new THREE.Euler(0, 0, 0.6 * side),
+          ),
+        ),
+      );
+    }
+    glow.push(
+      createColoredGeometry(
+        boxGeometry,
+        0x00ffcc,
+        getModelMatrix(V3(0, 0.22, -0.03), new THREE.Vector3(0.1, 0.02, 0.02)),
+      ),
+    );
+    glow.push(
       createColoredGeometry(
         octahedronGeometry,
-        0xff00cc,
-        getModelMatrix(pos, new THREE.Vector3().setScalar(0.05)),
+        0x00ffcc,
+        getModelMatrix(V3(0, -0.06, -0.3), S3(0.035)),
       ),
     );
+    cachedEnemyGeometries.set(EnemyType.ENFORCER, {
+      solid: BufferGeometryUtils.mergeGeometries(solid),
+      glow: BufferGeometryUtils.mergeGeometries(glow),
+    });
   }
-  const wardenSolid = BufferGeometryUtils.mergeGeometries(wardenParts);
-  cachedEnemyGeometries.set(EnemyType.WARDEN, { solid: wardenSolid });
 
-  // 7. HYDRA
-  const hydraParts: THREE.BufferGeometry[] = [];
-  hydraParts.push(
-    createColoredGeometry(
-      icosahedronGeometry,
-      0xff0033,
-      getModelMatrix(new THREE.Vector3(-0.26, 0, 0), new THREE.Vector3().setScalar(0.15)),
-    ),
-  );
-  hydraParts.push(
-    createColoredGeometry(
-      torusGeometry,
-      0x00ffcc,
-      getModelMatrix(
-        new THREE.Vector3(-0.26, 0, 0),
-        new THREE.Vector3().setScalar(0.2),
-        new THREE.Euler(Math.PI / 2, 0, 0),
-      ),
-    ),
-  );
-  hydraParts.push(
-    createColoredGeometry(
-      icosahedronGeometry,
-      0xff0033,
-      getModelMatrix(new THREE.Vector3(0, 0.08, 0), new THREE.Vector3().setScalar(0.18)),
-    ),
-  );
-  hydraParts.push(
-    createColoredGeometry(
-      torusGeometry,
-      0x00ffcc,
-      getModelMatrix(
-        new THREE.Vector3(0, 0.08, 0),
-        new THREE.Vector3().setScalar(0.24),
-        new THREE.Euler(0, Math.PI / 2, 0),
-      ),
-    ),
-  );
-  hydraParts.push(
-    createColoredGeometry(
-      icosahedronGeometry,
-      0xff0033,
-      getModelMatrix(new THREE.Vector3(0.26, 0, 0), new THREE.Vector3().setScalar(0.15)),
-    ),
-  );
-  hydraParts.push(
-    createColoredGeometry(
-      torusGeometry,
-      0x00ffcc,
-      getModelMatrix(
-        new THREE.Vector3(0.26, 0, 0),
-        new THREE.Vector3().setScalar(0.2),
-        new THREE.Euler(Math.PI / 2, 0, 0),
-      ),
-    ),
-  );
-  hydraParts.push(
-    createColoredGeometry(
-      cylinderYGeometry,
-      0x00ffcc,
-      getModelMatrix(
-        new THREE.Vector3(-0.13, 0.04, 0),
-        new THREE.Vector3(0.02, 0.26, 0.02),
-        new THREE.Euler(0, 0, Math.PI / 2),
-      ),
-    ),
-  );
-  hydraParts.push(
-    createColoredGeometry(
-      cylinderYGeometry,
-      0x00ffcc,
-      getModelMatrix(
-        new THREE.Vector3(0.13, 0.04, 0),
-        new THREE.Vector3(0.02, 0.26, 0.02),
-        new THREE.Euler(0, 0, Math.PI / 2),
-      ),
-    ),
-  );
-  const hydraSolid = BufferGeometryUtils.mergeGeometries(hydraParts);
-  cachedEnemyGeometries.set(EnemyType.HYDRA, { solid: hydraSolid });
-
-  // 8. OVERSEER
-  const overseerParts: THREE.BufferGeometry[] = [];
-  overseerParts.push(
-    createColoredGeometry(
-      sphereGeometry,
-      0xff00ff,
-      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.18)),
-    ),
-  );
-  overseerParts.push(
-    createColoredGeometry(
-      boxGeometry,
-      0xff00ff,
-      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.32)),
-    ),
-  );
-  overseerParts.push(
-    createColoredGeometry(
-      octahedronGeometry,
-      0xff00ff,
-      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.44)),
-    ),
-  );
-  overseerParts.push(
-    createColoredGeometry(
-      icosahedronGeometry,
-      0xff00ff,
-      getModelMatrix(new THREE.Vector3(), new THREE.Vector3().setScalar(0.54)),
-    ),
-  );
-  for (let i = 0; i < 4; i++) {
-    const angle = (i / 4) * Math.PI * 2;
-    const pos = new THREE.Vector3(Math.cos(angle) * 0.65, 0, Math.sin(angle) * 0.65);
-    overseerParts.push(
+  // 5. COLOSSUS — an industrial hulk: stacked segment tower with burning
+  //    vents and the cargo pods it "sheds" as adds.
+  {
+    const solid: Parts = [];
+    const glow: Parts = [];
+    const segs: [number, number][] = [
+      [0.34, -0.2],
+      [0.28, 0],
+      [0.22, 0.2],
+    ];
+    for (const [r, y] of segs) {
+      solid.push(
+        createGradientGeometry(
+          cylinderYGeometry,
+          0x0c0c0c,
+          0x3a2415,
+          getModelMatrix(V3(0, y, 0), new THREE.Vector3(r, 0.2, r)),
+        ),
+      );
+    }
+    solid.push(
       createColoredGeometry(
-        cylinderZGeometry,
-        0x111111,
-        getModelMatrix(pos, new THREE.Vector3(0.04, 0.04, 0.15)),
+        cylinderYGeometry,
+        0x151210,
+        getModelMatrix(V3(0.1, 0.38, -0.06), new THREE.Vector3(0.07, 0.18, 0.07)),
       ),
     );
-    const glowPos = pos.clone().add(new THREE.Vector3(0, 0, 0.08));
-    overseerParts.push(
+    for (const side of [-1, 1]) {
+      solid.push(
+        createGradientGeometry(
+          boxGeometry,
+          0x141210,
+          0x33261a,
+          getModelMatrix(V3(0.38 * side, -0.08, 0), new THREE.Vector3(0.16, 0.14, 0.22)),
+        ),
+      );
+      // pod windows
+      glow.push(
+        createColoredGeometry(
+          octahedronGeometry,
+          0xffcc55,
+          getModelMatrix(V3(0.38 * side, -0.05, 0.12), S3(0.02)),
+        ),
+      );
+    }
+    // vent slits at the two segment seams
+    for (const [ring, y] of [
+      [0.3, -0.1],
+      [0.24, 0.1],
+    ] as [number, number][]) {
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+        glow.push(
+          createColoredGeometry(
+            boxGeometry,
+            0xffaa22,
+            getModelMatrix(
+              V3(Math.cos(a) * ring, y, Math.sin(a) * ring),
+              new THREE.Vector3(0.02, 0.1, 0.02),
+            ),
+          ),
+        );
+      }
+    }
+    glow.push(
       createColoredGeometry(
-        sphereGeometry,
-        0xff00ff,
-        getModelMatrix(glowPos, new THREE.Vector3().setScalar(0.025)),
+        octahedronGeometry,
+        0xff8800,
+        getModelMatrix(V3(0.1, 0.49, -0.06), S3(0.045)),
       ),
     );
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2;
+      glow.push(
+        createColoredGeometry(
+          octahedronGeometry,
+          0xff9911,
+          getModelMatrix(V3(Math.cos(a) * 0.35, -0.31, Math.sin(a) * 0.35), S3(0.03)),
+        ),
+      );
+    }
+    cachedEnemyGeometries.set(EnemyType.COLOSSUS, {
+      solid: BufferGeometryUtils.mergeGeometries(solid),
+      glow: BufferGeometryUtils.mergeGeometries(glow),
+    });
   }
-  const overseerSolid = BufferGeometryUtils.mergeGeometries(overseerParts);
-  cachedEnemyGeometries.set(EnemyType.OVERSEER, { solid: overseerSolid });
+
+  // 6. WARDEN — an unstable prism caught permanently mid-teleport: crystal
+  //    slices offset sideways with light leaking through the gaps.
+  {
+    const solid: Parts = [];
+    const glow: Parts = [];
+    const slices: [number, number][] = [
+      [-0.15, -0.07],
+      [0, 0.05],
+      [0.15, -0.02],
+    ];
+    for (const [y, x] of slices) {
+      solid.push(
+        createGradientGeometry(
+          octahedronGeometry,
+          0x2a0026,
+          0xff33cc,
+          getModelMatrix(V3(x, y, 0), new THREE.Vector3(0.17, 0.13, 0.17)),
+        ),
+      );
+    }
+    for (const y of [-0.075, 0.075]) {
+      glow.push(
+        createColoredGeometry(
+          boxGeometry,
+          0x00ffff,
+          getModelMatrix(V3(0, y, 0), new THREE.Vector3(0.24, 0.012, 0.24)),
+        ),
+      );
+    }
+    glow.push(
+      createColoredGeometry(
+        octahedronGeometry,
+        0x00ffff,
+        getModelMatrix(V3(0, 0.05, 0.19), S3(0.04)),
+      ),
+    );
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2;
+      glow.push(
+        createColoredGeometry(
+          octahedronGeometry,
+          0xff33cc,
+          getModelMatrix(V3(Math.cos(a) * 0.5, 0, Math.sin(a) * 0.5), S3(0.045)),
+        ),
+      );
+    }
+    cachedEnemyGeometries.set(EnemyType.WARDEN, {
+      solid: BufferGeometryUtils.mergeGeometries(solid),
+      glow: BufferGeometryUtils.mergeGeometries(glow),
+    });
+  }
+
+  // 7. HYDRA — three linked serpent heads with burning eyes and a spine
+  //    ridge; killing it should feel like decapitating a cluster.
+  {
+    const solid: Parts = [];
+    const glow: Parts = [];
+    const heads: [number, number, number, number][] = [
+      [-0.3, 0, 0.04, 0.15],
+      [0, 0.1, 0, 0.19],
+      [0.3, 0, 0.04, 0.15],
+    ];
+    for (const [x, y, z, r] of heads) {
+      solid.push(
+        createGradientGeometry(
+          icosahedronGeometry,
+          0x22000a,
+          0xcc1133,
+          getModelMatrix(V3(x, y, z), S3(r)),
+        ),
+      );
+      for (const side of [-1, 1]) {
+        glow.push(
+          createColoredGeometry(
+            octahedronGeometry,
+            0x00ffee,
+            getModelMatrix(V3(x + 0.05 * side, y + 0.03, z + r * 0.8), S3(0.022)),
+          ),
+        );
+      }
+      glow.push(
+        createColoredGeometry(
+          boxGeometry,
+          0xff3355,
+          getModelMatrix(V3(x, y - 0.06, z + r * 0.8), new THREE.Vector3(0.06, 0.012, 0.012)),
+        ),
+      );
+    }
+    for (const side of [-1, 1]) {
+      solid.push(
+        createColoredGeometry(
+          cylinderYGeometry,
+          0x44000f,
+          getModelMatrix(
+            V3(0.15 * side, 0.05, 0.02),
+            new THREE.Vector3(0.025, 0.28, 0.025),
+            new THREE.Euler(0, 0, Math.PI / 2),
+          ),
+        ),
+      );
+      glow.push(
+        createColoredGeometry(
+          boxGeometry,
+          0x00ffcc,
+          getModelMatrix(V3(0.15 * side, 0.09, 0.02), new THREE.Vector3(0.24, 0.012, 0.012)),
+        ),
+      );
+    }
+    for (let i = 0; i < 5; i++) {
+      const x = -0.24 + i * 0.12;
+      solid.push(
+        createColoredGeometry(
+          octahedronGeometry,
+          0x88112a,
+          getModelMatrix(V3(x, 0.22 - Math.abs(x) * 0.3, 0), new THREE.Vector3(0.03, 0.05, 0.03)),
+        ),
+      );
+    }
+    cachedEnemyGeometries.set(EnemyType.HYDRA, {
+      solid: BufferGeometryUtils.mergeGeometries(solid),
+      glow: BufferGeometryUtils.mergeGeometries(glow),
+    });
+  }
+
+  // 8. OVERSEER — the all-seeing eye: armored shell plates orbiting a huge
+  //    iris that reads from across the arena.
+  {
+    const solid: Parts = [];
+    const glow: Parts = [];
+    solid.push(
+      createColoredGeometry(sphereGeometry, 0x0e0216, getModelMatrix(V3(0, 0, -0.05), S3(0.3))),
+    );
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      solid.push(
+        createGradientGeometry(
+          boxGeometry,
+          0x150520,
+          0x7722aa,
+          getModelMatrix(
+            V3(Math.cos(a) * 0.38, 0, Math.sin(a) * 0.38),
+            new THREE.Vector3(0.2, 0.34, 0.06),
+            new THREE.Euler(0, -a + Math.PI / 2, 0),
+          ),
+        ),
+      );
+    }
+    solid.push(
+      createColoredGeometry(sphereGeometry, 0x05000a, getModelMatrix(V3(0, 0, 0.3), S3(0.1))),
+    );
+    glow.push(
+      createColoredGeometry(sphereGeometry, 0xff33ff, getModelMatrix(V3(0, 0, 0.18), S3(0.2))),
+    );
+    glow.push(
+      createColoredGeometry(
+        torusGeometry,
+        0xaa44ff,
+        getModelMatrix(V3(0, 0, 0), S3(0.5), new THREE.Euler(Math.PI / 2, 0, 0)),
+      ),
+    );
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + Math.PI / 8;
+      glow.push(
+        createColoredGeometry(
+          octahedronGeometry,
+          0xff66ff,
+          getModelMatrix(V3(Math.cos(a) * 0.42, 0.28, Math.sin(a) * 0.42), S3(0.03)),
+        ),
+      );
+    }
+    cachedEnemyGeometries.set(EnemyType.OVERSEER, {
+      solid: BufferGeometryUtils.mergeGeometries(solid),
+      glow: BufferGeometryUtils.mergeGeometries(glow),
+    });
+  }
 }
 
 const enemySolidMaterials = new Map<string, THREE.MeshStandardMaterial>();
+let enemyGlowMaterial: THREE.MeshBasicMaterial | null = null;
 const enemyWireMaterials = new Map<string, THREE.MeshBasicMaterial>();
-const fallbackMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
 
 export function getEnemySolidMaterial(type: EnemyType): THREE.MeshStandardMaterial {
   let mat = enemySolidMaterials.get(type);
   if (!mat) {
-    let emissiveColor = 0x000000;
-    let emissiveIntensity = 0.0;
-    if (type === EnemyType.GLITCH) {
-      emissiveColor = 0x00ff88;
-      emissiveIntensity = 0.4;
-    } else if (type === EnemyType.VIRUS) {
-      emissiveColor = 0xff0055;
-      emissiveIntensity = 0.4;
-    } else if (type === EnemyType.FIREWALL) {
-      emissiveColor = 0xff5500;
-      emissiveIntensity = 0.4;
-    } else if (type === EnemyType.ENFORCER) {
-      emissiveColor = 0x00ffcc;
-      emissiveIntensity = 0.4;
-    } else if (type === EnemyType.COLOSSUS) {
-      emissiveColor = 0xffaa00;
-      emissiveIntensity = 0.4;
-    } else if (type === EnemyType.WARDEN) {
-      emissiveColor = 0xd900ff;
-      emissiveIntensity = 0.4;
-    } else if (type === EnemyType.HYDRA) {
-      emissiveColor = 0x00ffff;
-      emissiveIntensity = 0.4;
-    } else if (type === EnemyType.OVERSEER) {
-      emissiveColor = 0xff0055;
-      emissiveIntensity = 0.4;
-    }
-
+    const EMISSIVE: Partial<Record<EnemyType, number>> = {
+      [EnemyType.GLITCH]: 0x00ff88,
+      [EnemyType.VIRUS]: 0xff0055,
+      [EnemyType.FIREWALL]: 0xff5500,
+      [EnemyType.ENFORCER]: 0x00ffcc,
+      [EnemyType.COLOSSUS]: 0xffaa00,
+      [EnemyType.WARDEN]: 0xd900ff,
+      [EnemyType.HYDRA]: 0xff2244,
+      [EnemyType.OVERSEER]: 0xaa44ff,
+    };
+    // With the env map lighting metals properly (medium+ tiers), armor can be
+    // metallic again; without it (low tier) high metalness renders near-black.
+    const envLit = getQualityProfile().tier !== 'low';
     mat = new THREE.MeshStandardMaterial({
       vertexColors: true,
-      roughness: 0.5,
-      metalness: 0.1, // Reduced from 0.8 to prevent dark/black appearance without environment maps
-      emissive: new THREE.Color(emissiveColor),
-      emissiveIntensity: emissiveIntensity,
+      roughness: 0.45,
+      metalness: envLit ? 0.5 : 0.15,
+      emissive: new THREE.Color(EMISSIVE[type] ?? 0x000000),
+      // The dedicated glow layer carries the highlights now; the solid layer
+      // keeps only a faint wash so silhouettes stay readable on low tier.
+      emissiveIntensity: 0.15,
     });
     enemySolidMaterials.set(type, mat);
   }
   return mat;
+}
+
+/** One shared additive material for every glow layer — hues live in vertex colors. */
+export function getEnemyGlowMaterial(): THREE.MeshBasicMaterial {
+  if (!enemyGlowMaterial) {
+    enemyGlowMaterial = new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.9,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+  }
+  return enemyGlowMaterial;
 }
 
 export function getEnemyWireMaterial(type: EnemyType): THREE.MeshBasicMaterial {
@@ -1573,43 +1636,52 @@ export function getEnemyWireMaterial(type: EnemyType): THREE.MeshBasicMaterial {
   return mat;
 }
 
-function buildEnemyMesh(type: EnemyType, size: number): THREE.Object3D {
+function buildEnemyMesh(_type: EnemyType, size: number): THREE.Object3D {
   if (cachedEnemyGeometries.size === 0) {
     pregenerateAllEnemyGeometries();
   }
-
+  // Instanced enemies never enter the scene graph — this container exists
+  // only so systems can read/write the transform. Building actual meshes
+  // here was pure per-spawn waste; the InstancedMesh layers draw everything.
   const container = new THREE.Group();
   container.name = 'mesh_container';
-
-  const geomData = cachedEnemyGeometries.get(type);
-  if (geomData) {
-    // 1. Solid Mesh
-    const solidMat = getEnemySolidMaterial(type);
-    const solidMesh = new THREE.Mesh(geomData.solid, solidMat);
-    solidMesh.name = 'solidMesh';
-    solidMesh.scale.setScalar(size);
-    solidMesh.castShadow = true;
-    solidMesh.receiveShadow = true;
-    container.add(solidMesh);
-
-    // 2. Wireframe Mesh (only if exists, e.g. for glitch)
-    if (geomData.wire) {
-      const wireMat = getEnemyWireMaterial(type);
-      const wireMesh = new THREE.Mesh(geomData.wire, wireMat);
-      wireMesh.name = 'wireMesh';
-      wireMesh.scale.setScalar(size);
-      container.add(wireMesh);
-    }
-  } else {
-    // Fallback: create a simple box if not found
-    const fallbackMesh = new THREE.Mesh(boxGeometry, fallbackMaterial);
-    fallbackMesh.scale.setScalar(size);
-    container.add(fallbackMesh);
-  }
-
-  // Position it floating above the ground
   container.position.y = size * 0.35;
   return container;
+}
+
+// Elite/miniboss arrivals get a spawn portal ring (trash already has the
+// scale-pop; portals for every spawn would churn meshes at horde rates).
+const ELITE_PORTAL_COLORS: Partial<Record<EnemyType, number>> = {
+  [EnemyType.ENFORCER]: 0x00ffcc,
+  [EnemyType.COLOSSUS]: 0xffaa00,
+  [EnemyType.WARDEN]: 0xff00cc,
+  [EnemyType.HYDRA]: 0xff2244,
+  [EnemyType.OVERSEER]: 0xaa44ff,
+};
+const portalGeo = new THREE.RingGeometry(0.18, 0.2, 24);
+
+function spawnPortalFx(scene: THREE.Scene, x: number, z: number, type: EnemyType, size: number) {
+  const color = ELITE_PORTAL_COLORS[type];
+  if (color === undefined) return;
+  const mat = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.8,
+    side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(portalGeo, mat);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.set(x, 0.08, z);
+  scene.add(mesh);
+  world.add({
+    isParticle: true,
+    position: new THREE.Vector3(x, 0.08, z),
+    velocity: new THREE.Vector3(),
+    transform: mesh,
+    lifeTimer: 0,
+    maxLife: 0.6,
+    ringGrow: (size * 0.9) / 0.2 - 1, // expand to roughly the enemy's footprint
+  });
 }
 
 export function spawnEnemy(
@@ -1632,6 +1704,9 @@ export function spawnEnemy(
   // 1. Build and attach the custom 3D model
   const enemyMesh = buildEnemyMesh(type, stats.size);
   group.add(enemyMesh);
+
+  // Elite arrival portal (cosmetic, budgeted to elite spawn rates)
+  spawnPortalFx(_scene, x, z, type, stats.size);
 
   // 2. Attach the shadow mesh
   const shadow = new THREE.Mesh(shadowGeo, shadowMat);
