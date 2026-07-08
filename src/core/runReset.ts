@@ -22,6 +22,7 @@ import { resetGameTime } from '../systems/ChestSystem';
 import { resetTimelineSpawner } from '../systems/TimelineSpawner';
 import { resetFinaleBoss } from '../systems/FinaleBoss';
 import { resetAnomalySystem } from '../systems/AnomalySystem';
+import { resetShrineSystem } from '../systems/ShrineSystem';
 import { resetGameFlags } from '../systems/GameManager';
 import { resetUpgradeState } from '../systems/UpgradeSystem';
 import { clearDamageNumbers } from '../systems/DamageNumberSystem';
@@ -58,6 +59,7 @@ export function resetRun(): void {
   resetGameTime();
   resetTimelineSpawner();
   resetAnomalySystem();
+  resetShrineSystem();
   resetFlowState();
   resetGameFlags();
   resetUpgradeState();

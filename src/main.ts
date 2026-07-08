@@ -54,6 +54,7 @@ import { initParticleComputeSystem, ParticleComputeSystem } from './systems/Part
 import { initEnemyComputeSystem, EnemyComputeSystem } from './systems/EnemyComputeSystem';
 import { initDamageNumbers, DamageNumberSystem } from './systems/DamageNumberSystem';
 import { CoopSystem } from './systems/CoopSystem';
+import { ShrineSystem } from './systems/ShrineSystem';
 import { ClientCombatFxSystem } from './systems/ClientCombatFxSystem';
 
 // --- AUDIO UNLOCK & MUSIC START ---
@@ -315,6 +316,7 @@ function startGameLoop(
     OrbitalSystem(dt); // Update orbital weapon projectiles
     OverloadSystem(dt, scene);
     AnomalySystem(dt, scene);
+    ShrineSystem(dt, scene);
 
     if (!isMultiplayer || isHost) {
       ChestSystem(dt, scene);

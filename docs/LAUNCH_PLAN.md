@@ -168,6 +168,46 @@ per-instance materials; all FX budgeted through `scaleParticleCount()`; bloom
 never enabled below high tier; verify 60-cap holds with a full horde before
 each ship.
 
+## Phase 1.9 — Map 1 level design: Neon Block Slums, fully developed
+
+> **Status (2026-07-08): SHIPPED.** Verified live: 60 fps with ~300 enemies on
+> the dressed map, shrine buffs firing, stash + exclusive item granted
+> end-to-end, zero console errors.
+
+Play drops you into **Neon Block Slums** (map splash announces it). The map's
+four districts each read as a place and have a reason to visit.
+
+**Real surfaces (CC0, ambientCG.com — see `public/textures/environments/CREDITS.txt`):**
+tiled asphalt streets, a riveted metal-plate courtyard deck, a rusted-over
+scrap-yard floor, metal-clad props. All 512px color maps, 164 KB total —
+the ground/asset fields in LevelData were previously declared but never
+rendered; texture loading now actually exists (cached loader in LevelSystem).
+
+**Landmarks & dressing:** THE FOUNDER holo-statue on a plated plinth in the
+courtyard (orientation landmark), market-row neon signs along Main Street
+(merged into 2 draw calls), a dead maglev transit line separating street from
+courtyard, a 22-unit watchtower at the Industrial Gate, holo-billboard
+towers, market stalls for mid-street cover.
+
+**Things to do (the activity layer, `ShrineSystem.ts`):**
+
+| Activity                                         | What it is                                                                                                           |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| **Pulse Shrine** (Courtyard)                     | Step on: weapons tick 1.5× for 20s, then 75s cooldown. Beacon dims while spent.                                      |
+| **Aegis Shrine** (Scrap Yards, deep in the maze) | Incoming damage halved for 20s — worth the risky detour.                                                             |
+| **Velocity Shrine** (Main Street)                | +25% move speed for 20s — pairs with the long open lane.                                                             |
+| **Data Vault** (existing greed event)            | Now correctly reads gold again via instanced tint + gold aura (regressed by the 1.8 instancing change).              |
+| **Black-Market Stash**                           | At 2:30 (solo), a smuggler crate surfaces at one of 4 landmark spots with a beacon. Restocks every 4 min in endless. |
+
+**Map-exclusive item:** the **SCAVENGER CHIP** — only from the stash, never in
+the level-up pool (`exclusive` flag in PassiveRegistry): +25% credits, credit
+pickups restore 1 HP, +15% magnet. The launch-plan hook: every future map
+ships one exclusive item as its collection carrot.
+
+Performance: all dressing is static merged geometry (~20 extra draw calls
+total); shrines cost one distance check each per frame; verified 60 fps
+parity at ~300 enemies.
+
 ## Phase 2 — Multiplayer resilience (make co-op shippable-quality)
 
 Already done this cycle: party lobby w/ ready-up, ghosts/revives, kill

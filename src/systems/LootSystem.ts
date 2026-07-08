@@ -243,8 +243,20 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
 
     // B. COLLECTION
     if (distSq < COLLECT_RADIUS_SQ) {
-      // Corruption pays out: +25% credits per level (rounded up).
-      const val = Math.ceil((credit.creditValue || 1) * (1 + uiState.corruption * 0.25));
+      // Corruption pays out: +25% credits per level (rounded up); the
+      // SCAVENGER CHIP (Neon Slums exclusive) adds +25% and a 1 HP trickle.
+      const hasChip = closestPlayer.passiveSlots?.some(
+        (slot: { passiveId: string }) => slot.passiveId === 'scavenger_chip',
+      );
+      const val = Math.ceil(
+        (credit.creditValue || 1) * (1 + uiState.corruption * 0.25) * (hasChip ? 1.25 : 1),
+      );
+      if (hasChip && closestPlayer.health) {
+        closestPlayer.health.current = Math.min(
+          closestPlayer.health.current + 1,
+          closestPlayer.health.max,
+        );
+      }
       if (closestPlayer.isLocalPlayer) {
         uiState.creditsCollected += val;
         uiState.credits += val;

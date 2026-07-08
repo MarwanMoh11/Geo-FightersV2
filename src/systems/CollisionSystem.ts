@@ -255,7 +255,11 @@ function handleEnemyPlayerCollision(enemy: any, player: any, _scene: THREE.Scene
 
   const baseDamage = 5;
   const armor = player.stats?.armor || 0;
-  const actualDamage = Math.max(1, baseDamage - armor);
+  let actualDamage = Math.max(1, baseDamage - armor);
+  // Map 1 Aegis Shrine: halve incoming damage for the buff window
+  if (player.isLocalPlayer && uiState.shrineArmorTimer > 0) {
+    actualDamage = Math.max(1, Math.ceil(actualDamage * 0.5));
+  }
 
   player.health.current -= actualDamage;
   player.invulnTimer = PLAYER_IFRAME_DURATION;
@@ -307,7 +311,10 @@ function handleEnemyProjectilePlayerCollision(bullet: any, player: any, scene: T
 
   const baseDamage = bullet.damage || 8;
   const armor = player.stats?.armor || 0;
-  const actualDamage = Math.max(1, baseDamage - armor);
+  let actualDamage = Math.max(1, baseDamage - armor);
+  if (player.isLocalPlayer && uiState.shrineArmorTimer > 0) {
+    actualDamage = Math.max(1, Math.ceil(actualDamage * 0.5));
+  }
 
   player.health.current -= actualDamage;
   player.invulnTimer = PLAYER_IFRAME_DURATION;
