@@ -81,6 +81,32 @@ regressing the Phase 1 battery work.
 | 1.5.4 | **Menu & UI personality**         | Character-select cards themed per character color (glow, border, icon halo), wordmark shimmer, ambient drifting backdrop, hover/press micro-interactions, lobby roster tinted by pick. CSS-only.                                                                                                                                                                                     | M      | ✅     |
 | 1.5.5 | **Performance verification**      | fps unchanged at 60-cap and menu-30 with a full horde on screen; typecheck + build clean.                                                                                                                                                                                                                                                                                            | S      | ✅     |
 
+## Phase 1.75 — Character re-modelling (one true model per fighter)
+
+Phase 1.5 gave the shared drone rig per-character colors and proportions;
+Phase 1.75 replaces it outright: **each of the 8 fighters is its own
+procedurally-built model.** All rigs keep the shared part-naming convention
+(core, wings, thrusters, fire cones, gyro rings, barrels, shieldShard_N), so
+the entire Phase 1.5 animation state machine — recoil, flinch, death
+power-down, level-up flourish, ult overdrive, banking — drives every model
+with zero per-character code in RenderSystem. Geometries stay pooled;
+materials are per-player and disposed on rebuild (`applyCharacterModel`).
+
+| Fighter | Model identity                                                                                                                   | Status |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| CYPHER  | Classic swept-wing interceptor (refined baseline): visor array, twin engines, dual gyros                                         | ✅     |
+| LASH    | Blade craft: forward-swept scythe wings, V tail fins, single hot engine, twitching claw prongs                                   | ✅     |
+| RAIL    | Industrial gunship: slab hull + cabin, top-mounted twin-rail cannon that pumps like pistons, wide stabilizers, exposed reactor   | ✅     |
+| NOVA    | Mystic star: swollen core in three off-axis resonance rings (incl. new third ring), floating channeling pylons, 4 orbiting motes | ✅     |
+| BYTE    | Satellite: octagonal bus, uplink dish + blinking beacon antenna, solar-panel wings, 5 orbiting drone cubes                       | ✅     |
+| GHOST   | Phantom dart: translucent stretched fuselage + fins, glowing eye-core, single long-burn engine, halo ring                        | ✅     |
+| TITAN   | Walking fortress: armored slab with sloped glacis, pauldrons, recessed reactor, dual siege cannons, huge engines                 | ✅     |
+| FLUX    | The gambler: mismatched wing vs canard, one heavy + one tiny engine, off-axis rings, two tumbling orbit dice                     | ✅     |
+
+RenderSystem gained rig-agnostic hooks (no per-character branches): per-wing
+resting yaw, per-barrel resting position, single-engine flame support, third
+gyro ring, per-rig shard count/orbit radius.
+
 ## Phase 2 — Multiplayer resilience (make co-op shippable-quality)
 
 Already done this cycle: party lobby w/ ready-up, ghosts/revives, kill

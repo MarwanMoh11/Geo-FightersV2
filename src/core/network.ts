@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { world } from './world';
 import { uiState, showToast, announce } from './UIState.svelte';
 import { setGameState } from './GameState';
-import { spawnPlayer, spawnEnemy, spawnXP, spawnCredit, applyCharacterTheme } from './factories';
+import { spawnPlayer, spawnEnemy, spawnXP, spawnCredit, applyCharacterModel } from './factories';
 import { spawnChest, openChestLocally } from '../systems/ChestSystem';
 import { spawnClientBoss, removeClientBoss } from '../systems/FinaleBoss';
 import { removeBody, createDynamicBody, isRapierInitialized } from './RapierWorld';
@@ -211,7 +211,7 @@ function removeRemotePlayer(connId: string) {
 function applyCharacterTint(entity: any, characterId: string) {
   entity.character = characterId;
   if (entity.transform) {
-    applyCharacterTheme(entity.transform, characterId);
+    applyCharacterModel(entity.transform, characterId);
   }
 }
 
