@@ -263,9 +263,20 @@
   function saveName() {
     localStorage.setItem('geo_player_name', uiState.playerName.trim());
   }
+
+  /** Character color as a CSS hex string for per-card theming. */
+  function charColor(c: number): string {
+    return `#${c.toString(16).padStart(6, '0')}`;
+  }
 </script>
 
 <div id="main-menu" class:hidden={uiState.gameState !== 'MENU'}>
+  <!-- Ambient drifting glows: transform-only animation, GPU-composited -->
+  <div class="ambient" aria-hidden="true">
+    <div class="glow g1"></div>
+    <div class="glow g2"></div>
+  </div>
+
   <div class="menu-content">
     <header class="brand">
       <h1 class="wordmark">GEO<span class="accent">FIGHTERS</span></h1>
@@ -402,6 +413,7 @@
                 class:selected={lobbyMe?.character === char.id}
                 class:locked
                 title={char.name}
+                style={locked ? undefined : `--char-color: ${charColor(char.color)}`}
                 onclick={() => pickLobbyCharacter(char.id)}
               >
                 {locked ? '🔒' : char.icon}
@@ -528,7 +540,12 @@
         {#each CHARACTERS as char (char.id)}
           {@const locked = !isCharacterUnlocked(char.id)}
           {@const gate = locked ? getUnlockCondition('character', char.id) : null}
-          <button class="char-card" class:locked onclick={() => selectCharacter(char.id)}>
+          <button
+            class="char-card"
+            class:locked
+            style={locked ? undefined : `--char-color: ${charColor(char.color)}`}
+            onclick={() => selectCharacter(char.id)}
+          >
             {#if locked}
               <div class="char-icon">🔒</div>
               <h3 class="char-name">???</h3>
@@ -579,6 +596,8 @@
   }
 
   .menu-content {
+    position: relative;
+    z-index: 1;
     width: 100%;
     max-width: 360px;
     display: flex;
@@ -623,6 +642,16 @@
     display: block;
     text-indent: 0.04em;
     color: var(--color-primary);
+    animation: word-glow 3.4s ease-in-out infinite;
+  }
+  @keyframes word-glow {
+    0%,
+    100% {
+      text-shadow: 0 0 8px rgba(54, 230, 255, 0.12);
+    }
+    50% {
+      text-shadow: 0 0 26px rgba(54, 230, 255, 0.42);
+    }
   }
   .tagline {
     margin-top: 0.85rem;
@@ -631,6 +660,70 @@
     letter-spacing: 0.42em;
     text-indent: 0.42em;
     color: var(--color-text-dim);
+  }
+  /* Terminal cursor: little arcade wink after the tagline */
+  .tagline::after {
+    content: '_';
+    color: var(--color-primary);
+    animation: cursor-blink 1.2s steps(1) infinite;
+  }
+  @keyframes cursor-blink {
+    50% {
+      opacity: 0;
+    }
+  }
+
+  /* ---- Ambient drifting glows ---- */
+  .ambient {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .glow {
+    position: absolute;
+    width: 55vmax;
+    height: 55vmax;
+    border-radius: 50%;
+    opacity: 0.07;
+    filter: blur(60px);
+    will-change: transform;
+  }
+  .g1 {
+    background: radial-gradient(circle, var(--color-primary), transparent 65%);
+    top: -20vmax;
+    left: -12vmax;
+    animation: drift1 26s ease-in-out infinite alternate;
+  }
+  .g2 {
+    background: radial-gradient(circle, #ff3d77, transparent 65%);
+    bottom: -22vmax;
+    right: -14vmax;
+    animation: drift2 32s ease-in-out infinite alternate;
+  }
+  @keyframes drift1 {
+    from {
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+    to {
+      transform: translate3d(9vmax, 6vmax, 0) scale(1.15);
+    }
+  }
+  @keyframes drift2 {
+    from {
+      transform: translate3d(0, 0, 0) scale(1.1);
+    }
+    to {
+      transform: translate3d(-8vmax, -5vmax, 0) scale(0.95);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .glow,
+    .wordmark .accent,
+    .tagline::after {
+      animation: none;
+    }
   }
 
   /* ---- Actions ---- */
@@ -657,6 +750,7 @@
   .btn:hover {
     background: rgba(255, 255, 255, 0.06);
     border-color: rgba(255, 255, 255, 0.16);
+    transform: translateY(-1.5px);
   }
   .btn:active {
     transform: scale(0.985);
@@ -948,6 +1042,7 @@
   .lobby-char-btn {
     all: unset;
     cursor: pointer;
+    --char-color: var(--color-primary);
     width: 38px;
     height: 38px;
     display: flex;
@@ -959,9 +1054,14 @@
     border: 1px solid rgba(255, 255, 255, 0.06);
     transition: all var(--transition-fast);
   }
+  .lobby-char-btn:hover:not(.locked) {
+    border-color: var(--char-color);
+    transform: translateY(-1px);
+  }
   .lobby-char-btn.selected {
-    border-color: var(--color-primary);
+    border-color: var(--char-color);
     background: rgba(54, 230, 255, 0.12);
+    box-shadow: 0 0 14px -5px var(--char-color);
   }
   .lobby-char-btn.locked {
     opacity: 0.4;
@@ -1199,6 +1299,8 @@
     all: unset;
     box-sizing: border-box;
     cursor: pointer;
+    /* Each card carries its character's color for hover glow + accents */
+    --char-color: var(--color-primary);
     background: rgba(255, 255, 255, 0.025);
     border: 1px solid var(--color-border);
     border-radius: var(--r-md);
@@ -1212,8 +1314,11 @@
   }
   .char-card:hover {
     background: rgba(255, 255, 255, 0.04);
-    border-color: var(--color-primary);
-    box-shadow: inset 0 0 0 1px var(--color-primary);
+    border-color: var(--char-color);
+    box-shadow:
+      inset 0 0 0 1px var(--char-color),
+      0 0 24px -8px var(--char-color);
+    transform: translateY(-2px);
   }
   .char-card:active {
     transform: scale(0.99);
@@ -1221,6 +1326,11 @@
 
   .char-icon {
     font-size: 1.6rem;
+    filter: drop-shadow(0 0 7px var(--char-color));
+    transition: transform var(--transition-smooth);
+  }
+  .char-card:hover .char-icon {
+    transform: scale(1.18) rotate(-4deg);
   }
 
   .char-name {
@@ -1238,7 +1348,7 @@
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--color-primary);
+    color: var(--char-color, var(--color-primary));
     margin: 0;
   }
 
