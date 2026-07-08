@@ -74,236 +74,10 @@ export function spawnPlayer(
   playerGroup.position.set(startX, 0.5, startZ); // Floating at height 0.5
   scene.add(playerGroup);
 
-  const container = new THREE.Group();
-  container.name = 'mesh_container';
-  playerGroup.add(container);
-
-  // Central Core Sphere (Glowing energy source)
-  const coreMat = new THREE.MeshStandardMaterial({
-    color: 0x00d5ff,
-    emissive: 0x00d5ff,
-    emissiveIntensity: 0.9,
-    roughness: 0.1,
-    metalness: 0.9,
-  });
-  const coreMesh = new THREE.Mesh(sphereGeometry, coreMat);
-  coreMesh.scale.setScalar(0.32);
-  coreMesh.name = 'core';
-  container.add(coreMesh);
-
-  // Core Shell / Cage (outer protective faceted hull)
-  const shellMat = new THREE.MeshStandardMaterial({
-    color: 0x223344,
-    roughness: 0.2,
-    metalness: 0.9,
-    wireframe: true,
-  });
-  const shellMesh = new THREE.Mesh(icosahedronGeometry, shellMat);
-  shellMesh.scale.setScalar(0.38);
-  shellMesh.name = 'shell';
-  container.add(shellMesh);
-
-  // Swept wings (flanking left/right)
-  const leftWing = new THREE.Group();
-  leftWing.name = 'leftWing';
-  leftWing.position.set(-0.42, 0, -0.05);
-
-  const wingMat = new THREE.MeshStandardMaterial({
-    color: 0x334455,
-    roughness: 0.3,
-    metalness: 0.8,
-  });
-  const leftWingMesh = new THREE.Mesh(boxGeometry, wingMat);
-  leftWingMesh.scale.set(0.35, 0.04, 0.25);
-  leftWingMesh.position.set(-0.175, 0, -0.05);
-  leftWingMesh.rotation.y = -Math.PI / 8; // Sweep back
-  leftWing.add(leftWingMesh);
-
-  const tipMat = new THREE.MeshStandardMaterial({
-    color: 0x00ffff,
-    emissive: 0x00ffff,
-    emissiveIntensity: 1.5,
-  });
-  const leftTipMesh = new THREE.Mesh(boxGeometry, tipMat);
-  leftTipMesh.scale.set(0.04, 0.05, 0.28);
-  leftTipMesh.position.set(-0.35, 0, -0.05);
-  leftTipMesh.rotation.y = -Math.PI / 8;
-  leftTipMesh.name = 'leftWingTip';
-  leftWing.add(leftTipMesh);
-  container.add(leftWing);
-
-  const rightWing = new THREE.Group();
-  rightWing.name = 'rightWing';
-  rightWing.position.set(0.42, 0, -0.05);
-
-  const rightWingMesh = new THREE.Mesh(boxGeometry, wingMat);
-  rightWingMesh.scale.set(0.35, 0.04, 0.25);
-  rightWingMesh.position.set(0.175, 0, -0.05);
-  rightWingMesh.rotation.y = Math.PI / 8; // Sweep back
-  rightWing.add(rightWingMesh);
-
-  const rightTipMesh = new THREE.Mesh(boxGeometry, tipMat);
-  rightTipMesh.scale.set(0.04, 0.05, 0.28);
-  rightTipMesh.position.set(0.35, 0, -0.05);
-  rightTipMesh.rotation.y = Math.PI / 8;
-  rightTipMesh.name = 'rightWingTip';
-  rightWing.add(rightTipMesh);
-  container.add(rightWing);
-
-  // Left & Right engine booster cylinders
-  const thrusterMat = new THREE.MeshStandardMaterial({
-    color: 0x444455,
-    roughness: 0.4,
-    metalness: 0.8,
-  });
-  const leftThruster = new THREE.Mesh(cylinderZGeometry, thrusterMat);
-  leftThruster.scale.set(0.09, 0.09, 0.42);
-  leftThruster.position.set(-0.38, -0.08, -0.22);
-  leftThruster.name = 'leftThruster';
-  container.add(leftThruster);
-
-  const rightThruster = new THREE.Mesh(cylinderZGeometry, thrusterMat);
-  rightThruster.scale.set(0.09, 0.09, 0.42);
-  rightThruster.position.set(0.38, -0.08, -0.22);
-  rightThruster.name = 'rightThruster';
-  container.add(rightThruster);
-
-  // Double-layered thruster flame cones
-  const fireInnerMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  const fireOuterMat = new THREE.MeshBasicMaterial({
-    color: 0x00e5ff,
-    transparent: true,
-    opacity: 0.7,
-  });
-
-  const leftFireInner = new THREE.Mesh(coneZGeometry, fireInnerMat);
-  leftFireInner.scale.set(0.05, 0.05, 0.18);
-  leftFireInner.position.set(0, 0, -0.22);
-  leftFireInner.name = 'leftFireInner';
-  leftThruster.add(leftFireInner);
-
-  const leftFireOuter = new THREE.Mesh(coneZGeometry, fireOuterMat);
-  leftFireOuter.scale.set(0.08, 0.08, 0.28);
-  leftFireOuter.position.set(0, 0, -0.26);
-  leftFireOuter.name = 'leftFireOuter';
-  leftThruster.add(leftFireOuter);
-
-  const rightFireInner = new THREE.Mesh(coneZGeometry, fireInnerMat);
-  rightFireInner.scale.set(0.05, 0.05, 0.18);
-  rightFireInner.position.set(0, 0, -0.22);
-  rightFireInner.name = 'rightFireInner';
-  rightThruster.add(rightFireInner);
-
-  const rightFireOuter = new THREE.Mesh(coneZGeometry, fireOuterMat);
-  rightFireOuter.scale.set(0.08, 0.08, 0.28);
-  rightFireOuter.position.set(0, 0, -0.26);
-  rightFireOuter.name = 'rightFireOuter';
-  rightThruster.add(rightFireOuter);
-
-  // Multi-segmented visor (forward eye system)
-  const visorGroup = new THREE.Group();
-  visorGroup.name = 'visorGroup';
-  visorGroup.position.set(0, 0.06, 0.32);
-
-  const mainVisorMat = new THREE.MeshStandardMaterial({
-    color: 0x00ffff,
-    emissive: 0x00ffff,
-    emissiveIntensity: 1.8,
-  });
-  const mainVisor = new THREE.Mesh(boxGeometry, mainVisorMat);
-  mainVisor.scale.set(0.36, 0.07, 0.07);
-  mainVisor.name = 'mainVisor';
-  visorGroup.add(mainVisor);
-
-  const sensorMat = new THREE.MeshStandardMaterial({
-    color: 0x223344,
-    roughness: 0.2,
-    metalness: 0.8,
-  });
-  const leftSensor = new THREE.Mesh(boxGeometry, sensorMat);
-  leftSensor.scale.setScalar(0.05);
-  leftSensor.position.set(-0.2, 0, -0.03);
-  visorGroup.add(leftSensor);
-
-  const rightSensor = leftSensor.clone();
-  rightSensor.position.x = 0.2;
-  visorGroup.add(rightSensor);
-  container.add(visorGroup);
-
-  // Dual-axis Stabilizer rings (Horizontal & Vertical gyros)
-  const gyroGroup = new THREE.Group();
-  gyroGroup.name = 'gyroGroup';
-
-  const hRingMat = new THREE.MeshStandardMaterial({
-    color: 0x00e5ff,
-    emissive: 0x00e5ff,
-    emissiveIntensity: 0.5,
-    roughness: 0.1,
-    metalness: 0.9,
-  });
-  const gyroHRing = new THREE.Mesh(torusGeometry, hRingMat);
-  gyroHRing.scale.set(0.62, 0.62, 0.62);
-  gyroHRing.rotation.x = Math.PI / 2;
-  gyroHRing.name = 'gyroHRing';
-  gyroGroup.add(gyroHRing);
-
-  const vRingMat = new THREE.MeshStandardMaterial({
-    color: 0x0088ff,
-    emissive: 0x0088ff,
-    emissiveIntensity: 0.7,
-    roughness: 0.1,
-    metalness: 0.9,
-  });
-  const gyroVRing = new THREE.Mesh(torusGeometry, vRingMat);
-  gyroVRing.scale.set(0.56, 0.56, 0.56);
-  gyroVRing.rotation.y = Math.PI / 2;
-  gyroVRing.name = 'gyroVRing';
-  gyroGroup.add(gyroVRing);
-  container.add(gyroGroup);
-
-  // Bottom twin gun weapon barrels (hardpoints)
-  const weaponGroup = new THREE.Group();
-  weaponGroup.name = 'weaponGroup';
-  weaponGroup.position.set(0, -0.22, 0.08);
-
-  const turretBase = new THREE.Mesh(cylinderYGeometry, thrusterMat);
-  turretBase.scale.set(0.1, 0.06, 0.1);
-  weaponGroup.add(turretBase);
-
-  const barrelMat = new THREE.MeshStandardMaterial({
-    color: 0x111118,
-    roughness: 0.3,
-    metalness: 0.9,
-  });
-  const leftBarrel = new THREE.Mesh(cylinderZGeometry, barrelMat);
-  leftBarrel.scale.set(0.025, 0.025, 0.22);
-  leftBarrel.position.set(-0.05, -0.04, 0.08);
-  leftBarrel.name = 'leftBarrel';
-  weaponGroup.add(leftBarrel);
-
-  const rightBarrel = leftBarrel.clone();
-  rightBarrel.position.x = 0.05;
-  rightBarrel.name = 'rightBarrel';
-  weaponGroup.add(rightBarrel);
-  container.add(weaponGroup);
-
-  // 3 Orbiting energy shield shards
-  const shieldGroup = new THREE.Group();
-  shieldGroup.name = 'shieldGroup';
-  const shardMat = new THREE.MeshStandardMaterial({
-    color: 0x00ffff,
-    emissive: 0x00ffff,
-    emissiveIntensity: 0.8,
-    transparent: true,
-    opacity: 0.7,
-  });
-  for (let i = 0; i < 3; i++) {
-    const shard = new THREE.Mesh(octahedronGeometry, shardMat);
-    shard.scale.setScalar(0.05);
-    shard.name = `shieldShard_${i}`;
-    shieldGroup.add(shard);
-  }
-  container.add(shieldGroup);
+  // Build the character-specific rig (Phase 1.75: every fighter has its own model).
+  // Remote players start as CYPHER; applyCharacterModel swaps them on lobby sync.
+  const characterId = isLocal ? uiState.selectedCharacter || 'cypher' : 'cypher';
+  playerGroup.add(buildPlayerRig(characterId));
 
   const shadow = new THREE.Mesh(shadowGeo, shadowMat);
   shadow.rotation.x = -Math.PI / 2;
@@ -375,135 +149,616 @@ export function spawnPlayer(
   });
 }
 
-// --- CHARACTER VISUAL THEMES (Phase 1.5) ---
-// Every character shares one drone rig; identity comes from a full-rig tint
-// (not just the core) plus silhouette proportions and animation personality.
-// Scales are absolute multipliers over the rig's base part sizes, so applying
-// a theme is idempotent across runs and character switches.
-export interface CharacterTheme {
-  /** Hue rotation (0-1) applied to the primary color for secondary parts */
-  accentShift: number;
-  coreScale: number;
-  shellScale: number;
-  /** X/Z scale of each wing group; right side may differ for asymmetry */
-  wingSpan: number;
-  wingSpanRight?: number;
-  gyroScale: number;
-  thrusterScale: number;
-  shardScale: number;
-  /** Multipliers read per-frame by RenderSystem via userData.theme */
+// --- CHARACTER RIGS (Phase 1.75) ---
+// Every fighter has its own procedurally-built model. All rigs share a naming
+// convention (core, shell, leftWing/rightWing, leftThruster/rightThruster,
+// fire cones, gyro rings, barrels, shieldShard_N) so RenderSystem's animation
+// state machine — recoil, flinch, death power-down, level-up flourish, ult
+// overdrive, banking — works on every model without knowing which character
+// it is. Parts a rig doesn't have are simply absent (RenderSystem null-checks
+// every lookup). Geometries come from the shared pool above; materials are
+// per-player and disposed on rebuild.
+
+interface RigPersonality {
   flameScale: number;
   gyroSpeed: number;
-  /** Hull wireframe opacity (GHOST reads translucent) */
-  shellOpacity: number;
+  coreScaleAbs: number;
+  shardRadius: number;
+  shardCount: number;
 }
 
-const DEFAULT_THEME: CharacterTheme = {
-  accentShift: 0.06,
-  coreScale: 1.0,
-  shellScale: 1.0,
-  wingSpan: 1.0,
-  gyroScale: 1.0,
-  thrusterScale: 1.0,
-  shardScale: 1.0,
-  flameScale: 1.0,
-  gyroSpeed: 1.0,
-  shellOpacity: 1.0,
-};
+function stdMat(
+  color: number,
+  opts: {
+    emissive?: number;
+    emissiveIntensity?: number;
+    roughness?: number;
+    metalness?: number;
+    transparent?: boolean;
+    opacity?: number;
+    wireframe?: boolean;
+  } = {},
+): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({
+    color,
+    emissive: opts.emissive ?? 0x000000,
+    emissiveIntensity: opts.emissiveIntensity ?? 1.0,
+    roughness: opts.roughness ?? 0.35,
+    metalness: opts.metalness ?? 0.8,
+    transparent: opts.transparent ?? false,
+    opacity: opts.opacity ?? 1.0,
+    wireframe: opts.wireframe ?? false,
+  });
+}
 
-const CHARACTER_THEMES: Record<string, Partial<CharacterTheme>> = {
-  // Balanced all-rounder: the baseline rig
-  cypher: {},
-  // Melee whip: swept, narrow, aggressive — burns hot
-  lash: { wingSpan: 0.78, flameScale: 1.25, gyroSpeed: 1.3, shellScale: 0.92 },
-  // Engineer: wide stable platform, heavy engines
-  rail: { wingSpan: 1.22, thrusterScale: 1.2, gyroSpeed: 0.8, flameScale: 0.9 },
-  // Area mage: big resonance rings around a swollen core
-  nova: { coreScale: 1.18, gyroScale: 1.3, wingSpan: 0.8, gyroSpeed: 1.5, shardScale: 0.8 },
-  // Drone commander: minimal body, prominent satellites
-  byte: { wingSpan: 0.7, shardScale: 1.7, gyroScale: 0.85, thrusterScale: 0.85 },
-  // Speedster phantom: slim, translucent hull, long exhaust
-  ghost: { shellOpacity: 0.35, wingSpan: 0.88, shellScale: 0.9, flameScale: 1.45, gyroSpeed: 1.2 },
-  // Tank: bulky hull, broad wings, restrained engines
-  titan: {
-    shellScale: 1.35,
-    coreScale: 1.08,
-    wingSpan: 1.15,
-    thrusterScale: 1.15,
-    flameScale: 0.8,
-    gyroSpeed: 0.6,
-  },
-  // Gambler: deliberately lopsided — nothing about FLUX is symmetric
-  flux: { wingSpan: 0.85, wingSpanRight: 1.18, gyroScale: 1.1, gyroSpeed: 1.8, accentShift: 0.14 },
-};
+/** Glowing core sphere + optional wireframe shell cage. */
+function addCore(
+  parent: THREE.Object3D,
+  color: number,
+  scale: number,
+  shell?: { geom: THREE.BufferGeometry; scale: number; color?: number; opacity?: number },
+): void {
+  const core = new THREE.Mesh(
+    sphereGeometry,
+    stdMat(color, { emissive: color, emissiveIntensity: 0.9, roughness: 0.1, metalness: 0.9 }),
+  );
+  core.scale.setScalar(scale);
+  core.name = 'core';
+  parent.add(core);
+
+  if (shell) {
+    const opacity = shell.opacity ?? 1;
+    const shellMesh = new THREE.Mesh(
+      shell.geom,
+      stdMat(shell.color ?? 0x223344, {
+        roughness: 0.2,
+        metalness: 0.9,
+        wireframe: true,
+        transparent: opacity < 1,
+        opacity,
+      }),
+    );
+    shellMesh.scale.setScalar(shell.scale);
+    shellMesh.name = 'shell';
+    if (opacity < 1) shellMesh.userData.baseOpacity = opacity;
+    parent.add(shellMesh);
+  }
+}
+
+/** Thruster cylinder + double-layered flame cones, named for RenderSystem. */
+function addEngine(
+  parent: THREE.Object3D,
+  side: 'left' | 'right',
+  x: number,
+  y: number,
+  z: number,
+  radius: number,
+  length: number,
+  accent: number,
+  hullColor = 0x444455,
+): void {
+  const thruster = new THREE.Mesh(cylinderZGeometry, stdMat(hullColor, { roughness: 0.4 }));
+  thruster.scale.set(radius, radius, length);
+  thruster.position.set(x, y, z);
+  thruster.name = `${side}Thruster`;
+  parent.add(thruster);
+
+  // Flame cones: local scale is overwritten per-frame by RenderSystem, so the
+  // parent thruster scale determines the flame's world size per model.
+  const inner = new THREE.Mesh(coneZGeometry, new THREE.MeshBasicMaterial({ color: 0xffffff }));
+  inner.scale.setScalar(0.5);
+  inner.position.set(0, 0, -0.55);
+  inner.name = `${side}FireInner`;
+  thruster.add(inner);
+
+  const outer = new THREE.Mesh(
+    coneZGeometry,
+    new THREE.MeshBasicMaterial({ color: accent, transparent: true, opacity: 0.7 }),
+  );
+  outer.scale.setScalar(0.8);
+  outer.position.set(0, 0, -0.62);
+  outer.name = `${side}FireOuter`;
+  thruster.add(outer);
+}
+
+/** Spinning gyro/halo ring. */
+function addRing(
+  parent: THREE.Object3D,
+  name: string,
+  scale: number,
+  color: number,
+  rot: { x?: number; y?: number; z?: number } = {},
+  intensity = 0.6,
+): void {
+  const ring = new THREE.Mesh(
+    torusGeometry,
+    stdMat(color, {
+      emissive: color,
+      emissiveIntensity: intensity,
+      roughness: 0.1,
+      metalness: 0.9,
+    }),
+  );
+  ring.scale.setScalar(scale);
+  ring.rotation.set(rot.x ?? 0, rot.y ?? 0, rot.z ?? 0);
+  ring.name = name;
+  parent.add(ring);
+}
+
+/** Orbiting shard group (shape varies: octahedra, cubes/dice, drone pods). */
+function addShards(
+  parent: THREE.Object3D,
+  count: number,
+  size: number,
+  color: number,
+  geom: THREE.BufferGeometry = octahedronGeometry,
+): void {
+  const group = new THREE.Group();
+  group.name = 'shieldGroup';
+  const mat = stdMat(color, {
+    emissive: color,
+    emissiveIntensity: 0.8,
+    transparent: true,
+    opacity: 0.75,
+  });
+  for (let i = 0; i < count; i++) {
+    const shard = new THREE.Mesh(geom, mat);
+    shard.scale.setScalar(size);
+    shard.name = `shieldShard_${i}`;
+    group.add(shard);
+  }
+  parent.add(group);
+}
+
+/** Simple named box helper (most hull plating is boxes). */
+function addBox(
+  parent: THREE.Object3D,
+  mat: THREE.Material,
+  sx: number,
+  sy: number,
+  sz: number,
+  x = 0,
+  y = 0,
+  z = 0,
+  rot: { x?: number; y?: number; z?: number } = {},
+  name = '',
+): THREE.Mesh {
+  const mesh = new THREE.Mesh(boxGeometry, mat);
+  mesh.scale.set(sx, sy, sz);
+  mesh.position.set(x, y, z);
+  mesh.rotation.set(rot.x ?? 0, rot.y ?? 0, rot.z ?? 0);
+  if (name) mesh.name = name;
+  parent.add(mesh);
+  return mesh;
+}
+
+// CYPHER — balanced interceptor: the classic swept-wing drone
+function buildCypherRig(c: THREE.Group, primary: number, accent: number): Partial<RigPersonality> {
+  addCore(c, primary, 0.32, { geom: icosahedronGeometry, scale: 0.38 });
+
+  const wingMat = stdMat(0x334455, { roughness: 0.3 });
+  const tipMat = stdMat(primary, { emissive: primary, emissiveIntensity: 1.5 });
+  for (const side of [-1, 1]) {
+    const wing = new THREE.Group();
+    wing.name = side < 0 ? 'leftWing' : 'rightWing';
+    wing.position.set(0.42 * side, 0, -0.05);
+    wing.userData.baseYaw = (side * Math.PI) / 8; // resting sweep for the tilt animation
+    addBox(wing, wingMat, 0.35, 0.04, 0.25, 0.175 * side, 0, -0.05, { y: (side * Math.PI) / 8 });
+    addBox(wing, tipMat, 0.04, 0.05, 0.28, 0.35 * side, 0, -0.05, { y: (side * Math.PI) / 8 });
+    c.add(wing);
+  }
+
+  addEngine(c, 'left', -0.38, -0.08, -0.22, 0.09, 0.42, accent);
+  addEngine(c, 'right', 0.38, -0.08, -0.22, 0.09, 0.42, accent);
+
+  // Multi-segmented visor (forward eye system)
+  const visorGroup = new THREE.Group();
+  visorGroup.name = 'visorGroup';
+  visorGroup.position.set(0, 0.06, 0.32);
+  const visorMat = stdMat(primary, { emissive: primary, emissiveIntensity: 1.8 });
+  addBox(visorGroup, visorMat, 0.36, 0.07, 0.07, 0, 0, 0, {}, 'mainVisor');
+  const sensorMat = stdMat(0x223344, { roughness: 0.2 });
+  addBox(visorGroup, sensorMat, 0.05, 0.05, 0.05, -0.2, 0, -0.03);
+  addBox(visorGroup, sensorMat, 0.05, 0.05, 0.05, 0.2, 0, -0.03);
+  c.add(visorGroup);
+
+  const gyroGroup = new THREE.Group();
+  gyroGroup.name = 'gyroGroup';
+  addRing(gyroGroup, 'gyroHRing', 0.62, primary, { x: Math.PI / 2 }, 0.5);
+  addRing(gyroGroup, 'gyroVRing', 0.56, accent, { y: Math.PI / 2 }, 0.7);
+  c.add(gyroGroup);
+
+  // Bottom twin gun barrels
+  const weaponGroup = new THREE.Group();
+  weaponGroup.name = 'weaponGroup';
+  weaponGroup.position.set(0, -0.22, 0.08);
+  const turretMat = stdMat(0x444455, { roughness: 0.4 });
+  const turretBase = new THREE.Mesh(cylinderYGeometry, turretMat);
+  turretBase.scale.set(0.1, 0.06, 0.1);
+  weaponGroup.add(turretBase);
+  const barrelMat = stdMat(0x111118, { roughness: 0.3, metalness: 0.9 });
+  for (const side of [-1, 1]) {
+    const barrel = new THREE.Mesh(cylinderZGeometry, barrelMat);
+    barrel.scale.set(0.025, 0.025, 0.22);
+    barrel.position.set(0.05 * side, -0.04, 0.08);
+    barrel.name = side < 0 ? 'leftBarrel' : 'rightBarrel';
+    weaponGroup.add(barrel);
+  }
+  c.add(weaponGroup);
+
+  addShards(c, 3, 0.05, accent);
+  return { coreScaleAbs: 0.32 };
+}
+
+// LASH — melee blade craft: forward-swept scythe wings, single hot engine
+function buildLashRig(c: THREE.Group, primary: number, accent: number): Partial<RigPersonality> {
+  addCore(c, primary, 0.28, { geom: octahedronGeometry, scale: 0.44 });
+
+  const bladeMat = stdMat(0x2a2233, { roughness: 0.25, metalness: 0.9 });
+  const edgeMat = stdMat(primary, { emissive: primary, emissiveIntensity: 1.6 });
+  for (const side of [-1, 1]) {
+    const wing = new THREE.Group();
+    wing.name = side < 0 ? 'leftWing' : 'rightWing';
+    wing.position.set(0.34 * side, 0, 0);
+    // Scythe blade sweeps FORWARD — aggression reads instantly
+    addBox(wing, bladeMat, 0.48, 0.03, 0.13, 0.2 * side, 0, 0.1, { y: (-side * Math.PI) / 5 });
+    addBox(wing, edgeMat, 0.5, 0.015, 0.03, 0.2 * side, 0, 0.16, { y: (-side * Math.PI) / 5 });
+    c.add(wing);
+  }
+
+  // Twin vertical tail fins in a V
+  const finMat = stdMat(0x2a2233, { roughness: 0.3 });
+  addBox(c, finMat, 0.03, 0.22, 0.16, -0.08, 0.1, -0.28, { z: 0.35 });
+  addBox(c, finMat, 0.03, 0.22, 0.16, 0.08, 0.1, -0.28, { z: -0.35 });
+
+  addEngine(c, 'left', 0, -0.06, -0.32, 0.1, 0.48, accent, 0x332a3c);
+
+  // Front prongs (bob like twitching claws via the barrel animation)
+  const prongMat = stdMat(primary, { emissive: primary, emissiveIntensity: 1.2 });
+  for (const side of [-1, 1]) {
+    const prong = new THREE.Mesh(cylinderZGeometry, prongMat);
+    prong.scale.set(0.018, 0.018, 0.3);
+    prong.position.set(0.07 * side, -0.04, 0.3);
+    prong.name = side < 0 ? 'leftBarrel' : 'rightBarrel';
+    c.add(prong);
+  }
+
+  addRing(c, 'gyroVRing', 0.5, accent, { y: Math.PI / 2 }, 0.8);
+  addShards(c, 3, 0.045, accent);
+  return { coreScaleAbs: 0.28, flameScale: 1.3, gyroSpeed: 1.4 };
+}
+
+// RAIL — industrial gunship: boxy hull, twin-rail cannon, heavy engines
+function buildRailRig(c: THREE.Group, primary: number, accent: number): Partial<RigPersonality> {
+  const hullMat = stdMat(0x2a3340, { roughness: 0.5, metalness: 0.7 });
+  addBox(c, hullMat, 0.42, 0.16, 0.5); // main hull slab
+  addBox(c, hullMat, 0.2, 0.1, 0.2, 0, 0.12, 0.1); // cabin
+
+  addCore(c, primary, 0.2);
+  const core = c.getObjectByName('core');
+  if (core) core.position.set(0, 0.16, -0.14); // exposed reactor at the back
+
+  // Twin-rail cannon on top (barrels pump alternately like pistons)
+  const railMat = stdMat(0x1a2026, { roughness: 0.3, metalness: 0.95 });
+  for (const side of [-1, 1]) {
+    const rail = new THREE.Mesh(cylinderZGeometry, railMat);
+    rail.scale.set(0.032, 0.032, 0.72);
+    rail.position.set(0.05 * side, 0.2, 0.2);
+    rail.name = side < 0 ? 'leftBarrel' : 'rightBarrel';
+    c.add(rail);
+  }
+  const chargeMat = stdMat(primary, { emissive: primary, emissiveIntensity: 1.6 });
+  addBox(c, chargeMat, 0.14, 0.05, 0.05, 0, 0.2, -0.12); // charge coupler glow
+
+  // Wide flat stabilizer wings with emissive edge
+  const wingMat = stdMat(0x2a3340, { roughness: 0.5 });
+  const edgeMat = stdMat(primary, { emissive: primary, emissiveIntensity: 1.3 });
+  for (const side of [-1, 1]) {
+    const wing = new THREE.Group();
+    wing.name = side < 0 ? 'leftWing' : 'rightWing';
+    wing.position.set(0.3 * side, -0.02, -0.05);
+    addBox(wing, wingMat, 0.34, 0.045, 0.3, 0.17 * side, 0, 0);
+    addBox(wing, edgeMat, 0.03, 0.05, 0.32, 0.34 * side, 0, 0);
+    c.add(wing);
+  }
+
+  addEngine(c, 'left', -0.17, -0.08, -0.3, 0.11, 0.44, accent, 0x333a44);
+  addEngine(c, 'right', 0.17, -0.08, -0.3, 0.11, 0.44, accent, 0x333a44);
+
+  addRing(c, 'gyroHRing', 0.56, accent, { x: Math.PI / 2 }, 0.45);
+  addShards(c, 3, 0.05, accent);
+  return { coreScaleAbs: 0.2, flameScale: 0.9, gyroSpeed: 0.7 };
+}
+
+// NOVA — area mage: a swollen star held by three spinning resonance rings
+function buildNovaRig(c: THREE.Group, primary: number, accent: number): Partial<RigPersonality> {
+  addCore(c, primary, 0.34, { geom: icosahedronGeometry, scale: 0.42 });
+
+  addRing(c, 'gyroHRing', 0.72, primary, { x: Math.PI / 2 }, 0.7);
+  addRing(c, 'gyroVRing', 0.64, accent, { y: Math.PI / 2 }, 0.7);
+  addRing(c, 'gyroTRing', 0.56, primary, { x: Math.PI / 4, z: Math.PI / 4 }, 0.9);
+
+  // Floating channeling pylons instead of wings (still bob via wing animation)
+  const pylonMat = stdMat(accent, { emissive: accent, emissiveIntensity: 1.1 });
+  for (const side of [-1, 1]) {
+    const wing = new THREE.Group();
+    wing.name = side < 0 ? 'leftWing' : 'rightWing';
+    wing.position.set(0.52 * side, 0, 0);
+    const pylon = new THREE.Mesh(octahedronGeometry, pylonMat);
+    pylon.scale.set(0.07, 0.12, 0.07);
+    wing.add(pylon);
+    c.add(wing);
+  }
+
+  addEngine(c, 'left', -0.12, -0.14, -0.24, 0.06, 0.3, accent, 0x3a3348);
+  addEngine(c, 'right', 0.12, -0.14, -0.24, 0.06, 0.3, accent, 0x3a3348);
+
+  addShards(c, 4, 0.04, primary);
+  return { coreScaleAbs: 0.34, flameScale: 0.8, gyroSpeed: 1.6, shardRadius: 0.68, shardCount: 4 };
+}
+
+// BYTE — drone commander: a satellite with dish, solar panels and drone cubes
+function buildByteRig(c: THREE.Group, primary: number, accent: number): Partial<RigPersonality> {
+  const bodyMat = stdMat(0x333322, { roughness: 0.4, metalness: 0.85 });
+  const body = new THREE.Mesh(cylinderYGeometry, bodyMat);
+  body.scale.set(0.2, 0.16, 0.2);
+  c.add(body);
+
+  addCore(c, primary, 0.15);
+  const core = c.getObjectByName('core');
+  if (core) core.position.set(0, 0, 0.22); // forward sensor eye
+
+  // Uplink dish + antenna
+  const dishMat = stdMat(0x445544, { roughness: 0.35 });
+  const dish = new THREE.Mesh(coneZGeometry, dishMat);
+  dish.scale.set(0.13, 0.13, 0.07);
+  dish.position.set(0, 0.16, 0);
+  dish.rotation.x = Math.PI / 2; // open side up
+  c.add(dish);
+  const antenna = new THREE.Mesh(cylinderYGeometry, dishMat);
+  antenna.scale.set(0.008, 0.14, 0.008);
+  antenna.position.set(0, 0.24, 0);
+  c.add(antenna);
+  const beacon = new THREE.Mesh(
+    sphereGeometry,
+    stdMat(primary, { emissive: primary, emissiveIntensity: 2.0 }),
+  );
+  beacon.scale.setScalar(0.025);
+  beacon.position.set(0, 0.32, 0);
+  c.add(beacon);
+
+  // Solar panel wings
+  const panelMat = stdMat(0x1a2a55, { roughness: 0.25, metalness: 0.9 });
+  const frameMat = stdMat(primary, { emissive: primary, emissiveIntensity: 1.0 });
+  for (const side of [-1, 1]) {
+    const wing = new THREE.Group();
+    wing.name = side < 0 ? 'leftWing' : 'rightWing';
+    wing.position.set(0.24 * side, 0, 0);
+    addBox(wing, panelMat, 0.34, 0.02, 0.2, 0.19 * side, 0, 0);
+    addBox(wing, frameMat, 0.36, 0.012, 0.02, 0.19 * side, 0.011, 0);
+    c.add(wing);
+  }
+
+  addEngine(c, 'left', -0.1, -0.1, -0.2, 0.055, 0.26, accent, 0x3a3a2a);
+  addEngine(c, 'right', 0.1, -0.1, -0.2, 0.055, 0.26, accent, 0x3a3a2a);
+
+  addRing(c, 'gyroHRing', 0.3, accent, { x: Math.PI / 2 }, 0.6);
+
+  // The drone swarm: cubes, not shards
+  addShards(c, 5, 0.05, primary, boxGeometry);
+  return { coreScaleAbs: 0.15, flameScale: 0.85, gyroSpeed: 0.9, shardRadius: 0.6, shardCount: 5 };
+}
+
+// GHOST — speedster phantom: translucent needle dart, one long-burn engine
+function buildGhostRig(c: THREE.Group, primary: number, accent: number): Partial<RigPersonality> {
+  // Fuselage is the "shell": a stretched translucent octahedron
+  const fuselageMat = stdMat(primary, {
+    roughness: 0.15,
+    metalness: 0.6,
+    transparent: true,
+    opacity: 0.35,
+  });
+  const fuselage = new THREE.Mesh(octahedronGeometry, fuselageMat);
+  fuselage.scale.set(0.16, 0.1, 0.52);
+  fuselage.name = 'shell';
+  fuselage.userData.baseOpacity = 0.35;
+  c.add(fuselage);
+
+  addCore(c, primary, 0.16);
+  const core = c.getObjectByName('core');
+  if (core) core.position.set(0, 0.03, 0.16); // the eye, glowing through the hull
+
+  const visorMat = stdMat(primary, { emissive: primary, emissiveIntensity: 2.2 });
+  addBox(c, visorMat, 0.1, 0.025, 0.025, 0, 0.05, 0.34, {}, 'mainVisor');
+
+  // Swept translucent fins
+  const finMat = stdMat(primary, {
+    roughness: 0.2,
+    metalness: 0.5,
+    transparent: true,
+    opacity: 0.5,
+  });
+  for (const side of [-1, 1]) {
+    const wing = new THREE.Group();
+    wing.name = side < 0 ? 'leftWing' : 'rightWing';
+    wing.position.set(0.14 * side, 0, -0.14);
+    const fin = addBox(wing, finMat, 0.24, 0.018, 0.12, 0.12 * side, 0, -0.06, {
+      y: (side * Math.PI) / 4.5,
+    });
+    fin.userData.baseOpacity = 0.5;
+    c.add(wing);
+  }
+
+  addEngine(c, 'left', 0, -0.04, -0.36, 0.085, 0.5, accent, 0x3c3c48);
+
+  addRing(c, 'gyroVRing', 0.34, accent, { y: Math.PI / 2 }, 0.9);
+
+  addShards(c, 2, 0.035, primary);
+  return {
+    coreScaleAbs: 0.16,
+    flameScale: 1.5,
+    gyroSpeed: 1.2,
+    shardRadius: 0.42,
+    shardCount: 2,
+  };
+}
+
+// TITAN — walking fortress: armored slab hull, pauldrons, dual siege cannons
+function buildTitanRig(c: THREE.Group, primary: number, accent: number): Partial<RigPersonality> {
+  const armorMat = stdMat(0x3a332c, { roughness: 0.55, metalness: 0.8 });
+  const trimMat = stdMat(primary, { emissive: primary, emissiveIntensity: 1.2 });
+
+  addBox(c, armorMat, 0.46, 0.24, 0.5); // main hull slab
+  addBox(c, armorMat, 0.4, 0.14, 0.14, 0, 0.06, 0.3, { x: -0.35 }); // sloped glacis
+  addBox(c, armorMat, 0.16, 0.1, 0.24, -0.3, 0.15, -0.05); // left pauldron
+  addBox(c, armorMat, 0.16, 0.1, 0.24, 0.3, 0.15, -0.05); // right pauldron
+  addBox(c, trimMat, 0.47, 0.02, 0.02, 0, 0.13, 0.18); // armor trim glow
+
+  addCore(c, primary, 0.18);
+  const core = c.getObjectByName('core');
+  if (core) core.position.set(0, 0.02, 0.27); // reactor recessed in the glacis
+
+  // Stub wings — barely wings at all, more like side armor skirts
+  for (const side of [-1, 1]) {
+    const wing = new THREE.Group();
+    wing.name = side < 0 ? 'leftWing' : 'rightWing';
+    wing.position.set(0.3 * side, -0.08, -0.02);
+    addBox(wing, armorMat, 0.16, 0.08, 0.24, 0.1 * side, 0, 0);
+    c.add(wing);
+  }
+
+  // Dual siege cannons under the glacis
+  const cannonMat = stdMat(0x1c1a18, { roughness: 0.35, metalness: 0.95 });
+  for (const side of [-1, 1]) {
+    const cannon = new THREE.Mesh(cylinderZGeometry, cannonMat);
+    cannon.scale.set(0.05, 0.05, 0.42);
+    cannon.position.set(0.14 * side, -0.1, 0.22);
+    cannon.name = side < 0 ? 'leftBarrel' : 'rightBarrel';
+    c.add(cannon);
+  }
+
+  addEngine(c, 'left', -0.16, -0.02, -0.34, 0.12, 0.46, accent, 0x2e2a26);
+  addEngine(c, 'right', 0.16, -0.02, -0.34, 0.12, 0.46, accent, 0x2e2a26);
+
+  addRing(c, 'gyroHRing', 0.6, accent, { x: Math.PI / 2 }, 0.35);
+  addShards(c, 3, 0.055, accent);
+  return { coreScaleAbs: 0.18, flameScale: 0.85, gyroSpeed: 0.55 };
+}
+
+// FLUX — the gambler: nothing matches, dice orbit, rings wobble off-axis
+function buildFluxRig(c: THREE.Group, primary: number, accent: number): Partial<RigPersonality> {
+  addCore(c, primary, 0.28, { geom: icosahedronGeometry, scale: 0.4 });
+  const shell = c.getObjectByName('shell');
+  if (shell) shell.rotation.z = 0.3; // even the cage sits crooked
+
+  const wingMat = stdMat(0x3c2233, { roughness: 0.3, metalness: 0.85 });
+  const edgeMat = stdMat(primary, { emissive: primary, emissiveIntensity: 1.5 });
+
+  // Big swept wing on the left...
+  const leftWing = new THREE.Group();
+  leftWing.name = 'leftWing';
+  leftWing.position.set(-0.36, 0, -0.02);
+  addBox(leftWing, wingMat, 0.44, 0.035, 0.2, -0.22, 0, -0.06, { y: -Math.PI / 7 });
+  addBox(leftWing, edgeMat, 0.04, 0.045, 0.22, -0.42, 0, -0.06, { y: -Math.PI / 7 });
+  c.add(leftWing);
+
+  // ...small forward canard on the right
+  const rightWing = new THREE.Group();
+  rightWing.name = 'rightWing';
+  rightWing.position.set(0.3, 0.02, 0.08);
+  addBox(rightWing, wingMat, 0.18, 0.03, 0.11, 0.09, 0, 0.04, { y: -Math.PI / 9 });
+  addBox(rightWing, edgeMat, 0.03, 0.04, 0.12, 0.18, 0, 0.04, { y: -Math.PI / 9 });
+  c.add(rightWing);
+
+  // Mismatched engines: one heavy, one barely holding on
+  addEngine(c, 'left', -0.2, -0.06, -0.3, 0.105, 0.44, accent, 0x40283a);
+  addEngine(c, 'right', 0.24, -0.1, -0.2, 0.05, 0.26, accent, 0x40283a);
+
+  // Off-axis rings, different sizes — a gyroscope that never calibrated
+  addRing(c, 'gyroHRing', 0.66, primary, { x: Math.PI / 2 + 0.25 }, 0.6);
+  addRing(c, 'gyroVRing', 0.42, accent, { y: Math.PI / 2, x: 0.4 }, 0.8);
+
+  // Two tumbling dice (cubes spin via the shard animation)
+  addShards(c, 2, 0.065, accent, boxGeometry);
+  return {
+    coreScaleAbs: 0.28,
+    flameScale: 1.1,
+    gyroSpeed: 1.9,
+    shardRadius: 0.5,
+    shardCount: 2,
+  };
+}
+
+/** Build the full character-specific model, animation personality attached. */
+export function buildPlayerRig(characterId: string): THREE.Group {
+  const container = new THREE.Group();
+  container.name = 'mesh_container';
+
+  const character = getCharacter(characterId);
+  const primary = character.color;
+  const accent = new THREE.Color(primary).offsetHSL(0.08, 0, 0.04).getHex();
+
+  const personality: RigPersonality = {
+    flameScale: 1,
+    gyroSpeed: 1,
+    coreScaleAbs: 0.32,
+    shardRadius: 0.52,
+    shardCount: 3,
+  };
+
+  let overrides: Partial<RigPersonality>;
+  switch (characterId) {
+    case 'lash':
+      overrides = buildLashRig(container, primary, accent);
+      break;
+    case 'rail':
+      overrides = buildRailRig(container, primary, accent);
+      break;
+    case 'nova':
+      overrides = buildNovaRig(container, primary, accent);
+      break;
+    case 'byte':
+      overrides = buildByteRig(container, primary, accent);
+      break;
+    case 'ghost':
+      overrides = buildGhostRig(container, primary, accent);
+      break;
+    case 'titan':
+      overrides = buildTitanRig(container, primary, accent);
+      break;
+    case 'flux':
+      overrides = buildFluxRig(container, primary, accent);
+      break;
+    default:
+      overrides = buildCypherRig(container, primary, accent);
+      break;
+  }
+
+  Object.assign(personality, overrides);
+  container.userData.theme = personality;
+  return container;
+}
 
 /**
- * Apply a character's full visual identity to a player rig: tint every glowing
- * part from the character color, reshape the silhouette, and stash per-frame
- * animation multipliers on the mesh container for RenderSystem.
+ * Swap a player's model in place for a (possibly different) character.
+ * Disposes the old rig's per-player materials (geometries are pooled) and
+ * invalidates RenderSystem's submesh cache so it re-traverses the new rig.
  */
-export function applyCharacterTheme(root: THREE.Object3D, characterId: string) {
-  const character = getCharacter(characterId);
-  const theme: CharacterTheme = { ...DEFAULT_THEME, ...(CHARACTER_THEMES[characterId] ?? {}) };
-  const primary = new THREE.Color(character.color);
-  const accent = primary.clone().offsetHSL(theme.accentShift, 0, 0.04);
-
-  const tint = (name: string, color: THREE.Color) => {
-    const obj = root.getObjectByName(name) as THREE.Mesh | undefined;
-    if (!obj || !obj.material || Array.isArray(obj.material)) return;
-    const mat = obj.material as THREE.MeshStandardMaterial;
-    mat.color.copy(color);
-    if (mat.emissive) mat.emissive.copy(color);
-    // Invalidate RenderSystem's cached "original" color so glow states
-    // restore to the new theme, not a stale one from a previous run
-    delete obj.userData.originalColor;
-  };
-
-  tint('core', primary);
-  tint('mainVisor', primary);
-  tint('leftWingTip', primary); // tip material is shared L/R — one call tints both
-  tint('gyroHRing', primary);
-  tint('gyroVRing', accent);
-  tint('leftFireOuter', accent); // flame material shared L/R
-  tint('shieldShard_0', accent); // shard material shared across all three
-
-  // Silhouette: absolute scales over the rig's base part sizes
-  const setScale = (name: string, x: number, y = x, z = x) => {
-    root.getObjectByName(name)?.scale.set(x, y, z);
-  };
-  setScale('core', 0.32 * theme.coreScale);
-  setScale('shell', 0.38 * theme.shellScale);
-  setScale('gyroHRing', 0.62 * theme.gyroScale);
-  setScale('gyroVRing', 0.56 * theme.gyroScale);
-  const t = theme.thrusterScale;
-  setScale('leftThruster', 0.09 * t, 0.09 * t, 0.42 * t);
-  setScale('rightThruster', 0.09 * t, 0.09 * t, 0.42 * t);
-  root.getObjectByName('leftWing')?.scale.set(theme.wingSpan, 1, theme.wingSpan);
-  const rightSpan = theme.wingSpanRight ?? theme.wingSpan;
-  root.getObjectByName('rightWing')?.scale.set(rightSpan, 1, rightSpan);
-  for (let i = 0; i < 3; i++) setScale(`shieldShard_${i}`, 0.05 * theme.shardScale);
-
-  // Hull translucency (GHOST) — baseOpacity is multiplied into the blink
-  // opacity by RenderSystem instead of being overwritten by it
-  const shell = root.getObjectByName('shell') as THREE.Mesh | undefined;
-  if (shell && shell.material && !Array.isArray(shell.material)) {
-    const mat = shell.material as THREE.MeshStandardMaterial;
-    mat.transparent = true;
-    mat.opacity = theme.shellOpacity;
-    shell.userData.baseOpacity = theme.shellOpacity;
+export function applyCharacterModel(root: THREE.Object3D, characterId: string) {
+  const old = root.getObjectByName('mesh_container');
+  if (old) {
+    old.traverse((child) => {
+      if (child instanceof THREE.Mesh && child.material && !Array.isArray(child.material)) {
+        // If a hit flash is mid-swap, the current material is the shared
+        // flash material — dispose the player's own stored one instead.
+        const own = (child.userData.originalMaterial as THREE.Material) ?? child.material;
+        own.dispose();
+      }
+    });
+    root.remove(old);
   }
-
-  // Per-frame animation personality for RenderSystem
-  const container = root.getObjectByName('mesh_container');
-  if (container) {
-    container.userData.theme = {
-      flameScale: theme.flameScale,
-      gyroSpeed: theme.gyroSpeed,
-      coreScaleAbs: 0.32 * theme.coreScale,
-    };
-    // Force the blink/glow traversal to re-run with the new materials
-    delete container.userData.lastVisualKey;
-  }
+  root.add(buildPlayerRig(characterId));
+  delete root.userData.cache;
 }
 
 /**
@@ -582,9 +837,9 @@ export function initializePlayerForRun(scene: THREE.Scene) {
   player.weaponSlots = [{ weaponId: starterWeaponId, level: 1 }];
   player.passiveSlots = [];
 
-  // Apply the character's full visual identity (tint, silhouette, animation personality)
+  // Rebuild the character-specific model (tears down the previous rig cleanly)
   if (player.transform) {
-    applyCharacterTheme(player.transform, characterId);
+    applyCharacterModel(player.transform, characterId);
   }
 
   // Sync Svelte uiState
