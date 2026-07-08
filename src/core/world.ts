@@ -141,6 +141,11 @@ export type Entity = {
   stunTimer?: number;
   baseColor?: number;
 
+  // Cosmetic animation timers (Phase 1.5 body language — no gameplay effect)
+  recoilTimer?: number; // player kicks back briefly on weapon fire
+  levelUpFxTimer?: number; // celebratory flourish on level up
+  spawnAnimTimer?: number; // enemies scale-pop in when spawned
+
   // Post-hit invulnerability window (player)
   invulnTimer?: number;
   // Decaying knockback impulse, applied on top of input velocity (player)

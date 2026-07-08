@@ -148,14 +148,20 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
             triggerLevelUp();
             leveledUp = true;
           }
-          if (leveledUp) playLevelUp();
+          if (leveledUp) {
+            playLevelUp();
+            closestPlayer.levelUpFxTimer = 1.0; // celebratory rig flourish
+          }
         } else {
           // If a remote player collected it, check if they level up (Host-side only)
+          let remoteLeveled = false;
           while (closestPlayer.xp >= (closestPlayer.xpMax || 100)) {
             closestPlayer.xp -= closestPlayer.xpMax || 100;
             closestPlayer.level = (closestPlayer.level || 1) + 1;
             closestPlayer.xpMax = Math.floor((closestPlayer.xpMax || 100) * 1.2);
+            remoteLeveled = true;
           }
+          if (remoteLeveled) closestPlayer.levelUpFxTimer = 1.0; // host sees teammate flourish too
         }
       }
       despawn(xp, scene);
