@@ -126,7 +126,9 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
           container.traverse((child: THREE.Object3D) => {
             if (child instanceof THREE.Mesh && child.material && !Array.isArray(child.material)) {
               child.material.transparent = true;
-              child.material.opacity = blinkOpacity;
+              // baseOpacity lets themed parts (e.g. GHOST's translucent hull)
+              // keep their look through the blink/glow states
+              child.material.opacity = blinkOpacity * (child.userData.baseOpacity ?? 1);
 
               if (glowColor !== null) {
                 if (child.userData.originalColor === undefined) {
@@ -169,11 +171,77 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
       const container = cache['mesh_container'];
       if (container) {
         if (entity.isPlayer) {
+          // --- Animation state (Phase 1.5): theme personality + event timers ---
+          const theme = container.userData.theme ?? {};
+          const themeFlame = theme.flameScale ?? 1;
+          const coreScaleAbs = theme.coreScaleAbs ?? 0.32;
+          let gyroSpeed = theme.gyroSpeed ?? 1;
+
+          const isDead = !!(entity.health && entity.health.current <= 0);
+          // Death power-down: 0→1 over one second (tumble, sink, engines die)
+          const deathT = isDead ? Math.min((container.userData.deathT ?? 0) + dt, 1) : 0;
+          container.userData.deathT = deathT;
+
+          // Overload: the whole rig visibly overdrives
+          const ultActive = !!(entity.isLocalPlayer && uiState.overloadActive) && !isDead;
+          if (ultActive) gyroSpeed *= 2.6;
+          gyroSpeed *= 1 - deathT;
+
+          // Fire recoil kick (stamped by WeaponSystem)
+          let recoilK = 0;
+          if (entity.recoilTimer !== undefined && entity.recoilTimer > 0) {
+            entity.recoilTimer -= dt;
+            recoilK = Math.max(0, entity.recoilTimer / 0.1);
+          }
+
+          // Level-up flourish (stamped by LootSystem): one sine arc of glory
+          let lvlPulse = 0;
+          if (entity.levelUpFxTimer !== undefined && entity.levelUpFxTimer > 0) {
+            entity.levelUpFxTimer -= dt;
+            const p = 1 - Math.max(0, entity.levelUpFxTimer) / 1.0;
+            lvlPulse = Math.sin(p * Math.PI);
+            gyroSpeed += lvlPulse * 6;
+          }
+
+          // Banking: roll into turns based on yaw rate (cosmetic, container-local)
+          const yaw = entity.transform.rotation.y;
+          let dYaw = yaw - (container.userData.lastYaw ?? yaw);
+          if (dYaw > Math.PI) dYaw -= Math.PI * 2;
+          else if (dYaw < -Math.PI) dYaw += Math.PI * 2;
+          container.userData.lastYaw = yaw;
+          const targetRoll = dt > 0 ? THREE.MathUtils.clamp((-dYaw / dt) * 0.055, -0.32, 0.32) : 0;
+          const roll = THREE.MathUtils.lerp(
+            container.userData.roll ?? 0,
+            targetRoll * (1 - deathT),
+            Math.min(1, dt * 7),
+          );
+          container.userData.roll = roll;
+
+          // Hit flinch: brief scale punch while the hit flash is live
+          const flinch =
+            entity.hitFlashTimer && entity.hitFlashTimer > 0
+              ? Math.min(1, entity.hitFlashTimer / 0.15)
+              : 0;
+
+          // Compose container-level body language
+          container.scale.setScalar(1 + flinch * 0.14 + lvlPulse * 0.07);
+          container.rotation.x = -0.22 * recoilK;
+          container.rotation.z = roll + deathT * 0.55;
+          container.position.z = -0.05 * recoilK;
+          container.position.y -= deathT * 0.3; // sink below the hover set earlier
+
+          // Core: idle breathing, hard pulse during overload, swell on level-up
+          const core = cache['core'];
+          if (core) {
+            const pulse = ultActive ? 0.12 * Math.sin(time * 12) : 0.04 * Math.sin(time * 3);
+            core.scale.setScalar(coreScaleAbs * (1 + pulse + lvlPulse * 0.18));
+          }
+
           // Rotate horizontal and vertical gyro stabilizer rings
           const gyroHRing = cache['gyroHRing'];
           const gyroVRing = cache['gyroVRing'];
-          if (gyroHRing) gyroHRing.rotation.y += dt * 2.5;
-          if (gyroVRing) gyroVRing.rotation.x += dt * 3.5;
+          if (gyroHRing) gyroHRing.rotation.y += dt * 2.5 * gyroSpeed;
+          if (gyroVRing) gyroVRing.rotation.x += dt * 3.5 * gyroSpeed;
 
           // Bob wings gently, and tilt back depending on velocity speed
           const leftWing = cache['leftWing'];
@@ -200,9 +268,11 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
 
             const flicker = 0.85 + Math.sin(time * 25.0) * 0.15;
             const speedScale = 1.0 + Math.min(speed * 0.15, 0.5);
-            const scaleX = flicker;
-            const scaleY = flicker;
-            const scaleZ = flicker * speedScale;
+            // Theme personality × overload flare × death fade
+            const flameMult = themeFlame * (ultActive ? 1.5 : 1.0) * (1 - deathT);
+            const scaleX = flicker * flameMult;
+            const scaleY = flicker * flameMult;
+            const scaleZ = flicker * speedScale * flameMult;
 
             if (leftInner) leftInner.scale.set(scaleX, scaleY, scaleZ);
             if (leftOuter) leftOuter.scale.set(scaleX, scaleY, scaleZ);
@@ -210,23 +280,24 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
             if (rightOuter) rightOuter.scale.set(scaleX, scaleY, scaleZ);
           }
 
-          // Alternate bobbing for weapon barrels
+          // Alternate bobbing for weapon barrels + recoil slide
           const leftBarrel = cache['leftBarrel'];
           const rightBarrel = cache['rightBarrel'];
           if (leftBarrel && rightBarrel) {
-            leftBarrel.position.z = 0.08 + Math.sin(time * 12) * 0.02;
-            rightBarrel.position.z = 0.08 - Math.sin(time * 12) * 0.02;
+            const slide = 0.06 * recoilK;
+            leftBarrel.position.z = 0.08 + Math.sin(time * 12) * 0.02 - slide;
+            rightBarrel.position.z = 0.08 - Math.sin(time * 12) * 0.02 - slide;
           }
 
-          // Orbit shield shards in a protective ring
+          // Orbit shield shards in a protective ring (flares out on level-up)
           const shieldGroup = cache['shieldGroup'];
           if (shieldGroup) {
             shieldGroup.rotation.y = time * 2.0;
+            const radius = 0.52 * (1 + lvlPulse * 1.1);
             for (let i = 0; i < 3; i++) {
               const shard = cache[`shieldShard_${i}`];
               if (shard) {
                 const angle = (i / 3) * Math.PI * 2;
-                const radius = 0.52;
                 shard.position.set(
                   Math.cos(angle) * radius,
                   Math.sin(time * 5 + i) * 0.05,
@@ -364,17 +435,83 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
         }
       }
 
-      // Compose instance matrix
+      // Compose instance matrix — all enemy body language happens here so the
+      // rendering stays fully instanced (extra sin() calls, zero extra draws).
       const size = entity.size ?? entity.transform!.scale.x ?? 1.0;
+      // Golden-angle phase per entity breaks the hover lockstep that made the
+      // whole horde bob as one rigid mass
+      const phase = (entity.id ?? 0) * 2.399963;
       _tempPos.copy(entity.position);
 
-      // Gentle floating hover
-      const hoverFreq = 3;
-      const hoverAmp = 0.05;
-      _tempPos.y = size * 0.35 + Math.sin(time * hoverFreq) * hoverAmp;
+      let scaleMult = 1.0;
+      let rotX = 0;
+      let rotZ = 0;
+      let yawExtra = 0;
+      let hoverY = Math.sin(time * 3 + phase) * 0.05;
 
-      _tempScale.setScalar(size);
-      _tempRot.set(0, entity.transform!.rotation.y, 0);
+      // Per-type motion signature
+      switch (type) {
+        case EnemyType.GLITCH: {
+          // Corrupted data: twitchy micro-jitter with rotation snaps
+          const snap = Math.sin(time * 17 + phase * 7);
+          if (snap > 0.86) {
+            _tempPos.x += Math.sin(time * 53 + phase) * 0.06;
+            yawExtra = snap > 0.93 ? 0.4 : -0.4;
+          }
+          break;
+        }
+        case EnemyType.VIRUS:
+          // Organic pulsing ball, slowly tumbling
+          scaleMult = 1 + 0.09 * Math.sin(time * 4.5 + phase);
+          yawExtra = time * 0.9 + phase;
+          break;
+        case EnemyType.FIREWALL:
+          // Heavy gate: stomping march instead of floating
+          hoverY = Math.abs(Math.sin(time * 2.4 + phase)) * 0.12 - 0.03;
+          rotZ = Math.sin(time * 2.4 + phase) * 0.045;
+          break;
+        case EnemyType.ENFORCER:
+          // Disciplined patrol sway
+          rotZ = Math.sin(time * 1.6 + phase) * 0.06;
+          break;
+        case EnemyType.COLOSSUS:
+          // Slow massive heave with a breathing hull
+          hoverY = Math.sin(time * 1.3 + phase) * 0.09;
+          scaleMult = 1 + 0.04 * Math.sin(time * 1.3 + phase);
+          break;
+        case EnemyType.WARDEN:
+          // Unstable phase-shifter: fast nervous wobble
+          rotZ = Math.sin(time * 7 + phase) * 0.13;
+          rotX = Math.cos(time * 5.3 + phase) * 0.08;
+          break;
+        case EnemyType.HYDRA:
+          // Multi-node serpent undulation
+          rotX = Math.sin(time * 2.2 + phase) * 0.09;
+          hoverY = Math.sin(time * 2.2 + phase * 2) * 0.08;
+          break;
+        case EnemyType.OVERSEER:
+          // Menacing slow breathing and drift rotation
+          scaleMult = 1 + 0.05 * Math.sin(time * 1.4 + phase);
+          yawExtra = time * 0.25;
+          break;
+      }
+
+      // Spawn-in pop: ease-out-back from 0 over 0.35s (stamped in spawnEnemy)
+      if (entity.spawnAnimTimer !== undefined && entity.spawnAnimTimer > 0) {
+        entity.spawnAnimTimer -= dt;
+        const p = 1 - Math.max(0, entity.spawnAnimTimer) / 0.35;
+        const q = p - 1;
+        scaleMult *= 1 + 2.7 * q * q * q + 1.7 * q * q;
+      }
+
+      // Hit reaction: brief scale punch alongside the red instance-color flash
+      if (entity.hitFlashTimer && entity.hitFlashTimer > 0) {
+        scaleMult *= 1 + 0.12 * Math.min(1, entity.hitFlashTimer / 0.15);
+      }
+
+      _tempPos.y = size * 0.35 + hoverY;
+      _tempScale.setScalar(size * scaleMult);
+      _tempRot.set(rotX, entity.transform!.rotation.y + yawExtra, rotZ);
       _tempQuat.setFromEuler(_tempRot);
       _tempMat.compose(_tempPos, _tempQuat, _tempScale);
 

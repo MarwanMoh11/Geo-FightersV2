@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { world } from './world';
 import { uiState, showToast, announce } from './UIState.svelte';
 import { setGameState } from './GameState';
-import { spawnPlayer, spawnEnemy, spawnXP, spawnCredit } from './factories';
+import { spawnPlayer, spawnEnemy, spawnXP, spawnCredit, applyCharacterTheme } from './factories';
 import { spawnChest, openChestLocally } from '../systems/ChestSystem';
 import { spawnClientBoss, removeClientBoss } from '../systems/FinaleBoss';
 import { removeBody, createDynamicBody, isRapierInitialized } from './RapierWorld';
@@ -16,7 +16,6 @@ import { addTrauma } from '../systems/CameraSystem';
 import { spawnDamageNumber } from '../systems/DamageNumberSystem';
 import { haptics } from './haptics';
 import { triggerLevelUp } from '../systems/UpgradeSystem';
-import { getCharacter } from './CharacterRegistry';
 import { WEAPONS, getWeaponStatsAtLevel } from './WeaponRegistry';
 import { submitRunToLeaderboard } from './leaderboard';
 import { initRtc, closeRtc, closeRtcPeer, rtcSendStateTo } from './rtc';
@@ -208,15 +207,11 @@ function removeRemotePlayer(connId: string) {
   uiState.remotePlayersCount = remotePlayers.size;
 }
 
-/** Tint a player avatar's core to their chosen character color. */
+/** Apply a player's full character visual identity (tint + silhouette). */
 function applyCharacterTint(entity: any, characterId: string) {
   entity.character = characterId;
-  const character = getCharacter(characterId);
-  const core = entity.transform?.getObjectByName('core') as THREE.Mesh | undefined;
-  if (core && core.material) {
-    const mat = core.material as THREE.MeshStandardMaterial;
-    mat.color.setHex(character.color);
-    if (mat.emissive) mat.emissive.setHex(character.color);
+  if (entity.transform) {
+    applyCharacterTheme(entity.transform, characterId);
   }
 }
 
