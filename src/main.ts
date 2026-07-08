@@ -8,7 +8,7 @@ import {
   NetSmoothingSystem,
 } from './core/network';
 
-import { spawnPlayer, initializePlayerForRun } from './core/factories';
+import { spawnPlayer, initializePlayerForRun, applyCharacterModel } from './core/factories';
 import { getCtx, startMusic, muteForBackground, unmuteFromBackground } from './core/audio';
 import { isPlaying, onStateChange, setGameState } from './core/GameState';
 import { uiState } from './core/UIState.svelte.ts';
@@ -106,6 +106,9 @@ preloadTextures(updateLoadingProgress).then(async () => {
   if (DEBUG) {
     (window as unknown as { uiState: typeof uiState }).uiState = uiState;
     (window as unknown as { world: typeof world }).world = world;
+    // Swap the local player's model live (character rig inspection)
+    (window as unknown as { applyCharacterModel: typeof applyCharacterModel }).applyCharacterModel =
+      applyCharacterModel;
   }
 
   // Renderer backend indicator (debug builds only)

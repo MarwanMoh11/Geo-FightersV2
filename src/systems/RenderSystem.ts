@@ -237,30 +237,34 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
             core.scale.setScalar(coreScaleAbs * (1 + pulse + lvlPulse * 0.18));
           }
 
-          // Rotate horizontal and vertical gyro stabilizer rings
+          // Rotate the gyro stabilizer rings (rigs carry 0–3 of them)
           const gyroHRing = cache['gyroHRing'];
           const gyroVRing = cache['gyroVRing'];
+          const gyroTRing = cache['gyroTRing'];
           if (gyroHRing) gyroHRing.rotation.y += dt * 2.5 * gyroSpeed;
           if (gyroVRing) gyroVRing.rotation.x += dt * 3.5 * gyroSpeed;
+          if (gyroTRing) gyroTRing.rotation.y += dt * 3.0 * gyroSpeed;
 
-          // Bob wings gently, and tilt back depending on velocity speed
+          // Bob wings gently, and sweep back with speed. Each rig bakes its
+          // own resting yaw into userData.baseYaw (0 for panels/pylons/fins).
           const leftWing = cache['leftWing'];
           const rightWing = cache['rightWing'];
           const speed = entity.velocity ? entity.velocity.length() : 0;
           const maxTilt = Math.min(speed * 0.08, 0.4);
           if (leftWing) {
             leftWing.rotation.z = Math.sin(time * 8) * 0.05;
-            leftWing.rotation.y = -Math.PI / 8 - maxTilt;
+            leftWing.rotation.y = (leftWing.userData.baseYaw ?? 0) - maxTilt;
           }
           if (rightWing) {
             rightWing.rotation.z = -Math.sin(time * 8) * 0.05;
-            rightWing.rotation.y = Math.PI / 8 + maxTilt;
+            rightWing.rotation.y = (rightWing.userData.baseYaw ?? 0) + maxTilt;
           }
 
-          // Flicker and pulse engine thruster flame cones
+          // Flicker and pulse engine thruster flame cones (rigs may have a
+          // single engine — each side is handled independently)
           const leftThruster = cache['leftThruster'];
           const rightThruster = cache['rightThruster'];
-          if (leftThruster && rightThruster) {
+          if (leftThruster || rightThruster) {
             const leftInner = cache['leftFireInner'];
             const leftOuter = cache['leftFireOuter'];
             const rightInner = cache['rightFireInner'];
@@ -280,24 +284,32 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
             if (rightOuter) rightOuter.scale.set(scaleX, scaleY, scaleZ);
           }
 
-          // Alternate bobbing for weapon barrels + recoil slide
+          // Alternate bobbing for weapon barrels + recoil slide, around each
+          // rig's own resting barrel position
           const leftBarrel = cache['leftBarrel'];
           const rightBarrel = cache['rightBarrel'];
           if (leftBarrel && rightBarrel) {
+            if (leftBarrel.userData.baseZ === undefined) {
+              leftBarrel.userData.baseZ = leftBarrel.position.z;
+              rightBarrel.userData.baseZ = rightBarrel.position.z;
+            }
             const slide = 0.06 * recoilK;
-            leftBarrel.position.z = 0.08 + Math.sin(time * 12) * 0.02 - slide;
-            rightBarrel.position.z = 0.08 - Math.sin(time * 12) * 0.02 - slide;
+            leftBarrel.position.z = leftBarrel.userData.baseZ + Math.sin(time * 12) * 0.02 - slide;
+            rightBarrel.position.z =
+              rightBarrel.userData.baseZ - Math.sin(time * 12) * 0.02 - slide;
           }
 
-          // Orbit shield shards in a protective ring (flares out on level-up)
+          // Orbit shield shards/drones/dice (count + radius are per-rig;
+          // flares out on level-up)
           const shieldGroup = cache['shieldGroup'];
           if (shieldGroup) {
             shieldGroup.rotation.y = time * 2.0;
-            const radius = 0.52 * (1 + lvlPulse * 1.1);
-            for (let i = 0; i < 3; i++) {
+            const shardCount = theme.shardCount ?? 3;
+            const radius = (theme.shardRadius ?? 0.52) * (1 + lvlPulse * 1.1);
+            for (let i = 0; i < shardCount; i++) {
               const shard = cache[`shieldShard_${i}`];
               if (shard) {
-                const angle = (i / 3) * Math.PI * 2;
+                const angle = (i / shardCount) * Math.PI * 2;
                 shard.position.set(
                   Math.cos(angle) * radius,
                   Math.sin(time * 5 + i) * 0.05,
