@@ -79,6 +79,10 @@ export function WeaponSystem(dt: number, scene: THREE.Scene) {
       if (uiState.insideOverclockZone && player.isLocalPlayer) {
         tickDt *= 2.0;
       }
+      // Map 1 Pulse Shrine: weapons tick 1.5x for the buff window
+      if (uiState.shrineFireTimer > 0 && player.isLocalPlayer) {
+        tickDt *= 1.5;
+      }
       if (entity.weapon.cooldownTimer > 0) entity.weapon.cooldownTimer -= tickDt;
 
       // Orbital and Global weapons auto-fire, other weapons require aim

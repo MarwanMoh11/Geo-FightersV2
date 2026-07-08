@@ -7,8 +7,9 @@ import { getDailyConfig } from './DailyManager';
 import { WEAPONS, getWeaponStatsAtLevel } from './WeaponRegistry';
 import { getTierForValue, bankXP, MAX_ACTIVE_XP } from './XPManager';
 import { createDynamicBody, isRapierInitialized } from './RapierWorld';
-import { uiState } from './UIState.svelte';
+import { uiState, announce } from './UIState.svelte';
 import { partyHpMultiplier } from './difficulty';
+import { getCurrentLevel as getLevelConfig } from './LevelData';
 import { getQualityProfile } from './quality';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 
@@ -837,6 +838,9 @@ export function initializePlayerForRun(scene: THREE.Scene) {
 
   player.weaponSlots = [{ weaponId: starterWeaponId, level: 1 }];
   player.passiveSlots = [];
+
+  // Map splash: tell the player where they just dropped in
+  announce(`ENTERING: ${getLevelConfig().name}`);
 
   // Rebuild the character-specific model (tears down the previous rig cleanly)
   if (player.transform) {

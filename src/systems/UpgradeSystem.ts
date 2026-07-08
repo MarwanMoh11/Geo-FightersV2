@@ -168,6 +168,7 @@ function generateUpgradePool(player: any): UpgradeOption[] {
   // 4. New passives (if slots available)
   if (passiveSlots.length < MAX_PASSIVE_SLOTS) {
     for (const def of getAllPassives()) {
+      if (def.exclusive) continue; // map-exclusive items are found in the world
       if (!ownedPassiveIds.has(def.id)) {
         pool.push({
           type: 'passive_new',

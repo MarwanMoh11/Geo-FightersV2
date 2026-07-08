@@ -585,6 +585,8 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
         solidMesh.setMatrixAt(count, _tempMat);
         if (entity.hitFlashTimer && entity.hitFlashTimer > 0) {
           _tempColor.setHex(0xff4444);
+        } else if (entity.isVault) {
+          _tempColor.setHex(0xffcc33); // data vault reads as gold loot, not threat
         } else {
           _tempColor.setHex(0xffffff);
         }
@@ -609,7 +611,7 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
       }
 
       // Elite/miniboss ground aura: flat pulsing ring at the enemy's feet
-      const auraColor = ELITE_AURA_COLORS[type];
+      const auraColor = entity.isVault ? 0xffcc33 : ELITE_AURA_COLORS[type];
       if (auraColor !== undefined && eliteAuraInstances && auraCount < MAX_ELITE_AURAS) {
         _tempPos.set(entity.position.x, 0.05, entity.position.z);
         const auraScale = size * (0.62 + 0.05 * Math.sin(time * 2.2 + phase));
