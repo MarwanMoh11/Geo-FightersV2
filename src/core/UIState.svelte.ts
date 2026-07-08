@@ -131,6 +131,10 @@ export const uiState = $state({
 
   // Anomalies
   insideOverclockZone: false,
+  // Map 1 shrine buffs (seconds remaining; ticked by ShrineSystem)
+  shrineFireTimer: 0,
+  shrineArmorTimer: 0,
+  shrineSpeedTimer: 0,
   insideDefragZone: false,
   insideLeakZone: false,
 

@@ -17,10 +17,24 @@ export interface PassiveDef {
   statBonuses: Partial<Record<keyof PlayerStats, number>>;
   maxLevel: number;
   evolvesWeapon?: string;
+  /** Map-exclusive items never appear in the level-up pool — they are found in the world. */
+  exclusive?: boolean;
 }
 
 // --- PASSIVE REGISTRY ---
 export const PASSIVES: Record<string, PassiveDef> = {
+  // ========================================
+  // MAP-EXCLUSIVE ITEMS (found in the world, never offered on level-up)
+  // ========================================
+  scavenger_chip: {
+    id: 'scavenger_chip',
+    name: 'SCAVENGER CHIP',
+    description: 'Neon Slums exclusive: +25% credits, credit pickups restore 1 HP',
+    statBonuses: { magnet: 0.15 },
+    maxLevel: 1,
+    exclusive: true,
+  },
+
   // ========================================
   // OFFENSIVE PASSIVES
   // ========================================
