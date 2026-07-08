@@ -22,13 +22,13 @@ Effort key: **S** ≤ half a day · **M** 1–2 days · **L** ≥ 3 days
 
 > **Status (2026-07-06): COMPLETE except 0.5's durable-storage half.**
 
-| # | Bug | Where | Effort | Status |
-|---|-----|-------|--------|--------|
-| 0.1 | **Music scheduler interval leak** — the lookahead `setInterval` was immortal (kept waking the CPU forever after music stopped) and `startMusic` couldn't re-arm. Handle now stored + cleared in `stopMusic`. | `src/core/audio.ts` | S | ✅ `e1fc310` |
-| 0.2 | **5 of 8 characters had no space-bar ability.** Shipped: NOVA Singularity (gravity well + core grinder), BYTE Salvage Vortex (map-wide loot vacuum), GHOST Phase Shift (4s untouchable sprint), TITAN Seismic Slam (quake + knockback + armor plate), FLUX Chaos Surge (nuke/frenzy/heal/gold roulette). Per-char durations, announce callouts, damage host/solo-gated for co-op. Bonus: fixed latent bug where never-hit enemies were immune to Cypher's nuke (blast query required `stunTimer`). | `src/systems/OverloadSystem.ts` | L | ✅ `e1fc310` |
-| 0.3 | **"Play again" reloaded the page.** New `src/core/runReset.ts` sweeps all run entities + physics bodies, resets every stateful module (clock, spawner, anomalies, flow, upgrade queue, boss, leaderboard once-guard), and lands on MENU in one frame; MP leaves the room cleanly. Wired into GameOver + Pause modals. Verified: second run on the same page is fully fresh. | `src/core/runReset.ts` | M | ✅ `1203f15` |
-| 0.4 | **Repo hygiene:** Firefox captures gitignored; repo-wide prettier pass → 0 lint errors (105 `any` warnings remain — tighten gradually). | root, various | S | ✅ |
-| 0.5 | **Leaderboard durability + abuse:** POST clamps input but storage is ephemeral on HF free tier and there's no per-IP rate limit / profanity filter. Needs a durable store (Supabase/Neon/Cloudflare KV — owner to provision) + server-side limiter. | `server.js` | M | ⏸️ pending service choice |
+| #   | Bug                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Where                           | Effort | Status                    |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- | ------ | ------------------------- |
+| 0.1 | **Music scheduler interval leak** — the lookahead `setInterval` was immortal (kept waking the CPU forever after music stopped) and `startMusic` couldn't re-arm. Handle now stored + cleared in `stopMusic`.                                                                                                                                                                                                                                                                                       | `src/core/audio.ts`             | S      | ✅ `e1fc310`              |
+| 0.2 | **5 of 8 characters had no space-bar ability.** Shipped: NOVA Singularity (gravity well + core grinder), BYTE Salvage Vortex (map-wide loot vacuum), GHOST Phase Shift (4s untouchable sprint), TITAN Seismic Slam (quake + knockback + armor plate), FLUX Chaos Surge (nuke/frenzy/heal/gold roulette). Per-char durations, announce callouts, damage host/solo-gated for co-op. Bonus: fixed latent bug where never-hit enemies were immune to Cypher's nuke (blast query required `stunTimer`). | `src/systems/OverloadSystem.ts` | L      | ✅ `e1fc310`              |
+| 0.3 | **"Play again" reloaded the page.** New `src/core/runReset.ts` sweeps all run entities + physics bodies, resets every stateful module (clock, spawner, anomalies, flow, upgrade queue, boss, leaderboard once-guard), and lands on MENU in one frame; MP leaves the room cleanly. Wired into GameOver + Pause modals. Verified: second run on the same page is fully fresh.                                                                                                                        | `src/core/runReset.ts`          | M      | ✅ `1203f15`              |
+| 0.4 | **Repo hygiene:** Firefox captures gitignored; repo-wide prettier pass → 0 lint errors (105 `any` warnings remain — tighten gradually).                                                                                                                                                                                                                                                                                                                                                            | root, various                   | S      | ✅                        |
+| 0.5 | **Leaderboard durability + abuse:** POST clamps input but storage is ephemeral on HF free tier and there's no per-IP rate limit / profanity filter. Needs a durable store (Supabase/Neon/Cloudflare KV — owner to provision) + server-side limiter.                                                                                                                                                                                                                                                | `server.js`                     | M      | ⏸️ pending service choice |
 
 ## Phase 1 — Battery & performance (mobile-critical)
 
@@ -39,14 +39,47 @@ The engine already has: quality tiers (auto/low/med/high), adaptive dynamic
 resolution, instanced enemies/particles/loot, spatial-hash separation, throttled
 minimap/HUD. Remaining wins, in impact order:
 
-| # | Item | Detail | Effort | Status |
-|---|------|--------|--------|--------|
-| 1.1 | **Frame-rate cap** | Frame limiter in the game loop skips frames before any work happens (clock keeps accumulating → simulation stays real-time). Settings → Display → **FPS LIMIT 30/60/MAX**, default 60. Dynamic resolution is skipped when intentionally capped ≤30 so the cap isn't misread as GPU overload. Verified: 30→31fps, 60→59fps, MAX→164fps. | M | ✅ |
-| 1.2 | **Menu/pause power mode** | Anything outside PLAYING is force-capped at 30 fps regardless of the setting. Verified: menu reads 30 (was 160). | S | ✅ |
-| 1.3 | **Websocket-first transport** | `transports: ['websocket','polling']` — skips the long-polling handshake, keeps polling as a strict-proxy fallback. | S | ✅ |
-| 1.4 | **`powerPreference` hint** | All three renderer constructors: `'low-power'` on mobile, `'high-performance'` on desktop. | S | ✅ |
-| 1.5 | **Audio idle suspend** | Backgrounding now suspends the AudioContext (not just gain=0) — releases the OS audio hardware thread; resume on focus restores it. | S | ✅ |
-| 1.6 | **Asset budget check** | rapier wasm chunk is 2 MB gz — acceptable, but lazy-load it after first paint on portals (loading bar already staged). | M | deferred |
+| #   | Item                          | Detail                                                                                                                                                                                                                                                                                                                                 | Effort | Status   |
+| --- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | -------- |
+| 1.1 | **Frame-rate cap**            | Frame limiter in the game loop skips frames before any work happens (clock keeps accumulating → simulation stays real-time). Settings → Display → **FPS LIMIT 30/60/MAX**, default 60. Dynamic resolution is skipped when intentionally capped ≤30 so the cap isn't misread as GPU overload. Verified: 30→31fps, 60→59fps, MAX→164fps. | M      | ✅       |
+| 1.2 | **Menu/pause power mode**     | Anything outside PLAYING is force-capped at 30 fps regardless of the setting. Verified: menu reads 30 (was 160).                                                                                                                                                                                                                       | S      | ✅       |
+| 1.3 | **Websocket-first transport** | `transports: ['websocket','polling']` — skips the long-polling handshake, keeps polling as a strict-proxy fallback.                                                                                                                                                                                                                    | S      | ✅       |
+| 1.4 | **`powerPreference` hint**    | All three renderer constructors: `'low-power'` on mobile, `'high-performance'` on desktop.                                                                                                                                                                                                                                             | S      | ✅       |
+| 1.5 | **Audio idle suspend**        | Backgrounding now suspends the AudioContext (not just gain=0) — releases the OS audio hardware thread; resume on focus restores it.                                                                                                                                                                                                    | S      | ✅       |
+| 1.6 | **Asset budget check**        | rapier wasm chunk is 2 MB gz — acceptable, but lazy-load it after first paint on portals (loading bar already staged).                                                                                                                                                                                                                 | M      | deferred |
+
+## Phase 1.5 — Character & enemy identity, full animation, menu personality
+
+The biggest single phase of the plan. Today the game is mechanically deep but
+visually anonymous: all 8 characters share one identical cyan drone (only the
+core sphere is tinted), every enemy of every type hovers in perfect lockstep
+with zero body language, and the menus are clean but sterile. This phase gives
+the game a _face_ — the thing store screenshots, portal thumbnails, and
+word-of-mouth actually sell — without adding a single asset download or
+regressing the Phase 1 battery work.
+
+> **Status (2026-07-08): 1.5.1–1.5.5 SHIPPED.** Verified live: 61 fps at the
+> 60-cap with ~150 animated enemies on screen, zero console errors, typecheck
+> and build clean. Enemies remain fully instanced.
+
+**Hard performance rules for everything below:**
+
+- Enemies stay 100% instanced — animation happens inside the per-instance
+  matrix composition (extra `sin()` calls, zero extra draw calls or materials).
+- No per-frame allocations; all animation driven by accumulated `dt` so the
+  frame limiter and menu 30 fps cap keep working.
+- Menu personality is CSS-only (GPU-composited transforms/opacity), honors
+  `prefers-reduced-motion`.
+- Visual richness scales through the existing quality tiers where it costs
+  anything.
+
+| #     | Item                              | Detail                                                                                                                                                                                                                                                                                                                                                                               | Effort | Status |
+| ----- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ | ------ |
+| 1.5.1 | **Per-character visual identity** | Character theme table in `factories.ts`: full-rig tinting (core, wing tips, visor, gyro rings, thruster flames, shield shards) from `character.color` + per-character silhouette (wing span, shell scale/shape, shard count, thruster size) so CYPHER/TITAN/GHOST/etc. read differently at a glance. Applied to local player _and_ remote teammates (`applyCharacterTint` upgraded). | L      | ✅     |
+| 1.5.2 | **Full player animation set**     | State-driven body language in `RenderSystem`: fire recoil kick + barrel flash, hit flinch scale-punch, death power-down (tumble, sink, flames die), level-up flourish, ult overdrive mode (gyros spin up, flames lengthen, core pulses), velocity banking roll. Triggers stamped by `WeaponSystem`/`LootSystem` as cheap timers on the entity.                                       | L      | ✅     |
+| 1.5.3 | **Instanced enemy animation**     | Per-instance phase offset (from entity id) breaks the hover lockstep; per-type motion signatures — glitch jitters, virus pulses & spins, firewall stomps, enforcer sways, colossus heaves, warden wobbles fast, hydra undulates, overseer breathes; spawn-in scale pop; hit scale-punch. All inside the existing matrix compose loop.                                                | L      | ✅     |
+| 1.5.4 | **Menu & UI personality**         | Character-select cards themed per character color (glow, border, icon halo), wordmark shimmer, ambient drifting backdrop, hover/press micro-interactions, lobby roster tinted by pick. CSS-only.                                                                                                                                                                                     | M      | ✅     |
+| 1.5.5 | **Performance verification**      | fps unchanged at 60-cap and menu-30 with a full horde on screen; typecheck + build clean.                                                                                                                                                                                                                                                                                            | S      | ✅     |
 
 ## Phase 2 — Multiplayer resilience (make co-op shippable-quality)
 
@@ -56,44 +89,48 @@ per-client hit feedback, client combat FX (impacts, knockback, death FX,
 sounds), boss-bullet sync, WebRTC P2P state sync (RELAY fallback + HUD chip),
 snapshot spawn amortization. Remaining:
 
-| # | Item | Detail | Effort |
-|---|------|--------|--------|
-| 2.1 | **Host-drop handling** | Today: host disconnect = run dies instantly. Minimum: 10s grace + "HOST LOST — run ended" summary screen with the scoreboard instead of a hard menu bounce. Full host *migration* (authority transfer) is a stretch goal — only attempt after launch. | M (grace) / XL (migration) |
-| 2.2 | **Client reconnection grace** | A 1-second blip currently removes the player. Server keeps the slot 15s; client auto-rejoins with its connId and resumes. | M |
-| 2.3 | **TURN server** | ~10–15% of NAT pairs can't do P2P and stay on the relay. Cloudflare Calls TURN (free tier) or Metered.ca (free 50 GB) → near-100% direct connections. | S |
-| 2.4 | **Always-on signaling for launch** | HF free tier sleeps (first join = ~50 s cold start — feels broken). At launch move `server.js` to an always-on $5 tier (Railway/Fly/Render paid) or keep HF but add a menu "waking server…" state. | S |
-| 2.5 | **Same-party rematch** | After game over, return the whole party to the lobby (pairs with 0.3). | Included in 0.3 |
-| 2.6 | **Remote ult visuals** | Teammates currently don't see your overload effect. Broadcast `ult-fired {char}` and play the visual on all screens. | S/M |
-| 2.7 | **Enemy damage numbers on clients** | Client shows no numbers over enemies it shoots (it doesn't know the rolls). Either include per-hit damage in a light event batch, or accept as a known cosmetic delta. | M / skip |
+| #   | Item                                | Detail                                                                                                                                                                                                                                                | Effort                     |
+| --- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| 2.1 | **Host-drop handling**              | Today: host disconnect = run dies instantly. Minimum: 10s grace + "HOST LOST — run ended" summary screen with the scoreboard instead of a hard menu bounce. Full host _migration_ (authority transfer) is a stretch goal — only attempt after launch. | M (grace) / XL (migration) |
+| 2.2 | **Client reconnection grace**       | A 1-second blip currently removes the player. Server keeps the slot 15s; client auto-rejoins with its connId and resumes.                                                                                                                             | M                          |
+| 2.3 | **TURN server**                     | ~10–15% of NAT pairs can't do P2P and stay on the relay. Cloudflare Calls TURN (free tier) or Metered.ca (free 50 GB) → near-100% direct connections.                                                                                                 | S                          |
+| 2.4 | **Always-on signaling for launch**  | HF free tier sleeps (first join = ~50 s cold start — feels broken). At launch move `server.js` to an always-on $5 tier (Railway/Fly/Render paid) or keep HF but add a menu "waking server…" state.                                                    | S                          |
+| 2.5 | **Same-party rematch**              | After game over, return the whole party to the lobby (pairs with 0.3).                                                                                                                                                                                | Included in 0.3            |
+| 2.6 | **Remote ult visuals**              | Teammates currently don't see your overload effect. Broadcast `ult-fired {char}` and play the visual on all screens.                                                                                                                                  | S/M                        |
+| 2.7 | **Enemy damage numbers on clients** | Client shows no numbers over enemies it shoots (it doesn't know the rolls). Either include per-hit damage in a light event batch, or accept as a known cosmetic delta.                                                                                | M / skip                   |
 
 ## Phase 3 — Content & retention (what makes them come back)
 
-| # | Item | Detail | Effort |
-|---|------|--------|--------|
-| 3.1 | Missing 5 ultimates (0.2) — biggest character-fantasy gap. | | (counted above) |
-| 3.2 | **Stage 2** | One arena today. The timeline/level registries were built for more — a second map (new palette, obstacle set, spawn timeline, new elite) doubles perceived content for ~L effort. | L |
-| 3.3 | **Meta depth** | Shop unlock previews, starting-loadout pick (weapon + passive), 2–3 more achievements-gated characters/weapons. Hooks all exist. | M |
-| 3.4 | **Resume-run** | Persist solo run state every 30 s; offer "Continue?" after crash/refresh. Mobile OSes kill background tabs constantly — this is near-mandatory for stores. | M |
-| 3.5 | **Accessibility** | Colorblind-safe enemy/rarity palettes, text scale, reduced-flash mode (damage vignette toggle). Store reviewers look for this. | M |
-| 3.6 | **Localization** | Strings are hardcoded English. Extract to a dictionary; machine-translate top 10 languages (portals serve global traffic; CrazyGames is majority non-English). | L |
-| 3.7 | **Cloud save** | Credits/unlocks live in localStorage — wiped on reinstall. Piggyback the leaderboard server with a save-blob endpoint keyed by a generated player ID (later: Play Games / Game Center sign-in). | M |
+| #   | Item                                                       | Detail                                                                                                                                                                                          | Effort          |
+| --- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| 3.1 | Missing 5 ultimates (0.2) — biggest character-fantasy gap. |                                                                                                                                                                                                 | (counted above) |
+| 3.2 | **Stage 2**                                                | One arena today. The timeline/level registries were built for more — a second map (new palette, obstacle set, spawn timeline, new elite) doubles perceived content for ~L effort.               | L               |
+| 3.3 | **Meta depth**                                             | Shop unlock previews, starting-loadout pick (weapon + passive), 2–3 more achievements-gated characters/weapons. Hooks all exist.                                                                | M               |
+| 3.4 | **Resume-run**                                             | Persist solo run state every 30 s; offer "Continue?" after crash/refresh. Mobile OSes kill background tabs constantly — this is near-mandatory for stores.                                      | M               |
+| 3.5 | **Accessibility**                                          | Colorblind-safe enemy/rarity palettes, text scale, reduced-flash mode (damage vignette toggle). Store reviewers look for this.                                                                  | M               |
+| 3.6 | **Localization**                                           | Strings are hardcoded English. Extract to a dictionary; machine-translate top 10 languages (portals serve global traffic; CrazyGames is majority non-English).                                  | L               |
+| 3.7 | **Cloud save**                                             | Credits/unlocks live in localStorage — wiped on reinstall. Piggyback the leaderboard server with a save-blob endpoint keyed by a generated player ID (later: Play Games / Game Center sign-in). | M               |
 
 ## Phase 4 — Platform packaging
 
 ### 4A. Web portals (fastest revenue — do first)
+
 - **CrazyGames**: `portal.ts` SDK hooks already exist. Add: `sdk.gameplayStart/Stop` around runs, **rewarded ad hooks** (see Phase 5), `happytime()` on victory, portal-required sitelock. Submit. (S/M)
 - **Poki / GameDistribution / itch.io**: same build (relative base path already configured ✓). Each has its own SDK shim — build a tiny `AdsProvider` interface with per-portal adapters. (M)
 - **PWA (own domain)**: already installable (manifest + SW + offline). Add richer manifest (screenshots, categories) for Chrome's install promotion. (S)
 
 ### 4B. Google Play
+
 - **Path A (cheapest): TWA via Bubblewrap** — wraps the PWA; Play accepts it. Requires: digital asset links, 512 icon, feature graphic, privacy policy URL, data-safety form. IAP not available in-TWA without Play Billing wiring — start ad-only. (M)
 - **Path B (full): Capacitor** — real WebView app, enables AdMob + Play Billing plugins, haptics, keep-awake. Same codebase, `npm run build` → `npx cap sync android`. (L incl. store setup)
 - Requirements checklist: Play Console account ($25 once), privacy policy, data-safety, content rating questionnaire, target API level compliance, 30 fps floor on a low-end test device (Quality=Low + 1.1 frame cap cover this).
 
 ### 4C. Apple App Store
+
 - Capacitor iOS build. Apple specifics: $99/yr, ATT prompt if ads use tracking (prefer non-tracking ads to skip it), Game Center optional, WKWebView performance is good for this workload (Metal-backed WebGL). Review risk: "web wrapper" rejections are avoided by native touches — haptics (exists), GameCenter leaderboard mirror, app icon/splash, offline play (exists). (L)
 
 ### 4D. Desktop (later, optional)
+
 - Steam via Electron/Tauri only after mobile validates; adds achievements/cloud saves expectations. (XL — defer)
 
 ## Phase 5 — Monetization design
@@ -103,9 +140,9 @@ economy hooks already exist (credits, shop, revive mechanic, daily quests,
 chest ceremony).
 
 1. **Rewarded video (all platforms — primary revenue)**
-   - *Second Chance:* on death, watch ad → revive at 50% HP once per run (co-op: self-revive as the ghost).
-   - *Double Ceremony:* after a chest, watch ad → re-roll or double the rewards.
-   - *Daily boost:* +50% credits for the next run.
+   - _Second Chance:_ on death, watch ad → revive at 50% HP once per run (co-op: self-revive as the ghost).
+   - _Double Ceremony:_ after a chest, watch ad → re-roll or double the rewards.
+   - _Daily boost:_ +50% credits for the next run.
    - Implementation: one `AdsProvider` interface → CrazyGames SDK / Poki SDK / AdMob adapters.
 2. **Interstitials** (portals + mobile): only between runs, frequency-capped (≥3 min apart, never mid-run). Portals largely handle this themselves.
 3. **IAP (Capacitor builds + web via Stripe later)**
@@ -129,13 +166,13 @@ Projected effort to first dollar: CrazyGames submission with rewarded revive =
 
 ## Suggested execution order (rough calendar)
 
-| Week | Deliverables |
-|------|--------------|
-| 1 | Phase 0 bugs (0.1, 0.3, 0.4, 0.5) + battery items 1.1–1.5 + MP items 2.3, 2.4, 2.6 |
-| 2 | Five missing ultimates (0.2) + host-drop grace & reconnection (2.1, 2.2) + AdsProvider + CrazyGames submission w/ rewarded revive |
-| 3 | Resume-run, accessibility, cloud save (3.4, 3.5, 3.7) + Poki/GD/itch submissions + TWA on Play (ad-only) |
-| 4–5 | Capacitor builds (Android w/ AdMob+Billing, then iOS) + store assets/policies + QA matrix |
-| 6+ | Stage 2, localization, season-pass-lite, host migration — fueled by live metrics |
+| Week | Deliverables                                                                                                                      |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Phase 0 bugs (0.1, 0.3, 0.4, 0.5) + battery items 1.1–1.5 + MP items 2.3, 2.4, 2.6                                                |
+| 2    | Five missing ultimates (0.2) + host-drop grace & reconnection (2.1, 2.2) + AdsProvider + CrazyGames submission w/ rewarded revive |
+| 3    | Resume-run, accessibility, cloud save (3.4, 3.5, 3.7) + Poki/GD/itch submissions + TWA on Play (ad-only)                          |
+| 4–5  | Capacitor builds (Android w/ AdMob+Billing, then iOS) + store assets/policies + QA matrix                                         |
+| 6+   | Stage 2, localization, season-pass-lite, host migration — fueled by live metrics                                                  |
 
 **North star:** portal revenue starts week 2–3; mobile stores by week 5–6; keep
 solo-first fun (most sessions will be solo) while co-op is the shareable hook.

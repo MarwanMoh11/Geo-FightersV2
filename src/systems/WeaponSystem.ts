@@ -90,6 +90,11 @@ export function WeaponSystem(dt: number, scene: THREE.Scene) {
 
       if (wantsToFire && entity.weapon.cooldownTimer <= 0) {
         fireWeapon(entity, player, scene);
+        // Cosmetic recoil kick on aimed weapons only (orbitals/globals fire on
+        // their own cadence and would keep the rig permanently shaking)
+        if (!isAutoFire) {
+          player.recoilTimer = 0.1;
+        }
         // Apply the player's Cooldown stat (Clock Skipper / debug_suite passives,
         // Ghost's CDR quirk) — shorter base cooldown between shots.
         const cdMult = getEffectiveCooldown(player.stats || getDefaultStats());

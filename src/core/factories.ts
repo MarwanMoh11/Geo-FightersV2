@@ -128,6 +128,7 @@ export function spawnPlayer(
   leftTipMesh.scale.set(0.04, 0.05, 0.28);
   leftTipMesh.position.set(-0.35, 0, -0.05);
   leftTipMesh.rotation.y = -Math.PI / 8;
+  leftTipMesh.name = 'leftWingTip';
   leftWing.add(leftTipMesh);
   container.add(leftWing);
 
@@ -145,6 +146,7 @@ export function spawnPlayer(
   rightTipMesh.scale.set(0.04, 0.05, 0.28);
   rightTipMesh.position.set(0.35, 0, -0.05);
   rightTipMesh.rotation.y = Math.PI / 8;
+  rightTipMesh.name = 'rightWingTip';
   rightWing.add(rightTipMesh);
   container.add(rightWing);
 
@@ -210,6 +212,7 @@ export function spawnPlayer(
   });
   const mainVisor = new THREE.Mesh(boxGeometry, mainVisorMat);
   mainVisor.scale.set(0.36, 0.07, 0.07);
+  mainVisor.name = 'mainVisor';
   visorGroup.add(mainVisor);
 
   const sensorMat = new THREE.MeshStandardMaterial({
@@ -372,6 +375,137 @@ export function spawnPlayer(
   });
 }
 
+// --- CHARACTER VISUAL THEMES (Phase 1.5) ---
+// Every character shares one drone rig; identity comes from a full-rig tint
+// (not just the core) plus silhouette proportions and animation personality.
+// Scales are absolute multipliers over the rig's base part sizes, so applying
+// a theme is idempotent across runs and character switches.
+export interface CharacterTheme {
+  /** Hue rotation (0-1) applied to the primary color for secondary parts */
+  accentShift: number;
+  coreScale: number;
+  shellScale: number;
+  /** X/Z scale of each wing group; right side may differ for asymmetry */
+  wingSpan: number;
+  wingSpanRight?: number;
+  gyroScale: number;
+  thrusterScale: number;
+  shardScale: number;
+  /** Multipliers read per-frame by RenderSystem via userData.theme */
+  flameScale: number;
+  gyroSpeed: number;
+  /** Hull wireframe opacity (GHOST reads translucent) */
+  shellOpacity: number;
+}
+
+const DEFAULT_THEME: CharacterTheme = {
+  accentShift: 0.06,
+  coreScale: 1.0,
+  shellScale: 1.0,
+  wingSpan: 1.0,
+  gyroScale: 1.0,
+  thrusterScale: 1.0,
+  shardScale: 1.0,
+  flameScale: 1.0,
+  gyroSpeed: 1.0,
+  shellOpacity: 1.0,
+};
+
+const CHARACTER_THEMES: Record<string, Partial<CharacterTheme>> = {
+  // Balanced all-rounder: the baseline rig
+  cypher: {},
+  // Melee whip: swept, narrow, aggressive — burns hot
+  lash: { wingSpan: 0.78, flameScale: 1.25, gyroSpeed: 1.3, shellScale: 0.92 },
+  // Engineer: wide stable platform, heavy engines
+  rail: { wingSpan: 1.22, thrusterScale: 1.2, gyroSpeed: 0.8, flameScale: 0.9 },
+  // Area mage: big resonance rings around a swollen core
+  nova: { coreScale: 1.18, gyroScale: 1.3, wingSpan: 0.8, gyroSpeed: 1.5, shardScale: 0.8 },
+  // Drone commander: minimal body, prominent satellites
+  byte: { wingSpan: 0.7, shardScale: 1.7, gyroScale: 0.85, thrusterScale: 0.85 },
+  // Speedster phantom: slim, translucent hull, long exhaust
+  ghost: { shellOpacity: 0.35, wingSpan: 0.88, shellScale: 0.9, flameScale: 1.45, gyroSpeed: 1.2 },
+  // Tank: bulky hull, broad wings, restrained engines
+  titan: {
+    shellScale: 1.35,
+    coreScale: 1.08,
+    wingSpan: 1.15,
+    thrusterScale: 1.15,
+    flameScale: 0.8,
+    gyroSpeed: 0.6,
+  },
+  // Gambler: deliberately lopsided — nothing about FLUX is symmetric
+  flux: { wingSpan: 0.85, wingSpanRight: 1.18, gyroScale: 1.1, gyroSpeed: 1.8, accentShift: 0.14 },
+};
+
+/**
+ * Apply a character's full visual identity to a player rig: tint every glowing
+ * part from the character color, reshape the silhouette, and stash per-frame
+ * animation multipliers on the mesh container for RenderSystem.
+ */
+export function applyCharacterTheme(root: THREE.Object3D, characterId: string) {
+  const character = getCharacter(characterId);
+  const theme: CharacterTheme = { ...DEFAULT_THEME, ...(CHARACTER_THEMES[characterId] ?? {}) };
+  const primary = new THREE.Color(character.color);
+  const accent = primary.clone().offsetHSL(theme.accentShift, 0, 0.04);
+
+  const tint = (name: string, color: THREE.Color) => {
+    const obj = root.getObjectByName(name) as THREE.Mesh | undefined;
+    if (!obj || !obj.material || Array.isArray(obj.material)) return;
+    const mat = obj.material as THREE.MeshStandardMaterial;
+    mat.color.copy(color);
+    if (mat.emissive) mat.emissive.copy(color);
+    // Invalidate RenderSystem's cached "original" color so glow states
+    // restore to the new theme, not a stale one from a previous run
+    delete obj.userData.originalColor;
+  };
+
+  tint('core', primary);
+  tint('mainVisor', primary);
+  tint('leftWingTip', primary); // tip material is shared L/R — one call tints both
+  tint('gyroHRing', primary);
+  tint('gyroVRing', accent);
+  tint('leftFireOuter', accent); // flame material shared L/R
+  tint('shieldShard_0', accent); // shard material shared across all three
+
+  // Silhouette: absolute scales over the rig's base part sizes
+  const setScale = (name: string, x: number, y = x, z = x) => {
+    root.getObjectByName(name)?.scale.set(x, y, z);
+  };
+  setScale('core', 0.32 * theme.coreScale);
+  setScale('shell', 0.38 * theme.shellScale);
+  setScale('gyroHRing', 0.62 * theme.gyroScale);
+  setScale('gyroVRing', 0.56 * theme.gyroScale);
+  const t = theme.thrusterScale;
+  setScale('leftThruster', 0.09 * t, 0.09 * t, 0.42 * t);
+  setScale('rightThruster', 0.09 * t, 0.09 * t, 0.42 * t);
+  root.getObjectByName('leftWing')?.scale.set(theme.wingSpan, 1, theme.wingSpan);
+  const rightSpan = theme.wingSpanRight ?? theme.wingSpan;
+  root.getObjectByName('rightWing')?.scale.set(rightSpan, 1, rightSpan);
+  for (let i = 0; i < 3; i++) setScale(`shieldShard_${i}`, 0.05 * theme.shardScale);
+
+  // Hull translucency (GHOST) — baseOpacity is multiplied into the blink
+  // opacity by RenderSystem instead of being overwritten by it
+  const shell = root.getObjectByName('shell') as THREE.Mesh | undefined;
+  if (shell && shell.material && !Array.isArray(shell.material)) {
+    const mat = shell.material as THREE.MeshStandardMaterial;
+    mat.transparent = true;
+    mat.opacity = theme.shellOpacity;
+    shell.userData.baseOpacity = theme.shellOpacity;
+  }
+
+  // Per-frame animation personality for RenderSystem
+  const container = root.getObjectByName('mesh_container');
+  if (container) {
+    container.userData.theme = {
+      flameScale: theme.flameScale,
+      gyroSpeed: theme.gyroSpeed,
+      coreScaleAbs: 0.32 * theme.coreScale,
+    };
+    // Force the blink/glow traversal to re-run with the new materials
+    delete container.userData.lastVisualKey;
+  }
+}
+
 /**
  * Initialize (or reset) the player and their starting stats/weapons at the start of a run.
  */
@@ -448,14 +582,9 @@ export function initializePlayerForRun(scene: THREE.Scene) {
   player.weaponSlots = [{ weaponId: starterWeaponId, level: 1 }];
   player.passiveSlots = [];
 
-  // Update visual core color based on character
+  // Apply the character's full visual identity (tint, silhouette, animation personality)
   if (player.transform) {
-    const core = player.transform.getObjectByName('core') as THREE.Mesh;
-    if (core && core.material) {
-      const mat = core.material as THREE.MeshStandardMaterial;
-      mat.color.setHex(character.color);
-      mat.emissive.setHex(character.color);
-    }
+    applyCharacterTheme(player.transform, characterId);
   }
 
   // Sync Svelte uiState
@@ -1269,6 +1398,7 @@ export function spawnEnemy(
     aimTarget: new THREE.Vector3(),
     xpValue: stats.xp,
     baseColor: stats.color,
+    spawnAnimTimer: 0.35, // scale-pop entrance (RenderSystem)
   });
 
   // Create Rapier rigid body for enemy (only in single-player or on the Host)
