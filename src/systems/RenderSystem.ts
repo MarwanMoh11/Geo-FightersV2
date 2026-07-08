@@ -5,6 +5,7 @@ import {
   EnemyType,
   cachedEnemyGeometries,
   getEnemySolidMaterial,
+  getEnemyGlowMaterial,
   getEnemyWireMaterial,
 } from '../core/factories';
 
@@ -16,8 +17,21 @@ let time = 0;
 
 // Instanced meshes for enemies & shadows to optimize draw calls
 const enemySolidInstances = new Map<string, THREE.InstancedMesh>();
+const enemyGlowInstances = new Map<string, THREE.InstancedMesh>();
 const enemyWireInstances = new Map<string, THREE.InstancedMesh>();
 let shadowInstances: THREE.InstancedMesh | null = null;
+
+// Ground aura ring under elites/minibosses: one instanced mesh total,
+// tinted per type via instance color. Reads "dangerous" at a glance.
+let eliteAuraInstances: THREE.InstancedMesh | null = null;
+const MAX_ELITE_AURAS = 48;
+const ELITE_AURA_COLORS: Partial<Record<EnemyType, number>> = {
+  [EnemyType.ENFORCER]: 0x00ffcc,
+  [EnemyType.COLOSSUS]: 0xffaa00,
+  [EnemyType.WARDEN]: 0xff00cc,
+  [EnemyType.HYDRA]: 0xff2244,
+  [EnemyType.OVERSEER]: 0xaa44ff,
+};
 
 const MAX_ENEMY_INSTANCES = 500;
 
@@ -373,8 +387,10 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
   // Scene change check: clear cached InstancedMeshes if scene changes
   if (shadowInstances && shadowInstances.parent !== scene) {
     enemySolidInstances.clear();
+    enemyGlowInstances.clear();
     enemyWireInstances.clear();
     shadowInstances = null;
+    eliteAuraInstances = null;
   }
 
   // 2. Render all regular enemies using InstancedMesh (bypasses scene graph)
@@ -397,6 +413,22 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
     shadowInstances.frustumCulled = false; // Disable frustum culling to prevent culling outside the origin
     scene.add(shadowInstances);
   }
+
+  if (!eliteAuraInstances) {
+    const auraGeo = new THREE.RingGeometry(0.42, 0.5, 32);
+    const auraMat = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0.35,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    eliteAuraInstances = new THREE.InstancedMesh(auraGeo, auraMat, MAX_ELITE_AURAS);
+    eliteAuraInstances.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    eliteAuraInstances.frustumCulled = false;
+    scene.add(eliteAuraInstances);
+  }
+  let auraCount = 0;
 
   for (const entity of world.with('isEnemy', 'position', 'transform')) {
     if (entity.isBoss) continue; // Skip boss - handled in normal scene graph
@@ -424,6 +456,27 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
 
           scene.add(solidMesh);
           enemySolidInstances.set(type, solidMesh);
+        }
+      }
+
+      // Lazy-initialize the additive glow layer per enemy type
+      let glowMesh = enemyGlowInstances.get(type);
+      if (!glowMesh) {
+        const geomData = cachedEnemyGeometries.get(type);
+        if (geomData && geomData.glow) {
+          glowMesh = new THREE.InstancedMesh(
+            geomData.glow,
+            getEnemyGlowMaterial(),
+            MAX_ENEMY_INSTANCES,
+          );
+          glowMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+          glowMesh.frustumCulled = false;
+          const white = new THREE.Color(0xffffff);
+          for (let j = 0; j < MAX_ENEMY_INSTANCES; j++) {
+            glowMesh.setColorAt(j, white);
+          }
+          scene.add(glowMesh);
+          enemyGlowInstances.set(type, glowMesh);
         }
       }
 
@@ -548,6 +601,27 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
         wireMesh.setColorAt(count, _tempColor);
       }
 
+      if (glowMesh) {
+        glowMesh.setMatrixAt(count, _tempMat);
+        // Additive layer flashes to full white on hit — reads as a spark
+        _tempColor.setHex(entity.hitFlashTimer && entity.hitFlashTimer > 0 ? 0xffffff : 0xdddddd);
+        glowMesh.setColorAt(count, _tempColor);
+      }
+
+      // Elite/miniboss ground aura: flat pulsing ring at the enemy's feet
+      const auraColor = ELITE_AURA_COLORS[type];
+      if (auraColor !== undefined && eliteAuraInstances && auraCount < MAX_ELITE_AURAS) {
+        _tempPos.set(entity.position.x, 0.05, entity.position.z);
+        const auraScale = size * (0.62 + 0.05 * Math.sin(time * 2.2 + phase));
+        _tempScale.setScalar(auraScale);
+        _tempRot.set(-Math.PI / 2, 0, 0);
+        _tempQuat.setFromEuler(_tempRot);
+        _tempMat.compose(_tempPos, _tempQuat, _tempScale);
+        eliteAuraInstances.setMatrixAt(auraCount, _tempMat);
+        eliteAuraInstances.setColorAt(auraCount, _tempColor.setHex(auraColor));
+        auraCount++;
+      }
+
       counts.set(type, count + 1);
     }
 
@@ -590,6 +664,25 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
       }
       wireMesh.visible = count > 0;
     }
+
+    const glowMesh = enemyGlowInstances.get(type);
+    if (glowMesh) {
+      glowMesh.count = count;
+      glowMesh.instanceMatrix.needsUpdate = true;
+      if (glowMesh.instanceColor) {
+        glowMesh.instanceColor.needsUpdate = true;
+      }
+      glowMesh.visible = count > 0;
+    }
+  }
+
+  if (eliteAuraInstances) {
+    eliteAuraInstances.count = auraCount;
+    eliteAuraInstances.instanceMatrix.needsUpdate = true;
+    if (eliteAuraInstances.instanceColor) {
+      eliteAuraInstances.instanceColor.needsUpdate = true;
+    }
+    eliteAuraInstances.visible = auraCount > 0;
   }
 
   if (shadowInstances) {
