@@ -1,0 +1,6 @@
+Environment textures: CC0 from ambientCG.com
+- ground_asphalt.jpg  = Asphalt031 (1K color)
+- deck_metalplates.jpg = MetalPlates006 (1K color)
+- prop_metal.jpg      = Metal032 (1K color)
+- prop_rust.jpg       = Rust004 (1K color)
+License: Creative Commons CC0 1.0 Universal (no attribution required; credited anyway).

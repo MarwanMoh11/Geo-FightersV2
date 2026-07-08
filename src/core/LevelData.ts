@@ -39,7 +39,7 @@ export const LEVEL_1_NEON_SLUMS: LevelConfig = {
   mapWidth: 800,
   mapHeight: 800,
   spawnPoint: { x: 0, z: 50 }, // Center of Neon Courtyard area
-  groundTexture: '/textures/environments/ground_asphalt.png',
+  groundTexture: '/textures/environments/ground_asphalt.jpg',
   backgroundColor: 0x0a0a12, // Very dark blue-black
 
   obstacles: [
@@ -96,7 +96,7 @@ export const LEVEL_1_NEON_SLUMS: LevelConfig = {
       depth: 60,
       type: 'wall',
       blocking: true,
-      asset: '/textures/environments/prop_container.png',
+      asset: '/textures/environments/prop_metal.jpg',
     },
     {
       id: 'gate_right',
@@ -106,7 +106,7 @@ export const LEVEL_1_NEON_SLUMS: LevelConfig = {
       depth: 60,
       type: 'wall',
       blocking: true,
-      asset: '/textures/environments/prop_container.png',
+      asset: '/textures/environments/prop_metal.jpg',
     },
     // Conveyor/machinery blocking side passage
     { id: 'conveyor', x: -360, z: -240, width: 70, depth: 20, type: 'prop', blocking: true },
@@ -125,7 +125,7 @@ export const LEVEL_1_NEON_SLUMS: LevelConfig = {
       depth: 45,
       type: 'prop',
       blocking: true,
-      asset: '/textures/environments/prop_taxi.png',
+      asset: '/textures/environments/prop_metal.jpg',
     },
     {
       id: 'taxi_2',
@@ -135,7 +135,7 @@ export const LEVEL_1_NEON_SLUMS: LevelConfig = {
       depth: 45,
       type: 'prop',
       blocking: true,
-      asset: '/textures/environments/prop_taxi.png',
+      asset: '/textures/environments/prop_metal.jpg',
     },
     {
       id: 'taxi_3',
@@ -145,7 +145,7 @@ export const LEVEL_1_NEON_SLUMS: LevelConfig = {
       depth: 45,
       type: 'prop',
       blocking: true,
-      asset: '/textures/environments/prop_taxi.png',
+      asset: '/textures/environments/prop_metal.jpg',
     },
     // Security barricades (long thin obstacles)
     { id: 'barrier_1', x: -50, z: -280, width: 80, depth: 8, type: 'prop', blocking: true },
@@ -179,7 +179,7 @@ export const LEVEL_1_NEON_SLUMS: LevelConfig = {
       depth: 25,
       type: 'prop',
       blocking: true,
-      asset: '/textures/environments/prop_scrap.png',
+      asset: '/textures/environments/prop_rust.jpg',
     },
     {
       id: 'scrap_2',
@@ -189,7 +189,7 @@ export const LEVEL_1_NEON_SLUMS: LevelConfig = {
       depth: 20,
       type: 'prop',
       blocking: true,
-      asset: '/textures/environments/prop_scrap.png',
+      asset: '/textures/environments/prop_rust.jpg',
     },
     {
       id: 'scrap_3',
@@ -199,7 +199,7 @@ export const LEVEL_1_NEON_SLUMS: LevelConfig = {
       depth: 30,
       type: 'prop',
       blocking: true,
-      asset: '/textures/environments/prop_scrap.png',
+      asset: '/textures/environments/prop_rust.jpg',
     },
     // Broken mech
     {
@@ -210,7 +210,7 @@ export const LEVEL_1_NEON_SLUMS: LevelConfig = {
       depth: 35,
       type: 'prop',
       blocking: true,
-      asset: '/textures/environments/prop_mech.png',
+      asset: '/textures/environments/prop_rust.jpg',
     },
     // Cargo containers
     {
@@ -221,7 +221,7 @@ export const LEVEL_1_NEON_SLUMS: LevelConfig = {
       depth: 25,
       type: 'prop',
       blocking: true,
-      asset: '/textures/environments/prop_container.png',
+      asset: '/textures/environments/prop_metal.jpg',
     },
     {
       id: 'container_2',
@@ -231,14 +231,24 @@ export const LEVEL_1_NEON_SLUMS: LevelConfig = {
       depth: 25,
       type: 'prop',
       blocking: true,
-      asset: '/textures/environments/prop_container.png',
+      asset: '/textures/environments/prop_metal.jpg',
     },
 
     // === NEON COURTYARD (Southeast/Center) ===
     // Zone: x=-150 to 400, z=-150 to 400
     // Semi-open plaza with scattered props
-    // Central statue (non-blocking visual, but has base)
-    { id: 'statue_base', x: 100, z: 100, width: 40, depth: 40, type: 'prop', blocking: true },
+    // Central statue pedestal (the holo-statue decor sits on top of it)
+    {
+      id: 'statue_base',
+      x: 100,
+      z: 100,
+      width: 22,
+      depth: 22,
+      height: 4,
+      type: 'prop',
+      blocking: true,
+      asset: '/textures/environments/deck_metalplates.jpg',
+    },
     // Vending machines along edges
     {
       id: 'vending_1',
@@ -327,6 +337,77 @@ export const LEVEL_1_NEON_SLUMS: LevelConfig = {
     { id: 'exit_ne', x: 350, z: -100, width: 4, depth: 80, type: 'wall', blocking: true },
     { id: 'exit_se', x: 350, z: 350, width: 4, depth: 80, type: 'wall', blocking: true },
     { id: 'exit_sw', x: -130, z: 370, width: 4, depth: 50, type: 'wall', blocking: true },
+
+    // === MARKET ROW (Main Street) ===
+    // Stall line gives the long street rhythm + cover against ranged elites
+    {
+      id: 'stall_1',
+      x: -40,
+      z: -390,
+      width: 30,
+      depth: 14,
+      height: 5,
+      type: 'prop',
+      blocking: true,
+    },
+    {
+      id: 'stall_2',
+      x: 40,
+      z: -390,
+      width: 30,
+      depth: 14,
+      height: 5,
+      type: 'prop',
+      blocking: true,
+    },
+    {
+      id: 'stall_3',
+      x: 130,
+      z: -390,
+      width: 30,
+      depth: 14,
+      height: 5,
+      type: 'prop',
+      blocking: true,
+    },
+
+    // === WATCHTOWER (Industrial Gate) ===
+    // Tall landmark visible across the north — orients the player instantly
+    {
+      id: 'watchtower',
+      x: -332,
+      z: -368,
+      width: 26,
+      depth: 26,
+      height: 22,
+      type: 'wall',
+      blocking: true,
+      asset: '/textures/environments/prop_metal.jpg',
+    },
+
+    // === HOLO-BILLBOARD TOWERS (Courtyard entrance) ===
+    {
+      id: 'billboard_1',
+      x: -150,
+      z: -120,
+      width: 14,
+      depth: 14,
+      height: 14,
+      type: 'prop',
+      blocking: true,
+      asset: '/textures/environments/prop_metal.jpg',
+    },
+    {
+      id: 'billboard_2',
+      x: 380,
+      z: 60,
+      width: 14,
+      depth: 14,
+      height: 14,
+      type: 'prop',
+      blocking: true,
+      asset: '/textures/environments/prop_metal.jpg',
+    },
 
     // === TRANSITION CORRIDORS ===
     // Between Industrial Gate and Scrap Yards

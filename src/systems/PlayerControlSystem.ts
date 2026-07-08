@@ -22,6 +22,8 @@ export function PlayerControlSystem(dt: number) {
 
     // Apply Speed with passive bonus
     let speedMult = entity.stats?.moveSpeed || 1.0;
+    // Map 1 Velocity Shrine: local-player speed surge
+    if (entity.isLocalPlayer && uiState.shrineSpeedTimer > 0) speedMult *= 1.25;
     if (uiState.overloadActive) {
       if (uiState.selectedCharacter === 'rail') {
         speedMult = 0;
