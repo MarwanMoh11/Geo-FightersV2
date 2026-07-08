@@ -1,4 +1,8 @@
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { getQualityProfile, initDynamicResolution, applyPixelRatio, isMobile } from './quality';
 import { onSettingsChange } from './SettingsManager';
 
@@ -67,8 +71,99 @@ export async function initRenderer() {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   renderer.setSize(window.innerWidth, window.innerHeight);
-  // Pixel ratio is owned by the quality manager (handles caps + adaptive scaling)
-  initDynamicResolution(renderer);
+
+  // --- IMAGE-BASED LIGHTING (Phase 1.8) ---
+  // A PMREM'd RoomEnvironment gives every metallic surface (player rigs,
+  // enemy armor) real reflections instead of flat grey. One-time generation
+  // cost, then effectively free per-frame. Skipped on the low tier.
+  // NOTE: most players run THREE.WebGPURenderer with its WebGL2 *backend*
+  // (context creation for real WebGPU often fails) — that class needs the
+  // backend-agnostic PMREMGenerator from three/webgpu, not THREE.PMREMGenerator.
+  const isWebGPUClass = !(renderer instanceof THREE.WebGLRenderer);
+  if (quality.tier !== 'low') {
+    try {
+      let envTexture: THREE.Texture;
+      if (isWebGPUClass) {
+        const { PMREMGenerator } = await import('three/webgpu');
+        const pmrem = new PMREMGenerator(renderer);
+        envTexture = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+        pmrem.dispose();
+      } else {
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        envTexture = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+        pmrem.dispose();
+      }
+      scene.environment = envTexture;
+      // Keep it subtle — the game's mood is dark neon, not showroom
+      scene.environmentIntensity = 0.5;
+      console.log('[Renderer] Environment lighting active');
+    } catch (err) {
+      console.warn('[Renderer] Environment map skipped:', err);
+    }
+  }
+
+  // --- BLOOM (Phase 1.8, strictly gated) ---
+  // Threshold bloom so emissive parts genuinely glow. HIGH tier, desktop
+  // only — every other configuration renders exactly as before with zero
+  // added cost. Two implementations: node-based PostProcessing for the
+  // WebGPURenderer class (works on both its backends), classic
+  // EffectComposer for the plain-WebGL fallback.
+  let composer: EffectComposer | null = null;
+  let postProcessing: { render: () => void } | null = null;
+  let bloomEnabled = false;
+  if (quality.tier === 'high' && !isMobile) {
+    try {
+      if (isWebGPUClass) {
+        const { PostProcessing } = await import('three/webgpu');
+        const { pass } = await import('three/tsl');
+        const { bloom } = await import('three/addons/tsl/display/BloomNode.js');
+        const scenePass = pass(scene, camera);
+        const bloomPass = bloom(scenePass, 0.35, 0.4, 0.85); // strength, radius, threshold
+        const post = new PostProcessing(renderer);
+        post.outputNode = scenePass.add(bloomPass);
+        postProcessing = post;
+      } else {
+        composer = new EffectComposer(renderer);
+        composer.addPass(new RenderPass(scene, camera));
+        composer.addPass(
+          new UnrealBloomPass(
+            new THREE.Vector2(window.innerWidth, window.innerHeight),
+            0.35, // strength: a glow, not a smear
+            0.4, // radius
+            0.85, // threshold: only genuinely bright emissives bloom
+          ),
+        );
+      }
+      bloomEnabled = true;
+      console.log('[Renderer] Bloom enabled (high tier)');
+    } catch (err) {
+      composer = null;
+      postProcessing = null;
+      console.warn('[Renderer] Bloom skipped:', err);
+    }
+  }
+
+  // Live quality switches toggle bloom off/on without a reload
+  onSettingsChange(() => {
+    bloomEnabled =
+      (composer !== null || postProcessing !== null) && getQualityProfile().tier === 'high';
+  });
+
+  /** Render one frame through the bloom pipeline when it's active. */
+  const renderFrame = () => {
+    if (bloomEnabled && postProcessing) postProcessing.render();
+    else if (bloomEnabled && composer) composer.render();
+    else renderer.render(scene, camera);
+  };
+
+  // Pixel ratio is owned by the quality manager (handles caps + adaptive
+  // scaling); the composer must track it or bloom renders at the wrong size.
+  initDynamicResolution({
+    setPixelRatio: (ratio: number) => {
+      renderer.setPixelRatio(ratio);
+      composer?.setPixelRatio(ratio);
+    },
+  });
 
   // Append to #app container (not body) to prevent layout issues
   const appContainer = document.getElementById('app');
@@ -129,6 +224,7 @@ export async function initRenderer() {
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     renderer.setSize(w, h);
+    composer?.setSize(w, h);
     applyPixelRatio(); // devicePixelRatio can change when moving across monitors
   };
   window.addEventListener('resize', applySize);
@@ -136,5 +232,5 @@ export async function initRenderer() {
   window.visualViewport?.addEventListener('resize', applySize);
   setTimeout(applySize, 400); // iOS standalone: first paint often has stale metrics
 
-  return { scene, camera, renderer };
+  return { scene, camera, renderer, renderFrame };
 }
