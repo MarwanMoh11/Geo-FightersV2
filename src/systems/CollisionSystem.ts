@@ -447,6 +447,19 @@ export function handleEnemyDeath(
   spawnXP(scene, enemy.position.x, enemy.position.z, enemy.xpValue || 10);
 
   const type = enemy.enemyType;
+
+  // Elite/miniboss deaths punch a shockwave ring into the ground — trash
+  // keeps the cheap particle burst (this fires at elite rates only).
+  const ELITE_DEATH_RING: Record<string, number> = {
+    enforcer: 0x00ffcc,
+    colossus: 0xffaa00,
+    warden: 0xff00cc,
+    hydra: 0xff2244,
+    overseer: 0xaa44ff,
+  };
+  if (type && ELITE_DEATH_RING[type] !== undefined) {
+    spawnBlastFX(enemy.position, (enemy.size ?? 3) * 1.1, scene, ELITE_DEATH_RING[type]);
+  }
   const px = enemy.position.x;
   const pz = enemy.position.z;
 
@@ -627,9 +640,10 @@ const blastMat = new THREE.MeshBasicMaterial({
   side: THREE.DoubleSide,
 });
 
-function spawnBlastFX(pos: THREE.Vector3, radius: number, scene: THREE.Scene) {
+function spawnBlastFX(pos: THREE.Vector3, radius: number, scene: THREE.Scene, color?: number) {
   // Clone the material so the fade-out doesn't affect other live rings
   const mesh = new THREE.Mesh(blastGeo, blastMat.clone());
+  if (color !== undefined) (mesh.material as THREE.MeshBasicMaterial).color.setHex(color);
   mesh.rotation.x = -Math.PI / 2;
   mesh.position.copy(pos);
   mesh.position.y = 0.5;

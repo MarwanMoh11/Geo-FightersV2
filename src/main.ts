@@ -99,7 +99,7 @@ function hideLoadingScreen() {
 preloadTextures(updateLoadingProgress).then(async () => {
   if (loadingText) loadingText.textContent = 'INITIALIZING RENDERER';
 
-  const { scene, camera, renderer } = await initRenderer();
+  const { scene, camera, renderer, renderFrame } = await initRenderer();
   setNetworkScene(scene);
 
   // Debug hook: expose UI state + ECS world for the dev console / automated tests
@@ -159,7 +159,7 @@ preloadTextures(updateLoadingProgress).then(async () => {
   hideLoadingScreen();
   portalLoadingFinished();
 
-  startGameLoop(scene, camera, renderer);
+  startGameLoop(scene, camera, renderer, renderFrame);
 });
 
 // --- GAME LOOP (separated for clarity) ---
@@ -170,6 +170,7 @@ function startGameLoop(
   scene: THREE.Scene,
   camera: THREE.Camera,
   renderer: { render: (scene: THREE.Scene, camera: THREE.Camera) => void },
+  renderFrame: () => void,
 ) {
   // DEBUG ONLY: Press 'C' to spawn a chest for testing (requires ?debug)
   if (DEBUG) {
@@ -269,7 +270,7 @@ function startGameLoop(
 
     if (!shouldRunGame) {
       // Still render the scene even when paused
-      renderer.render(scene, camera);
+      renderFrame();
       return;
     }
     const isHost = uiState.isHost;
@@ -348,7 +349,7 @@ function startGameLoop(
     MinimapSystem(); // Update minimap
     if (DEBUG) DebugSystem(scene); // Debug panel (Shift+Alt+D, requires ?debug)
 
-    renderer.render(scene, camera);
+    renderFrame();
   }
 
   animate();

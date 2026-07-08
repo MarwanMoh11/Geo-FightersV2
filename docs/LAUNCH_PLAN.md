@@ -115,6 +115,13 @@ enemy the Phase 1.75 treatment **inside the instancing constraints** (merged
 geometry per type, per-instance matrix animation, no per-instance materials),
 plus the two cheapest global renderer wins the engine is missing.
 
+> **Status (2026-07-08): 1.8.A bestiary + B1/B2/B3/B4/B5 SHIPPED; B6/B7 deferred.**
+> Verified live: 59–61 fps at the 60-cap with 185–221 redesigned enemies on
+> screen (identical to pre-change), env lighting + bloom active on the
+> WebGPURenderer/WebGL2-backend path that real players hit, zero console
+> errors. Draw calls: +1 glow layer per type, +1 aura mesh total. Per-spawn
+> cost went DOWN (enemies no longer build invisible scene-graph meshes).
+
 **The instancing trick that makes this free:** the render path already
 supports a second geometry layer per enemy type (today only GLITCH's
 wireframe uses it). Generalizing it into an emissive **glow layer** (additive
