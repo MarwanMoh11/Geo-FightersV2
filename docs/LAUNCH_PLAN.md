@@ -107,6 +107,60 @@ RenderSystem gained rig-agnostic hooks (no per-character branches): per-wing
 resting yaw, per-barrel resting position, single-engine flame support, third
 gyro ring, per-rig shard count/orbit radius.
 
+## Phase 1.8 — Enemy re-modelling & visual fidelity
+
+The 8 player rigs now have real identity; the enemies haven't caught up — they
+read as lumps of primitives with flat baked colors. This phase gives every
+enemy the Phase 1.75 treatment **inside the instancing constraints** (merged
+geometry per type, per-instance matrix animation, no per-instance materials),
+plus the two cheapest global renderer wins the engine is missing.
+
+**The instancing trick that makes this free:** the render path already
+supports a second geometry layer per enemy type (today only GLITCH's
+wireframe uses it). Generalizing it into an emissive **glow layer** (additive
+material, same instance matrices) gives every enemy glowing eyes, cores,
+seams and vents at exactly +1 draw call per type — with zero per-enemy cost.
+Geometry detail is also nearly free: 500 instances share one mesh, so richer
+silhouettes and baked vertex-color _gradients_ (dark base → hot tip) cost
+almost nothing.
+
+### 1.8.A — Enemy redesigns (malware bestiary, strongest silhouettes first)
+
+| Enemy    | Role                | New identity                                                                                                                           | Effort |
+| -------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| VIRUS    | fast trash          | Pathogen: sharper asymmetric spikes, hot emissive tips + inner nucleus on the glow layer, sickly body gradient                         | M      |
+| GLITCH   | trash               | Corrupted fragment: jagged shard-cluster silhouette (tetra/slab shards at broken angles), glow-layer slivers that read as data tearing | M      |
+| FIREWALL | slow wall           | A literal gate: monolithic frame wider than tall, burning grid inset on the glow layer, ember gradient rising up the pillars           | M      |
+| ENFORCER | elite, blocks shots | Riot knight: big frontal energy shield plate (glow layer) the body hides behind — silhouette explains the mechanic                     | M      |
+| COLOSSUS | elite, spawns adds  | Industrial hulk: stacked segment tower, glowing vents + cargo pods it visibly "sheds" (spawn FX ties in)                               | M      |
+| WARDEN   | elite, phase-shifts | Unstable prism: crystal split into offset floating segments (permanently mid-teleport), glow seams between slices                      | M      |
+| HYDRA    | miniboss            | Serpent cluster: three linked node-heads with glow-layer eyes, spine ridge connecting them                                             | M      |
+| OVERSEER | miniboss            | The all-seeing eye: armored shell plates around a huge glow-layer iris that reads from across the arena                                | M      |
+
+Animation signatures (Phase 1.5) stay and get retuned per new silhouette —
+e.g. WARDEN's wobble becomes segment shear, FIREWALL's stomp gains an ember
+flare on the glow layer via instance color.
+
+### 1.8.B — Supporting fidelity (cheap, global)
+
+| #   | Item                           | Detail                                                                                                                                                                                                                    | Effort | Tier gating             |
+| --- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ----------------------- |
+| B1  | **Environment map**            | `RoomEnvironment` → PMREM → `scene.environment`. One-time cost; every metallic surface (player rigs, enemy armor) stops rendering flat. The code already lowered enemy metalness to work around this — revert that after. | S      | all tiers               |
+| B2  | **Bloom**                      | Threshold bloom so emissive cores/rings/flames/glow-layers actually glow. UnrealBloomPass (WebGL) / node bloom (WebGPU).                                                                                                  | M      | high tier only          |
+| B3  | **Elite aura rings**           | Instanced ground decal ring under elites/minibosses — reads "dangerous" instantly.                                                                                                                                        | S      | all tiers               |
+| B4  | **Spawn portals**              | Budgeted expanding-ring FX at spawn points (pairs with the existing spawn-pop).                                                                                                                                           | S      | scaled by particleScale |
+| B5  | **Elite death shockwave**      | Ground ring decal burst on elite/miniboss death (trash keeps particle burst).                                                                                                                                             | S      | all tiers               |
+| B6  | **Engine & projectile trails** | Pooled fading ribbon trails behind fast-moving player rigs and bullets.                                                                                                                                                   | M      | med+ tiers              |
+| B7  | **Living ground**              | Subtle scrolling data-grid emissive overlay on the arena floor + boundary glow wall.                                                                                                                                      | M      | med+ tiers              |
+
+**Order:** B1 first (it upgrades everything else's materials, including 1.8.A
+as it lands) → 1.8.A bestiary → B3/B4/B5 readability set → B2 bloom → B6/B7.
+
+**Performance rules:** enemy draw calls stay at (types × 2) worst case; no
+per-instance materials; all FX budgeted through `scaleParticleCount()`; bloom
+never enabled below high tier; verify 60-cap holds with a full horde before
+each ship.
+
 ## Phase 2 — Multiplayer resilience (make co-op shippable-quality)
 
 Already done this cycle: party lobby w/ ready-up, ghosts/revives, kill
