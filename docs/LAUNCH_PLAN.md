@@ -208,6 +208,22 @@ Performance: all dressing is static merged geometry (~20 extra draw calls
 total); shrines cost one distance check each per frame; verified 60 fps
 parity at ~300 enemies.
 
+## Phase 1.95 — Level design doctrine: "The Map Comes To You"
+
+Full research-backed design doc: **[PHASE_1_95_LEVEL_DESIGN.md](./PHASE_1_95_LEVEL_DESIGN.md)**
+
+Phase 1.9's content was real but spatially bankrupt: an 800-unit map, a
+5.5 u/s player, a ~70-unit screen — casuals orbit spawn and never see the
+shrines. The doctrine (from Survivor.io / Vampire Survivors / Brotato
+research): content parachutes to the player, everything off-screen gets a
+HUD arrow, something good every 10 seconds, a map event every ~90 s, and
+geography is flavor — never homework. Headline items: POI wayfinding arrows,
+instanced destructible props, floor consumables (medkit / magnet / bomb),
+player-proximate supply drops, the MAGLEV RUN train event, vending-machine
+slot machines, billboard hacks, watchtower turret, mobile stash, and a
+scripted first 60 seconds. Ships against a measurable casual-experience
+contract with the usual zero-fps-regression rule.
+
 ## Phase 2 — Multiplayer resilience (make co-op shippable-quality)
 
 Already done this cycle: party lobby w/ ready-up, ghosts/revives, kill
