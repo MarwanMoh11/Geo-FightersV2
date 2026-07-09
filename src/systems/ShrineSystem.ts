@@ -22,6 +22,10 @@ import { uiState, announce } from '../core/UIState.svelte.ts';
 import { spawnCredit } from '../core/factories';
 import { playLevelUp, playChestOpen } from '../core/audio';
 import { haptics } from '../core/haptics';
+import { playMenuBuy } from '../core/audio';
+import { getCurrentLevel, isPointInObstacle } from '../core/LevelData';
+import { handleEnemyDeath } from './CollisionSystem';
+import type { Poi } from './WayfindingSystem';
 
 // --- MAP DATA (Neon Block Slums) ---
 type ShrineKind = 'fire' | 'armor' | 'speed';
@@ -43,19 +47,29 @@ const SHRINE_SPOTS: ShrineSpot[] = [
   { x: 140, z: -320, kind: 'speed', name: 'VELOCITY SHRINE', color: 0xff3d77 },
 ];
 
-// Stash surfaces at one of the map's landmarks (rolled per run)
-const STASH_SPOTS: { x: number; z: number }[] = [
-  { x: 100, z: 145 }, // behind the courtyard statue
-  { x: -332, z: -320 }, // between the industrial gate pillars
-  { x: 250, z: -320 }, // among the main street taxis
-  { x: -360, z: 330 }, // scrap yard dead-end pocket (risky grab)
+// Phase 1.95 (P1: the map comes to you): the smuggler surfaces NEAR the
+// player and doesn't wait around — urgency replaces geography.
+const STASH_MIN_DIST = 16;
+const STASH_MAX_DIST = 38;
+const STASH_LIFETIME = 25;
+const STASH_RETRY = 45;
+
+// Vending machines (Phase 1.95): the courtyard's four machines become
+// credit slot machines — 15 credits a pull, 45 s restock each.
+const VENDING_SPOTS = [
+  { x: -50, z: 50 },
+  { x: 250, z: 80 },
+  { x: 180, z: 300 },
+  { x: -80, z: 280 },
 ];
+const VENDING_COST = 15;
+const VENDING_COOLDOWN = 45;
+const VENDING_RADIUS = 3.4;
 
 const SHRINE_RADIUS = 5.0;
 const SHRINE_BUFF_DURATION = 20;
 const SHRINE_COOLDOWN = 75;
-const STASH_FIRST_AT = 150; // 2:30 — the smuggler waits for the mid-run lull
-const STASH_RESTOCK = 240; // endless mode: restock cadence
+const STASH_FIRST_AT = 110; // the smuggler shows up before the 2:00 spike
 const STASH_RADIUS = 2.6;
 
 interface ShrineState {
@@ -70,7 +84,68 @@ let shrines: ShrineState[] = [];
 let initialized = false;
 let stashTimer = STASH_FIRST_AT;
 let stashMesh: THREE.Group | null = null;
-let stashGranted = false;
+let stashLife = 0;
+
+interface VendingState {
+  x: number;
+  z: number;
+  cooldown: number;
+  ring: THREE.Mesh | null;
+}
+const vendings: VendingState[] = [];
+
+const SHRINE_ICONS: Record<ShrineKind, string> = { fire: '⚡', armor: '🛡️', speed: '💨' };
+
+/** Wayfinding: ready shrines always signposted; ready vendors when nearby. */
+export function getShrinePois(): Poi[] {
+  const pois: Poi[] = [];
+  for (const s of shrines) {
+    if (s.cooldown > 0) continue;
+    pois.push({
+      x: s.spot.x,
+      z: s.spot.z,
+      icon: SHRINE_ICONS[s.spot.kind],
+      color: '#' + s.spot.color.toString(16).padStart(6, '0'),
+      maxDist: 999,
+    });
+  }
+  for (const v of vendings) {
+    if (v.cooldown > 0) continue;
+    pois.push({ x: v.x, z: v.z, icon: '🎰', color: '#ffd75e', maxDist: 70 });
+  }
+  return pois;
+}
+
+/** Wayfinding: the live smuggler crate. */
+export function getStashPoi(): Poi | null {
+  if (!stashMesh) return null;
+  return {
+    x: stashMesh.position.x,
+    z: stashMesh.position.z,
+    icon: '💼',
+    color: '#ffd75e',
+    maxDist: 999,
+  };
+}
+
+function pickStashSpot(px: number, pz: number): { x: number; z: number } {
+  const half = getCurrentLevel().mapWidth / 2 - 15;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = STASH_MIN_DIST + Math.random() * (STASH_MAX_DIST - STASH_MIN_DIST);
+    const x = Math.max(-half, Math.min(half, px + Math.cos(angle) * dist));
+    const z = Math.max(-half, Math.min(half, pz + Math.sin(angle) * dist));
+    let blocked = false;
+    for (const obs of getCurrentLevel().obstacles) {
+      if (obs.blocking && isPointInObstacle(x, z, obs)) {
+        blocked = true;
+        break;
+      }
+    }
+    if (!blocked) return { x, z };
+  }
+  return { x: px + STASH_MIN_DIST, z: pz };
+}
 
 function buildShrine(scene: THREE.Scene, spot: ShrineSpot): ShrineState {
   const group = new THREE.Group();
@@ -208,7 +283,6 @@ function openStash(scene: THREE.Scene, player: any): void {
   }
 
   if (grantScavengerChip(player)) {
-    stashGranted = true;
     announce('SCAVENGER CHIP ACQUIRED — SLUMS EXCLUSIVE');
   } else {
     // Endless restock after the chip is owned: pure payout
@@ -227,7 +301,11 @@ export function resetShrineSystem(): void {
     stashMesh = null;
   }
   stashTimer = STASH_FIRST_AT;
-  stashGranted = false;
+  stashLife = 0;
+  for (const v of vendings) {
+    v.cooldown = 0;
+    if (v.ring) (v.ring.material as THREE.MeshBasicMaterial).opacity = 0.35;
+  }
   uiState.shrineFireTimer = 0;
   uiState.shrineArmorTimer = 0;
   uiState.shrineSpeedTimer = 0;
@@ -237,6 +315,21 @@ export function ShrineSystem(dt: number, scene: THREE.Scene): void {
   if (!initialized) {
     initialized = true;
     shrines = SHRINE_SPOTS.map((spot) => buildShrine(scene, spot));
+    for (const spot of VENDING_SPOTS) {
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(VENDING_RADIUS - 0.3, VENDING_RADIUS, 32),
+        new THREE.MeshBasicMaterial({
+          color: 0xffd75e,
+          transparent: true,
+          opacity: 0.35,
+          side: THREE.DoubleSide,
+        }),
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(spot.x, 0.06, spot.z);
+      scene.add(ring);
+      vendings.push({ x: spot.x, z: spot.z, cooldown: 0, ring });
+    }
   }
 
   const player = world.with('isLocalPlayer', 'position', 'health').first;
@@ -263,25 +356,87 @@ export function ShrineSystem(dt: number, scene: THREE.Scene): void {
     }
   }
 
-  // Black-market stash: solo runs only for now (nothing to sync in co-op)
+  // Vending slot machines: walk up with 15 credits for a pull
+  const soloOrHost = !uiState.isMultiplayer || uiState.isHost;
+  for (const v of vendings) {
+    if (v.cooldown > 0) {
+      v.cooldown -= dt;
+      if (v.cooldown <= 0 && v.ring) {
+        (v.ring.material as THREE.MeshBasicMaterial).opacity = 0.35;
+      }
+      continue;
+    }
+    if (dead || !soloOrHost || uiState.credits < VENDING_COST) continue;
+    const vdx = player.position.x - v.x;
+    const vdz = player.position.z - v.z;
+    if (vdx * vdx + vdz * vdz >= VENDING_RADIUS * VENDING_RADIUS) continue;
+
+    // The pull
+    v.cooldown = VENDING_COOLDOWN;
+    if (v.ring) (v.ring.material as THREE.MeshBasicMaterial).opacity = 0.06;
+    uiState.credits -= VENDING_COST;
+    localStorage.setItem('geo_credits', JSON.stringify(uiState.credits));
+    playMenuBuy();
+    haptics.reward();
+
+    const roll = Math.random();
+    if (roll < 0.6) {
+      const types = ['medkit', 'magnet', 'bomb'];
+      world.add({
+        isPickup: true,
+        pickupType: types[Math.floor(Math.random() * 3)],
+        position: new THREE.Vector3(v.x, 0.8, v.z + 2.2),
+        velocity: new THREE.Vector3(),
+      });
+      announce('VENDOR: PRIZE DISPENSED');
+    } else if (roll < 0.85) {
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        spawnCredit(scene, v.x + Math.cos(a) * 1.6, v.z + Math.sin(a) * 1.6, 4);
+      }
+      announce('VENDOR: JACKPOT');
+    } else {
+      // The machine bites back — at the horde
+      announce('VENDOR: VOLTAGE DISCHARGE');
+      for (const enemy of world.with('isEnemy', 'position', 'health')) {
+        if (!enemy.health) continue;
+        const edx = enemy.position.x - v.x;
+        const edz = enemy.position.z - v.z;
+        if (edx * edx + edz * edz > 14 * 14) continue;
+        enemy.health.current -= 40;
+        enemy.stunTimer = 1.0;
+        enemy.hitFlashTimer = 0.15;
+        if (enemy.health.current <= 0) handleEnemyDeath(enemy, scene);
+      }
+    }
+  }
+
+  // Black-market stash: surfaces near the player, leaves if ignored
   if (uiState.isMultiplayer) return;
 
   if (!stashMesh) {
-    // First stash mid-run; once looted, only endless mode restocks it
-    if (!stashGranted || uiState.endlessMode) {
-      stashTimer -= dt;
-      if (stashTimer <= 0) {
-        const spot = STASH_SPOTS[Math.floor(Math.random() * STASH_SPOTS.length)];
-        stashMesh = buildStash(scene, spot.x, spot.z);
-        stashTimer = STASH_RESTOCK;
-        announce('BLACK-MARKET STASH LOCATED');
-      }
+    // First stash mid-run; after the chip is owned it keeps restocking as a payout
+    stashTimer -= dt;
+    if (stashTimer <= 0) {
+      const spot = pickStashSpot(player.position.x, player.position.z);
+      stashMesh = buildStash(scene, spot.x, spot.z);
+      stashLife = STASH_LIFETIME;
+      stashTimer = STASH_RETRY;
+      announce('BLACK-MARKET STASH — GRAB IT FAST');
     }
-  } else if (!dead) {
-    const dx = player.position.x - stashMesh.position.x;
-    const dz = player.position.z - stashMesh.position.z;
-    if (dx * dx + dz * dz < STASH_RADIUS * STASH_RADIUS) {
-      openStash(scene, player);
+  } else {
+    stashLife -= dt;
+    // Last-seconds blink so the departure telegraphs
+    stashMesh.visible = stashLife > 5 || Math.sin(stashLife * 12) > -0.2;
+    if (stashLife <= 0) {
+      stashMesh.parent?.remove(stashMesh);
+      stashMesh = null;
+    } else if (!dead) {
+      const dx = player.position.x - stashMesh.position.x;
+      const dz = player.position.z - stashMesh.position.z;
+      if (dx * dx + dz * dz < STASH_RADIUS * STASH_RADIUS) {
+        openStash(scene, player);
+      }
     }
   }
 }

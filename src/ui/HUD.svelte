@@ -2,6 +2,7 @@
   import { uiState } from '../core/UIState.svelte.ts';
   import { setGameState } from '../core/GameState';
   import { fly } from 'svelte/transition';
+  import PoiArrows from './PoiArrows.svelte';
 
   const isTouchDevice =
     typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
@@ -44,6 +45,9 @@
 </script>
 
 <div id="hud-overlay" class:hidden={uiState.gameState !== 'PLAYING'}>
+  <!-- Off-screen POI guidance arrows (Phase 1.95 wayfinding) -->
+  <PoiArrows />
+
   <!-- Damage feedback vignette (re-keyed per hit so the flash restarts) -->
   {#key uiState.damageFlash}
     <div class="vignette" class:low={lowHealth} class:flash={uiState.damageFlash > 0}></div>

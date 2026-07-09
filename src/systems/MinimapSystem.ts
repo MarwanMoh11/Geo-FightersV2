@@ -5,6 +5,7 @@
 
 import { dlog, dwarn } from '../core/debug';
 import { world } from '../core/world';
+import { collectPois } from './WayfindingSystem';
 import { getBlockingObstacles } from '../core/LevelData';
 import { getQualityProfile } from '../core/quality';
 
@@ -119,6 +120,15 @@ export function MinimapSystem(): void {
     ctx.lineTo(x - 3, y);
     ctx.closePath();
     ctx.fill();
+  }
+
+  // Points of interest (shrines, stash, drops, pickups, event sites)
+  for (const poi of collectPois()) {
+    const x = mapX(poi.x);
+    const y = mapZ(poi.z);
+    if (!onMap(x, y)) continue;
+    ctx.fillStyle = poi.color;
+    ctx.fillRect(x - 2, y - 2, 4, 4);
   }
 
   // Enemies. Regular ones only when on-screen; elites/boss also get an

@@ -408,17 +408,25 @@ function addSlumsDecor(scene: THREE.Scene): void {
   // --- TRANSIT RAIL: dead maglev line separating street from courtyard ---
   const railParts: THREE.BufferGeometry[] = [];
   for (const zOff of [-1.2, 1.2]) {
-    const rail = new THREE.BoxGeometry(800, 0.08, 0.35);
+    const rail = new THREE.BoxGeometry(800, 0.1, 0.55);
     _m.makeTranslation(0, 0.04, -190 + zOff);
     rail.applyMatrix4(_m);
     railParts.push(rail);
   }
-  const rails = new THREE.Mesh(
+  railsMesh = new THREE.Mesh(
     BufferGeometryUtils.mergeGeometries(railParts),
     new THREE.MeshBasicMaterial({ color: 0x00b8cc }),
   );
-  scene.add(rails);
-  obstacleMeshes.push(rails);
+  scene.add(railsMesh);
+  obstacleMeshes.push(railsMesh);
+}
+
+// MAGLEV RUN event hook: the rails flare white-hot during the telegraph
+let railsMesh: THREE.Mesh | null = null;
+export function setRailGlow(on: boolean): void {
+  if (!railsMesh) return;
+  (railsMesh.material as THREE.MeshBasicMaterial).color.setHex(on ? 0xaef8ff : 0x00b8cc);
+  railsMesh.scale.y = on ? 8 : 1;
 }
 
 /**
