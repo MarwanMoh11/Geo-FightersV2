@@ -60,6 +60,8 @@ const tempMatrix = new THREE.Matrix4();
 const tempColor = new THREE.Color();
 
 export function LootSystem(dt: number, scene: THREE.Scene) {
+  if (uiState.magnaPulseTimer > 0) uiState.magnaPulseTimer -= dt;
+
   // Find all alive players using a pre-allocated array to prevent GC allocations
   _activePlayers.length = 0;
   for (const p of world.with('isPlayer', 'position', 'xp', 'xpMax', 'score', 'level', 'stats')) {
@@ -118,6 +120,15 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
 
     // B. COLLECTION (Early check)
     if (distSq < COLLECT_RADIUS_SQ) {
+      // NEON SURGE: gems collected inside the surging district count double
+      const surge = uiState.neonSurge;
+      const inSurge =
+        surge &&
+        xp.position.x >= surge.x1 &&
+        xp.position.x <= surge.x2 &&
+        xp.position.z >= surge.z1 &&
+        xp.position.z <= surge.z2;
+      if (inSurge && xp.xpValue) xp.xpValue *= 2;
       if (xp.xpValue && closestPlayer.xp !== undefined && closestPlayer.score !== undefined) {
         // Corruption pays out: +20% XP per level.
         closestPlayer.xp += Math.ceil(xp.xpValue * (1 + uiState.corruption * 0.2));
@@ -168,9 +179,12 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
       continue;
     }
 
-    // C. MAGNETISM (Only within radius - distance band optimization)
+    // C. MAGNETISM (Only within radius - distance band optimization).
+    // MAGNA-PULSE consumable: the radius becomes the whole map for a moment —
+    // every gem streaks in at once (the genre's signature dopamine hit).
     const magnetMult = closestPlayer.stats?.magnet || 1.0;
-    const effectiveMagnetRadiusSq = MAGNET_RADIUS_SQ * magnetMult * magnetMult;
+    const effectiveMagnetRadiusSq =
+      uiState.magnaPulseTimer > 0 ? 1e9 : MAGNET_RADIUS_SQ * magnetMult * magnetMult;
 
     if (distSq < effectiveMagnetRadiusSq) {
       const invDist = 1.0 / Math.sqrt(distSq);

@@ -135,6 +135,27 @@ export const uiState = $state({
   shrineFireTimer: 0,
   shrineArmorTimer: 0,
   shrineSpeedTimer: 0,
+  // Phase 1.95: wayfinding arrows (written by WayfindingSystem at 10 Hz)
+  poiArrows: [] as {
+    id: number;
+    icon: string;
+    color: string;
+    leftPct: number;
+    topPct: number;
+    angleDeg: number;
+    dist: number;
+  }[],
+  // MAGNA-PULSE consumable: XP magnet radius is infinite while this ticks
+  magnaPulseTimer: 0,
+  // NEON SURGE event: double XP inside this district rect while it ticks
+  neonSurge: null as {
+    name: string;
+    x1: number;
+    z1: number;
+    x2: number;
+    z2: number;
+    timer: number;
+  } | null,
   insideDefragZone: false,
   insideLeakZone: false,
 
