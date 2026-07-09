@@ -146,6 +146,11 @@ export type Entity = {
   levelUpFxTimer?: number; // celebratory flourish on level up
   spawnAnimTimer?: number; // enemies scale-pop in when spawned
 
+  // Phase 1.95 map layer
+  isDestructible?: boolean; // instanced scrap crates (DestructibleSystem)
+  isPickup?: boolean; // floor consumables
+  pickupType?: string; // 'medkit' | 'magnet' | 'bomb'
+
   // Post-hit invulnerability window (player)
   invulnTimer?: number;
   // Decaying knockback impulse, applied on top of input velocity (player)
@@ -194,6 +199,8 @@ function createECS() {
     'isAnomaly',
     'isWeapon',
     'isChest',
+    'isDestructible',
+    'isPickup',
     'isPlayer',
     'isLocalPlayer',
     'isBossShockwave',

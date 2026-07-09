@@ -3,6 +3,20 @@
 > The final pre-launch content phase. Phase 1.9 built a _place_; this phase
 > makes it a _game_. Everything here exists to fix one measured failure:
 > **casual players never see the content we built.**
+>
+> **Status (2026-07-09): Tiers 1–3 core SHIPPED** — wayfinding arrows +
+> minimap POIs (1.95.1), 120 instanced destructibles (1.95.2), the three
+> consumables (1.95.3), player-proximate supply drops (1.95.4), the event
+> scheduler with MAGLEV RUN + NEON SURGE (1.95.6/a/b), vending slot machines
+> (1.95.7), mobile stash (1.95.10), and the first-minute choreography beats
+> (supply at 0:20, shrine beacon at 0:45). Verified live: 60–61 fps with 300
+> enemies + 120 crates + arrows + a live surge; vendor→pickup→LOGIC BOMB
+> chain end-to-end; zero console errors. Deferred to post-launch liveops:
+> shrine satellites (1.95.5), BLACKOUT (1.95.6c), VENDOR GLITCH (1.95.6d),
+> billboard hacks (1.95.8), watchtower turret (1.95.9). Design note learned
+> in verification: tall beacon columns wall off a top-down camera — beacons
+> are now short additive pillars + ground discs, and the maglev runs at
+> 150 u/s so the spectacle is actually watchable.
 
 ---
 
