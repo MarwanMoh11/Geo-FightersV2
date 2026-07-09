@@ -55,6 +55,9 @@ import { initEnemyComputeSystem, EnemyComputeSystem } from './systems/EnemyCompu
 import { initDamageNumbers, DamageNumberSystem } from './systems/DamageNumberSystem';
 import { CoopSystem } from './systems/CoopSystem';
 import { ShrineSystem } from './systems/ShrineSystem';
+import { DestructibleSystem } from './systems/DestructibleSystem';
+import { MapEventSystem } from './systems/MapEventSystem';
+import { WayfindingSystem } from './systems/WayfindingSystem';
 import { ClientCombatFxSystem } from './systems/ClientCombatFxSystem';
 
 // --- AUDIO UNLOCK & MUSIC START ---
@@ -317,6 +320,8 @@ function startGameLoop(
     OverloadSystem(dt, scene);
     AnomalySystem(dt, scene);
     ShrineSystem(dt, scene);
+    DestructibleSystem(dt, scene);
+    MapEventSystem(dt, scene);
 
     if (!isMultiplayer || isHost) {
       ChestSystem(dt, scene);
@@ -349,6 +354,7 @@ function startGameLoop(
     DamageNumberSystem(dt, camera);
     UISystem();
     MinimapSystem(); // Update minimap
+    WayfindingSystem(dt, camera); // Off-screen POI arrows (10 Hz internally)
     if (DEBUG) DebugSystem(scene); // Debug panel (Shift+Alt+D, requires ?debug)
 
     renderFrame();
