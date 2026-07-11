@@ -114,6 +114,8 @@ preloadTextures(updateLoadingProgress).then(async () => {
     // Swap the local player's model live (character rig inspection)
     (window as unknown as { applyCharacterModel: typeof applyCharacterModel }).applyCharacterModel =
       applyCharacterModel;
+    // Balance harness: scripted bot + metrics sampler (window.__balance)
+    import('./core/BalanceHarness').then((m) => m.initBalanceHarness());
   }
 
   // Renderer backend indicator (debug builds only)

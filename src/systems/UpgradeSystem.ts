@@ -84,6 +84,15 @@ export function flushDeferredLevelUps(): void {
   }
 }
 
+/** Balance harness (?debug only): grant a weapon directly, no modal. */
+export function debugGrantWeapon(weaponId: string): void {
+  const player = world.with('isLocalPlayer', 'weaponSlots').first;
+  if (!player || !WEAPONS[weaponId]) return;
+  if ((player.weaponSlots || []).some((s) => s.weaponId === weaponId)) return;
+  addNewWeapon(player, weaponId);
+  uiState.weaponSlots = [...(player.weaponSlots || [])];
+}
+
 /** ARMORY breach reward: +1 level to a random owned, non-maxed weapon. */
 export function upgradeRandomOwnedWeapon(): string | null {
   const player = world.with('isLocalPlayer', 'weaponSlots').first;

@@ -65,14 +65,14 @@ export interface EliteEvent {
 export const STAGE_1_WAVES: Wave[] = [
   {
     minute: 0,
-    minAlive: 14,
+    minAlive: 20,
     interval: 0.6,
     hpMult: 1.0,
     pool: [{ type: EnemyType.VIRUS, weight: 100 }],
   },
   {
     minute: 1,
-    minAlive: 26,
+    minAlive: 65,
     interval: 0.55,
     hpMult: 1.0,
     pool: [
@@ -84,7 +84,7 @@ export const STAGE_1_WAVES: Wave[] = [
     minute: 2,
     minAlive: 40,
     interval: 0.5,
-    hpMult: 1.15,
+    hpMult: 1.1,
     pool: [
       { type: EnemyType.VIRUS, weight: 65 },
       { type: EnemyType.GLITCH, weight: 45 },
@@ -92,9 +92,9 @@ export const STAGE_1_WAVES: Wave[] = [
   },
   {
     minute: 3,
-    minAlive: 58,
+    minAlive: 95,
     interval: 0.5,
-    hpMult: 1.3,
+    hpMult: 1.2,
     pool: [
       { type: EnemyType.VIRUS, weight: 55 },
       { type: EnemyType.GLITCH, weight: 55 },
@@ -103,9 +103,9 @@ export const STAGE_1_WAVES: Wave[] = [
   },
   {
     minute: 4,
-    minAlive: 78,
+    minAlive: 130,
     interval: 0.45,
-    hpMult: 1.5,
+    hpMult: 1.35,
     pool: [
       { type: EnemyType.VIRUS, weight: 50 },
       { type: EnemyType.GLITCH, weight: 60 },
@@ -114,9 +114,9 @@ export const STAGE_1_WAVES: Wave[] = [
   },
   {
     minute: 5,
-    minAlive: 100,
+    minAlive: 170,
     interval: 0.45,
-    hpMult: 1.7,
+    hpMult: 1.5,
     pool: [
       { type: EnemyType.VIRUS, weight: 45 },
       { type: EnemyType.GLITCH, weight: 65 },
@@ -125,9 +125,9 @@ export const STAGE_1_WAVES: Wave[] = [
   },
   {
     minute: 6,
-    minAlive: 125,
+    minAlive: 215,
     interval: 0.4,
-    hpMult: 1.95,
+    hpMult: 1.65,
     pool: [
       { type: EnemyType.VIRUS, weight: 40 },
       { type: EnemyType.GLITCH, weight: 70 },
@@ -136,9 +136,9 @@ export const STAGE_1_WAVES: Wave[] = [
   },
   {
     minute: 7,
-    minAlive: 150,
+    minAlive: 260,
     interval: 0.4,
-    hpMult: 2.2,
+    hpMult: 1.8,
     pool: [
       { type: EnemyType.VIRUS, weight: 35 },
       { type: EnemyType.GLITCH, weight: 70 },
@@ -147,9 +147,9 @@ export const STAGE_1_WAVES: Wave[] = [
   },
   {
     minute: 8,
-    minAlive: 180,
+    minAlive: 310,
     interval: 0.35,
-    hpMult: 2.5,
+    hpMult: 2.0,
     pool: [
       { type: EnemyType.VIRUS, weight: 30 },
       { type: EnemyType.GLITCH, weight: 70 },
@@ -158,9 +158,9 @@ export const STAGE_1_WAVES: Wave[] = [
   },
   {
     minute: 9,
-    minAlive: 210,
+    minAlive: 360,
     interval: 0.35,
-    hpMult: 2.9,
+    hpMult: 2.2,
     pool: [
       { type: EnemyType.VIRUS, weight: 25 },
       { type: EnemyType.GLITCH, weight: 70 },
@@ -171,8 +171,8 @@ export const STAGE_1_WAVES: Wave[] = [
 
 // Endless mode: the last wave keeps growing past 10:00
 export const ENDLESS_GROWTH = {
-  minAlivePerMinute: 25,
-  minAliveCap: 260, // headroom under MAX_ENEMIES for swarms/elites
+  minAlivePerMinute: 35,
+  minAliveCap: 400, // headroom under MAX_ENEMIES for swarms/elites
   hpMultPerMinute: 0.4,
   intervalFloor: 0.3,
 };
@@ -181,25 +181,25 @@ export const ENDLESS_GROWTH = {
 // Rings are the VS flower trap: a perfect closing circle you must break
 // through. Lines are walls that sweep across the approach lane.
 export const STAGE_1_SWARMS: SwarmEvent[] = [
-  { at: 90, kind: 'ring', type: EnemyType.VIRUS, count: 24, hpMult: 0.6, speedMult: 1.35 },
-  { at: 150, kind: 'line', type: EnemyType.GLITCH, count: 18, hpMult: 0.6, speedMult: 1.2 },
-  { at: 210, kind: 'ring', type: EnemyType.VIRUS, count: 32, hpMult: 0.6, speedMult: 1.35 },
-  { at: 270, kind: 'line', type: EnemyType.GLITCH, count: 22, hpMult: 0.6, speedMult: 1.2 },
-  { at: 330, kind: 'ring', type: EnemyType.VIRUS, count: 40, hpMult: 0.6, speedMult: 1.35 },
-  { at: 390, kind: 'line', type: EnemyType.GLITCH, count: 26, hpMult: 0.6, speedMult: 1.2 },
+  { at: 90, kind: 'ring', type: EnemyType.VIRUS, count: 36, hpMult: 0.6, speedMult: 1.35 },
+  { at: 150, kind: 'line', type: EnemyType.GLITCH, count: 27, hpMult: 0.6, speedMult: 1.2 },
+  { at: 210, kind: 'ring', type: EnemyType.VIRUS, count: 72, hpMult: 0.6, speedMult: 1.35 },
+  { at: 270, kind: 'line', type: EnemyType.GLITCH, count: 33, hpMult: 0.6, speedMult: 1.2 },
+  { at: 330, kind: 'ring', type: EnemyType.VIRUS, count: 60, hpMult: 0.6, speedMult: 1.35 },
+  { at: 390, kind: 'line', type: EnemyType.GLITCH, count: 39, hpMult: 0.6, speedMult: 1.2 },
   { at: 450, kind: 'ring', type: EnemyType.VIRUS, count: 48, hpMult: 0.6, speedMult: 1.4 },
-  { at: 510, kind: 'line', type: EnemyType.GLITCH, count: 30, hpMult: 0.6, speedMult: 1.25 },
+  { at: 510, kind: 'line', type: EnemyType.GLITCH, count: 45, hpMult: 0.6, speedMult: 1.25 },
   // Pre-finale panic ring
-  { at: 570, kind: 'ring', type: EnemyType.VIRUS, count: 56, hpMult: 0.6, speedMult: 1.45 },
+  { at: 570, kind: 'ring', type: EnemyType.VIRUS, count: 84, hpMult: 0.6, speedMult: 1.45 },
 ];
 
 // Endless: keep the ring traps coming every 60s after the authored list ends
 export const ENDLESS_SWARM = {
   interval: 60,
   base: { kind: 'ring' as const, type: EnemyType.VIRUS, hpMult: 0.6, speedMult: 1.45 },
-  count: 56,
-  countPerMinute: 4,
-  countCap: 90,
+  count: 84,
+  countPerMinute: 5,
+  countCap: 130,
 };
 
 // --- ELITE SCHEDULE (chest bearers + minibosses) ---

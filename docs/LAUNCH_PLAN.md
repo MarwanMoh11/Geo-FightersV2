@@ -252,6 +252,29 @@ all three. Balance: fodder XP cut (VIRUS 2, GLITCH 5) to hold the VS level-up
 cadence at tripled kill volume, fodder approach speeds raised (VIRUS 1.7,
 GLITCH 1.1), starter weapons pierce 2 so shots plow through packs.
 
+## Phase 1.98 — GOLDILOCKS: measured balance, not guesswork
+
+**Status: SHIPPED.** Added a debug-only BalanceHarness (`?debug` →
+`window.__balance`): a kiting/standstill bot player + 1 Hz metrics sampler
+(alive-vs-quota saturation, kills/min, HP series, fps). Every change below was
+driven by its measurements, iterated until the curves landed:
+
+- **Contact damage was fake.** One flat 5 HP hit behind a global 0.8s i-frame
+  (6.25 HP/s max from ANY horde size), and Rapier only fires contact-START
+  events so enemies pressed against the player never re-hit. Now: direct
+  contact sweep + per-enemy 1.0s cooldowns + typed damage (VIRUS 4 → OVERSEER
+  20) + 0.15s stagger — density IS the threat.
+- **Fodder never caught a kiting player** (measured minHp 100 through a
+  215-enemy wave at speeds 1.7/1.1). Bisected: 2.4/1.9 killed the kite bot in
+  6s; **2.1/1.6 is the band** — mid-game run carved 100→23 HP but survivable.
+- **Weapons were NOT overpowered** — the opposite: 74 kills/min at min 6
+  against the old HP curve. Softened wave hpMult (peak 2.9 → 2.2): 240
+  kills/min mid, 926 late — the massacre feel.
+- **Insane hordes:** quotas 20 → 360 (was 14 → 210), cap 300 → 450, swarms
+  ×1.5 (rings up to 84). Measured 330-340 alive sustained at min 8, 60 fps.
+- Standstill at min-6 density: ~3s convergence + ~4s to melt. Standing still
+  is death, kiting is life — the VS covenant.
+
 ## Phase 2 — Multiplayer resilience (make co-op shippable-quality)
 
 Already done this cycle: party lobby w/ ready-up, ghosts/revives, kill
