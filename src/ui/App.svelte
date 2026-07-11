@@ -16,6 +16,8 @@
   import FPSCounter from './FPSCounter.svelte';
   import PwaLayer from './PwaLayer.svelte';
   import Toast from './Toast.svelte';
+  import BreachOverlay from './BreachOverlay.svelte';
+  import { uiState } from '../core/UIState.svelte.ts';
 </script>
 
 <div class="game-ui">
@@ -23,6 +25,12 @@
   <HUD />
   <Inventory />
   <MobileControls />
+
+  <!-- Phase 1.96 JACK IN: mounted per-breach so the mini-game captures its
+       config at init; the world keeps simulating underneath -->
+  {#if uiState.breach}
+    <BreachOverlay />
+  {/if}
 
   <PauseModal />
   <SettingsModal />

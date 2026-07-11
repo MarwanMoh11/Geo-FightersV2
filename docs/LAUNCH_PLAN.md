@@ -224,6 +224,18 @@ slot machines, billboard hacks, watchtower turret, mobile stash, and a
 scripted first 60 seconds. Ships against a measurable casual-experience
 contract with the usual zero-fps-regression rule.
 
+## Phase 1.96 — JACK IN: enterable buildings & breach mini-games
+
+**Status: SHIPPED-pending.** Full doc: [PHASE_1_96_JACK_IN.md](PHASE_1_96_JACK_IN.md).
+Every interactable becomes an enterable node behind a glowing door: stand in it
+to JACK IN and play a 10-20s Dispatch-style GridRunner breach (maze + timer +
+sequence gates + antivirus chasers + fog) while the horde piles up outside.
+Six node kinds with exclusive rewards (weapon upgrade token, EMP screen-clear,
+district slow, chest jackpots, SCAVENGER CHIP), security levels that ramp with
+run time, OVERCLOCK double-or-nothing, ICE TRACER on high-security fails,
+CYPHER/BYTE hacking perks, SKELETON KEY rare drop. Replaces walk-on shrines and
+vending pulls with one universal door grammar.
+
 ## Phase 2 — Multiplayer resilience (make co-op shippable-quality)
 
 Already done this cycle: party lobby w/ ready-up, ghosts/revives, kill

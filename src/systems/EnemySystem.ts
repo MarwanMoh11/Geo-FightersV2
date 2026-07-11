@@ -15,6 +15,7 @@
 import * as THREE from 'three';
 import { world } from '../core/world';
 import { removeBody } from '../core/RapierWorld';
+import { uiState } from '../core/UIState.svelte.ts';
 
 // --- PRECOMPUTED CONSTANTS ---
 const SEPARATION_RADIUS_SQ = 1.0 * 1.0;
@@ -65,6 +66,8 @@ const NEIGHBOR_DX = [0, 1, 1, 0, -1];
 const NEIGHBOR_DZ = [0, 0, 1, 1, 1];
 
 export function EnemySystem(dt: number, scene: THREE.Scene) {
+  // RELAY TOWER breach reward: the whole grid runs at half speed while active
+  const relaySlow = uiState.relaySlowTimer > 0 ? 0.5 : 1;
   // Populate reusable players array
   _players.length = 0;
   for (const p of world.with('isPlayer', 'position')) {
@@ -170,7 +173,7 @@ export function EnemySystem(dt: number, scene: THREE.Scene) {
       const dz = targetZ - enemy.position.z;
       const invLen = 1.0 / Math.sqrt(dx * dx + dz * dz + 0.001);
 
-      const speed = enemy.moveSpeed || 2.0;
+      const speed = (enemy.moveSpeed || 2.0) * relaySlow;
       const targetVx = dx * invLen * speed;
       const targetVz = dz * invLen * speed;
 

@@ -147,6 +147,31 @@ export const uiState = $state({
   }[],
   // MAGNA-PULSE consumable: XP magnet radius is infinite while this ticks
   magnaPulseTimer: 0,
+  // Phase 1.96 JACK IN: live breach session (opens the BreachOverlay modal)
+  breach: null as null | {
+    nodeId: string;
+    kind: 'depot' | 'armory' | 'bank' | 'relay' | 'substation' | 'stashden';
+    name: string;
+    icon: string;
+    color: string;
+    security: number; // 0-3
+    overclock: boolean;
+  },
+  // Door prompt shown while standing at a ready node (null = none nearby)
+  breachPrompt: null as null | {
+    nodeId: string;
+    name: string;
+    icon: string;
+    color: string;
+    security: number;
+    hasKey: boolean;
+  },
+  // Co-op defend-the-hacker meter (1 = intact; solo never drains)
+  breachShield: 1,
+  // SKELETON KEY consumables held this run (auto-complete a breach)
+  skeletonKeys: 0,
+  // RELAY TOWER reward: all enemies move at half speed while this ticks
+  relaySlowTimer: 0,
   // NEON SURGE event: double XP inside this district rect while it ticks
   neonSurge: null as {
     name: string;
