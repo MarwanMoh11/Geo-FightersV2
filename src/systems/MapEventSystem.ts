@@ -110,6 +110,7 @@ function spawnBeacon(scene: THREE.Scene, x: number, z: number, color: number, tt
   );
   disc.rotation.x = -Math.PI / 2;
   disc.position.y = 0.07;
+  disc.renderOrder = 4; // ground decal — mobile depth buffers z-fight coplanar layers
   group.add(disc);
   group.position.set(x, 0, z);
   scene.add(group);
@@ -235,6 +236,7 @@ function startSurge(scene: THREE.Scene): void {
   );
   surgeMesh.rotation.x = -Math.PI / 2;
   surgeMesh.position.set(cx, 0.03, cz);
+  surgeMesh.renderOrder = 4; // ground decal — mobile depth buffers z-fight coplanar layers
   scene.add(surgeMesh);
 }
 

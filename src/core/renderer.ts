@@ -16,8 +16,11 @@ export async function initRenderer() {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x222222); // Dark Grey (easier on eyes than black)
 
-  // Replace the camera line in src/core/renderer.ts
-  const camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 1000);
+  // Depth range is deliberately tight (near 2, far 600): the camera rig never
+  // gets closer than ~40 units to anything, and mobile GPUs z-fight the
+  // layered ground decals (decks/grid/rails at y 0.01-0.05) when precision is
+  // spread across a 0.1-1000 range — that read as "flickering map textures".
+  const camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 2, 600);
 
   // "Hades" style is high up and angled significantly
   // We move it further away (40, 40) because the narrow FOV zooms us in.
