@@ -25,6 +25,7 @@ import { resetAnomalySystem } from '../systems/AnomalySystem';
 import { resetShrineSystem } from '../systems/ShrineSystem';
 import { resetDestructibles } from '../systems/DestructibleSystem';
 import { resetMapEvents } from '../systems/MapEventSystem';
+import { resetBreachSystem } from '../systems/BreachSystem';
 import { resetGameFlags } from '../systems/GameManager';
 import { resetUpgradeState } from '../systems/UpgradeSystem';
 import { clearDamageNumbers } from '../systems/DamageNumberSystem';
@@ -64,6 +65,7 @@ export function resetRun(): void {
   resetShrineSystem();
   resetDestructibles();
   resetMapEvents();
+  resetBreachSystem();
   resetFlowState();
   resetGameFlags();
   resetUpgradeState();
