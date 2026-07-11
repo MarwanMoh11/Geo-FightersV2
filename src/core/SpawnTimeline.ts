@@ -1,331 +1,240 @@
 /**
- * SpawnTimeline - Data structures and stage definitions for VS-style spawning
+ * SpawnTimeline — Vampire Survivors wave data (Phase 1.97 HORDE)
  *
- * Each stage is a choreographed "enemy script" that dictates:
- * - What enemies spawn at what time
- * - Their spawn weights (probability)
- * - Formation patterns
- * - Min/Max counts per spawn event
+ * Faithful port of VS's documented spawn model
+ * (https://vampire-survivors.fandom.com/wiki/Enemies):
+ *
+ *   • One WAVE per minute. Each wave defines a MINIMUM-ALIVE quota, a spawn
+ *     tick interval, and a weighted enemy pool.
+ *   • Below quota → the deficit is filled immediately (density is a
+ *     guaranteed, escalating variable — the screen is never empty).
+ *   • At/above quota → each tick spawns one of each pool type anyway, so the
+ *     pressure always trickles upward.
+ *   • Scripted SWARMS at fixed timestamps: perfect rings that close on the
+ *     player (the VS "flower trap") and line walls that sweep in.
+ *   • ELITES on a fixed schedule (chest bearers), minibosses at 5:00/9:00.
+ *   • Later waves respawn the same enemies with more HP (wave hpMult), so
+ *     player power growth races enemy bulk — the VS tension curve.
+ *
+ * The stage is authored for the 10-minute run (FinaleBoss owns 10:00);
+ * endless mode extends the last wave with its own growth rules.
  */
 
 import { EnemyType } from './factories';
 
 // --- DATA STRUCTURES ---
 
-export type FormationType = 'swarm' | 'line' | 'encircle' | 'pincer';
-
-export interface SpawnEntry {
-  startTime: number; // seconds - when this entry becomes active
-  endTime: number; // seconds - when this entry stops being active
-  enemyType: EnemyType;
-  weight: number; // spawn weight (higher = more likely in pool)
-  countMin: number; // minimum enemies per spawn event
-  countMax: number; // maximum enemies per spawn event
-  formation: FormationType;
+export interface WavePoolEntry {
+  type: EnemyType;
+  weight: number;
 }
 
-export interface StageTimeline {
-  name: string;
-  duration: number; // total stage duration in seconds (e.g., 1800 for 30 min)
-  entries: SpawnEntry[];
+export interface Wave {
+  /** Wave index == minute of the run (0-based) */
+  minute: number;
+  /** Minimum enemies alive; deficits are filled instantly */
+  minAlive: number;
+  /** Seconds between spawn ticks */
+  interval: number;
+  /** Weighted pool for quota fills and at-quota trickle */
+  pool: WavePoolEntry[];
+  /** HP multiplier applied to everything spawned during this wave */
+  hpMult: number;
 }
 
-// --- SPAWN COST (budget consumption per enemy) ---
-export const ENEMY_SPAWN_COST: Record<EnemyType, number> = {
-  // Standard enemies
-  [EnemyType.VIRUS]: 1, // Fodder - cheapest
-  [EnemyType.GLITCH]: 2, // Standard - moderate cost
-  [EnemyType.FIREWALL]: 5, // Tank - expensive
-  // Elite enemies (high cost, but priority spawn)
-  [EnemyType.ENFORCER]: 8, // Shield bearer
-  [EnemyType.COLOSSUS]: 15, // Massive crawler
-  [EnemyType.WARDEN]: 6, // Fast phase-shifter
-  // Mini-bosses (very high cost)
-  [EnemyType.HYDRA]: 25, // Multi-node boss
-  [EnemyType.OVERSEER]: 50, // Major boss
+export interface SwarmEvent {
+  at: number; // seconds
+  kind: 'ring' | 'line';
+  type: EnemyType;
+  count: number;
+  /** Swarm bodies are brittle (VS bat swarms are near-1hp) */
+  hpMult: number;
+  /** Rings close faster than the ambient horde */
+  speedMult: number;
+}
+
+export interface EliteEvent {
+  at: number; // seconds
+  type: EnemyType;
+  count: number;
+  announce?: string;
+}
+
+// --- STAGE 1: NEON BLOCK SLUMS, 10 MINUTES ---
+
+export const STAGE_1_WAVES: Wave[] = [
+  {
+    minute: 0,
+    minAlive: 14,
+    interval: 0.6,
+    hpMult: 1.0,
+    pool: [{ type: EnemyType.VIRUS, weight: 100 }],
+  },
+  {
+    minute: 1,
+    minAlive: 26,
+    interval: 0.55,
+    hpMult: 1.0,
+    pool: [
+      { type: EnemyType.VIRUS, weight: 75 },
+      { type: EnemyType.GLITCH, weight: 30 },
+    ],
+  },
+  {
+    minute: 2,
+    minAlive: 40,
+    interval: 0.5,
+    hpMult: 1.15,
+    pool: [
+      { type: EnemyType.VIRUS, weight: 65 },
+      { type: EnemyType.GLITCH, weight: 45 },
+    ],
+  },
+  {
+    minute: 3,
+    minAlive: 58,
+    interval: 0.5,
+    hpMult: 1.3,
+    pool: [
+      { type: EnemyType.VIRUS, weight: 55 },
+      { type: EnemyType.GLITCH, weight: 55 },
+      { type: EnemyType.FIREWALL, weight: 6 },
+    ],
+  },
+  {
+    minute: 4,
+    minAlive: 78,
+    interval: 0.45,
+    hpMult: 1.5,
+    pool: [
+      { type: EnemyType.VIRUS, weight: 50 },
+      { type: EnemyType.GLITCH, weight: 60 },
+      { type: EnemyType.FIREWALL, weight: 8 },
+    ],
+  },
+  {
+    minute: 5,
+    minAlive: 100,
+    interval: 0.45,
+    hpMult: 1.7,
+    pool: [
+      { type: EnemyType.VIRUS, weight: 45 },
+      { type: EnemyType.GLITCH, weight: 65 },
+      { type: EnemyType.FIREWALL, weight: 10 },
+    ],
+  },
+  {
+    minute: 6,
+    minAlive: 125,
+    interval: 0.4,
+    hpMult: 1.95,
+    pool: [
+      { type: EnemyType.VIRUS, weight: 40 },
+      { type: EnemyType.GLITCH, weight: 70 },
+      { type: EnemyType.FIREWALL, weight: 12 },
+    ],
+  },
+  {
+    minute: 7,
+    minAlive: 150,
+    interval: 0.4,
+    hpMult: 2.2,
+    pool: [
+      { type: EnemyType.VIRUS, weight: 35 },
+      { type: EnemyType.GLITCH, weight: 70 },
+      { type: EnemyType.FIREWALL, weight: 14 },
+    ],
+  },
+  {
+    minute: 8,
+    minAlive: 180,
+    interval: 0.35,
+    hpMult: 2.5,
+    pool: [
+      { type: EnemyType.VIRUS, weight: 30 },
+      { type: EnemyType.GLITCH, weight: 70 },
+      { type: EnemyType.FIREWALL, weight: 16 },
+    ],
+  },
+  {
+    minute: 9,
+    minAlive: 210,
+    interval: 0.35,
+    hpMult: 2.9,
+    pool: [
+      { type: EnemyType.VIRUS, weight: 25 },
+      { type: EnemyType.GLITCH, weight: 70 },
+      { type: EnemyType.FIREWALL, weight: 18 },
+    ],
+  },
+];
+
+// Endless mode: the last wave keeps growing past 10:00
+export const ENDLESS_GROWTH = {
+  minAlivePerMinute: 25,
+  minAliveCap: 260, // headroom under MAX_ENEMIES for swarms/elites
+  hpMultPerMinute: 0.4,
+  intervalFloor: 0.3,
 };
 
-// --- STAGE 1 TIMELINE ---
-// A 30-minute escalating challenge
+// --- SCRIPTED SWARMS (every minute at :30, alternating trap shapes) ---
+// Rings are the VS flower trap: a perfect closing circle you must break
+// through. Lines are walls that sweep across the approach lane.
+export const STAGE_1_SWARMS: SwarmEvent[] = [
+  { at: 90, kind: 'ring', type: EnemyType.VIRUS, count: 24, hpMult: 0.6, speedMult: 1.35 },
+  { at: 150, kind: 'line', type: EnemyType.GLITCH, count: 18, hpMult: 0.6, speedMult: 1.2 },
+  { at: 210, kind: 'ring', type: EnemyType.VIRUS, count: 32, hpMult: 0.6, speedMult: 1.35 },
+  { at: 270, kind: 'line', type: EnemyType.GLITCH, count: 22, hpMult: 0.6, speedMult: 1.2 },
+  { at: 330, kind: 'ring', type: EnemyType.VIRUS, count: 40, hpMult: 0.6, speedMult: 1.35 },
+  { at: 390, kind: 'line', type: EnemyType.GLITCH, count: 26, hpMult: 0.6, speedMult: 1.2 },
+  { at: 450, kind: 'ring', type: EnemyType.VIRUS, count: 48, hpMult: 0.6, speedMult: 1.4 },
+  { at: 510, kind: 'line', type: EnemyType.GLITCH, count: 30, hpMult: 0.6, speedMult: 1.25 },
+  // Pre-finale panic ring
+  { at: 570, kind: 'ring', type: EnemyType.VIRUS, count: 56, hpMult: 0.6, speedMult: 1.45 },
+];
 
-export const STAGE_1_TIMELINE: StageTimeline = {
-  name: 'Cyber Wasteland',
-  duration: 1800, // 30 minutes
-
-  entries: [
-    // === PHASE 1: THE CALM (0-60s) ===
-    // Mostly weak VIRUS fodder to let player get bearings
-    {
-      startTime: 0,
-      endTime: 60,
-      enemyType: EnemyType.VIRUS,
-      weight: 100,
-      countMin: 2,
-      countMax: 5,
-      formation: 'swarm',
-    },
-
-    // === PHASE 2: INTRODUCTION (60-180s) ===
-    // GLITCH appears, mixed with VIRUS
-    {
-      startTime: 0,
-      endTime: 180,
-      enemyType: EnemyType.VIRUS,
-      weight: 70,
-      countMin: 3,
-      countMax: 8,
-      formation: 'swarm',
-    },
-    {
-      startTime: 60,
-      endTime: 180,
-      enemyType: EnemyType.GLITCH,
-      weight: 50,
-      countMin: 2,
-      countMax: 5,
-      formation: 'swarm',
-    },
-
-    // === PHASE 3: ESCALATION (180-360s) ===
-    // Formations get more tactical, FIREWALL appears
-    {
-      startTime: 180,
-      endTime: 360,
-      enemyType: EnemyType.VIRUS,
-      weight: 60,
-      countMin: 5,
-      countMax: 12,
-      formation: 'line',
-    },
-    {
-      startTime: 180,
-      endTime: 360,
-      enemyType: EnemyType.GLITCH,
-      weight: 70,
-      countMin: 4,
-      countMax: 10,
-      formation: 'encircle',
-    },
-    {
-      startTime: 180,
-      endTime: 360,
-      enemyType: EnemyType.FIREWALL,
-      weight: 8,
-      countMin: 1,
-      countMax: 1,
-      formation: 'pincer',
-    },
-
-    // === PHASE 4: PRESSURE (360-600s) ===
-    // Heavy enemy presence, mixed formations
-    {
-      startTime: 360,
-      endTime: 600,
-      enemyType: EnemyType.VIRUS,
-      weight: 50,
-      countMin: 8,
-      countMax: 15,
-      formation: 'encircle',
-    },
-    {
-      startTime: 360,
-      endTime: 600,
-      enemyType: EnemyType.GLITCH,
-      weight: 60,
-      countMin: 6,
-      countMax: 12,
-      formation: 'line',
-    },
-    {
-      startTime: 360,
-      endTime: 600,
-      enemyType: EnemyType.FIREWALL,
-      weight: 10,
-      countMin: 1,
-      countMax: 1,
-      formation: 'pincer',
-    },
-
-    // === PHASE 5: OVERWHELMING (600-1200s) ===
-    // Maximum enemy density, all formations
-    {
-      startTime: 600,
-      endTime: 1200,
-      enemyType: EnemyType.VIRUS,
-      weight: 40,
-      countMin: 10,
-      countMax: 20,
-      formation: 'swarm',
-    },
-    {
-      startTime: 600,
-      endTime: 1200,
-      enemyType: EnemyType.GLITCH,
-      weight: 55,
-      countMin: 8,
-      countMax: 16,
-      formation: 'encircle',
-    },
-    {
-      startTime: 600,
-      endTime: 1200,
-      enemyType: EnemyType.FIREWALL,
-      weight: 12,
-      countMin: 1,
-      countMax: 2,
-      formation: 'line',
-    },
-
-    // === PHASE 6: ENDGAME (1200-1800s) ===
-    // Pure chaos - everything at maximum
-    {
-      startTime: 1200,
-      endTime: 1800,
-      enemyType: EnemyType.VIRUS,
-      weight: 35,
-      countMin: 15,
-      countMax: 30,
-      formation: 'encircle',
-    },
-    {
-      startTime: 1200,
-      endTime: 1800,
-      enemyType: EnemyType.GLITCH,
-      weight: 50,
-      countMin: 12,
-      countMax: 24,
-      formation: 'swarm',
-    },
-    {
-      startTime: 1200,
-      endTime: 1800,
-      enemyType: EnemyType.FIREWALL,
-      weight: 15,
-      countMin: 1,
-      countMax: 2,
-      formation: 'encircle',
-    },
-
-    // === ELITE SPAWNS (Chest Bearers) ===
-    // ENFORCER: Shield bearer - tests AoE builds
-    {
-      startTime: 180, // 3:00
-      endTime: 182,
-      enemyType: EnemyType.ENFORCER,
-      weight: 100,
-      countMin: 1,
-      countMax: 1,
-      formation: 'pincer',
-    },
-    {
-      startTime: 300, // 5:00
-      endTime: 302,
-      enemyType: EnemyType.ENFORCER,
-      weight: 100,
-      countMin: 1,
-      countMax: 1,
-      formation: 'pincer',
-    },
-
-    // WARDEN: Speed check - tests positioning
-    {
-      startTime: 240, // 4:00
-      endTime: 242,
-      enemyType: EnemyType.WARDEN,
-      weight: 100,
-      countMin: 1,
-      countMax: 1,
-      formation: 'swarm',
-    },
-    {
-      startTime: 420, // 7:00
-      endTime: 422,
-      enemyType: EnemyType.WARDEN,
-      weight: 100,
-      countMin: 1,
-      countMax: 1,
-      formation: 'swarm',
-    },
-
-    // COLOSSUS: Coverage test - spawns trash
-    {
-      startTime: 360, // 6:00
-      endTime: 362,
-      enemyType: EnemyType.COLOSSUS,
-      weight: 100,
-      countMin: 1,
-      countMax: 1,
-      formation: 'line',
-    },
-    {
-      startTime: 600, // 10:00
-      endTime: 602,
-      enemyType: EnemyType.COLOSSUS,
-      weight: 100,
-      countMin: 1,
-      countMax: 1,
-      formation: 'line',
-    },
-
-    // === MINI-BOSS SPAWNS (Multiple Chests) ===
-    // HYDRA: 10:00 and 18:00 - drops 3 chests
-    {
-      startTime: 600, // 10:00
-      endTime: 602,
-      enemyType: EnemyType.HYDRA,
-      weight: 100,
-      countMin: 1,
-      countMax: 1,
-      formation: 'encircle',
-    },
-    {
-      startTime: 1080, // 18:00
-      endTime: 1082,
-      enemyType: EnemyType.HYDRA,
-      weight: 100,
-      countMin: 1,
-      countMax: 1,
-      formation: 'encircle',
-    },
-
-    // OVERSEER: 20:00 - drops 5 chests (major checkpoint)
-    {
-      startTime: 1200, // 20:00
-      endTime: 1202,
-      enemyType: EnemyType.OVERSEER,
-      weight: 100,
-      countMin: 1,
-      countMax: 1,
-      formation: 'encircle',
-    },
-  ],
+// Endless: keep the ring traps coming every 60s after the authored list ends
+export const ENDLESS_SWARM = {
+  interval: 60,
+  base: { kind: 'ring' as const, type: EnemyType.VIRUS, hpMult: 0.6, speedMult: 1.45 },
+  count: 56,
+  countPerMinute: 4,
+  countCap: 90,
 };
 
-// --- HELPER: Get active entries at a given time ---
-export function getActiveEntries(timeline: StageTimeline, elapsedSeconds: number): SpawnEntry[] {
-  return timeline.entries.filter(
-    (entry) => elapsedSeconds >= entry.startTime && elapsedSeconds < entry.endTime,
-  );
+// --- ELITE SCHEDULE (chest bearers + minibosses) ---
+export const STAGE_1_ELITES: EliteEvent[] = [
+  { at: 90, type: EnemyType.ENFORCER, count: 1 },
+  { at: 180, type: EnemyType.WARDEN, count: 1 },
+  { at: 270, type: EnemyType.ENFORCER, count: 2 },
+  { at: 300, type: EnemyType.HYDRA, count: 1, announce: 'PROXY HYDRA ONLINE' },
+  { at: 360, type: EnemyType.COLOSSUS, count: 1 },
+  { at: 450, type: EnemyType.WARDEN, count: 2 },
+  { at: 510, type: EnemyType.COLOSSUS, count: 1 },
+  { at: 512, type: EnemyType.ENFORCER, count: 1 },
+  { at: 540, type: EnemyType.HYDRA, count: 1, announce: 'PROXY HYDRA ONLINE' },
+];
+
+// Endless: an elite pack every 45s, cycling types
+export const ENDLESS_ELITES = {
+  interval: 45,
+  rotation: [EnemyType.ENFORCER, EnemyType.WARDEN, EnemyType.COLOSSUS, EnemyType.HYDRA],
+};
+
+// --- HELPERS ---
+
+export function getWave(elapsedSeconds: number): Wave {
+  const idx = Math.min(Math.floor(elapsedSeconds / 60), STAGE_1_WAVES.length - 1);
+  return STAGE_1_WAVES[idx];
 }
 
-// --- HELPER: Calculate total weight of active pool ---
-export function getTotalWeight(entries: SpawnEntry[]): number {
-  return entries.reduce((sum, entry) => sum + entry.weight, 0);
-}
-
-// --- HELPER: Select entry by weighted random ---
-export function selectEntryByWeight(entries: SpawnEntry[]): SpawnEntry | null {
-  if (entries.length === 0) return null;
-
-  const totalWeight = getTotalWeight(entries);
-  let roll = Math.random() * totalWeight;
-
-  for (const entry of entries) {
-    if (roll < entry.weight) {
-      return entry;
-    }
-    roll -= entry.weight;
+export function pickFromPool(pool: WavePoolEntry[]): EnemyType {
+  let total = 0;
+  for (const e of pool) total += e.weight;
+  let roll = Math.random() * total;
+  for (const e of pool) {
+    if (roll < e.weight) return e.type;
+    roll -= e.weight;
   }
-
-  return entries[entries.length - 1]; // Fallback
+  return pool[pool.length - 1].type;
 }
