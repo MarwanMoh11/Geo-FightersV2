@@ -18,8 +18,8 @@ import { removeBody } from '../core/RapierWorld';
 import { uiState } from '../core/UIState.svelte.ts';
 
 // --- PRECOMPUTED CONSTANTS ---
-const SEPARATION_RADIUS_SQ = 1.0 * 1.0;
-const SEPARATION_STRENGTH = 20.0;
+const SEPARATION_RADIUS = 1.0;
+const SEPARATION_RADIUS_SQ = SEPARATION_RADIUS * SEPARATION_RADIUS;
 const STEER_STRENGTH = 8.0;
 const STUN_FRICTION = 0.9;
 const CONFUSED_ATTACK_RANGE_SQ = 2.0 * 2.0; // Range for confused enemy attacks
@@ -204,17 +204,25 @@ export function EnemySystem(dt: number, scene: THREE.Scene) {
         if (distSq < SEPARATION_RADIUS_SQ && distSq > 0.0001) {
           checksRemaining--;
 
-          // Inverse distance force (stronger when closer)
-          const force = (1.0 - distSq / SEPARATION_RADIUS_SQ) * SEPARATION_STRENGTH * dt;
-          const invDist = 1.0 / Math.sqrt(distSq);
-          const fx = dx * invDist * force;
-          const fz = dz * invDist * force;
+          // POSITION relaxation, not velocity impulses. Impulse separation
+          // fought the chase steering in dense packs and settled into a
+          // vibration limit-cycle — twice as violent at mobile frame times
+          // (dt doubles → kicks double) which read as "shaking / low fps".
+          // Relaxing a dt-scaled, capped fraction of the overlap can never
+          // overshoot, so it cannot oscillate; the horde packs into a calm
+          // VS-style blob instead.
+          const dist = Math.sqrt(distSq);
+          const overlap = SEPARATION_RADIUS - dist;
+          const f = Math.min(0.45, 6 * dt); // per-frame relaxation, fps-normalized
+          const push = Math.min(overlap * f, 0.12);
+          const invDist = 1.0 / dist;
+          const px = dx * invDist * push;
+          const pz = dz * invDist * push;
 
-          // Apply to both enemies (Newton's 3rd law)
-          enemy.velocity.x += fx;
-          enemy.velocity.z += fz;
-          other.velocity.x -= fx;
-          other.velocity.z -= fz;
+          enemy.position.x += px;
+          enemy.position.z += pz;
+          other.position.x -= px;
+          other.position.z -= pz;
         }
       }
     }
