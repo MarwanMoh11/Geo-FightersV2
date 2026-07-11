@@ -300,6 +300,7 @@ function initDressing(scene: THREE.Scene): void {
     const ring = new THREE.Mesh(new THREE.RingGeometry(2.3, 2.8, 28), ringMat);
     ring.rotation.x = -Math.PI / 2;
     ring.position.set(node.doorX, 0.06, node.doorZ);
+    ring.renderOrder = 4; // ground decal — mobile depth buffers z-fight coplanar layers
     scene.add(ring);
     node.ringMat = ringMat;
 
@@ -343,6 +344,7 @@ function initDressing(scene: THREE.Scene): void {
       depthWrite: false,
     }),
   );
+  strips.renderOrder = 4; // ground decal — mobile depth buffers z-fight coplanar layers
   scene.add(strips);
 }
 
