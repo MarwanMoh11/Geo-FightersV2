@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { uiState } from '../core/UIState.svelte.ts';
+  import { uiState, saveLocal } from '../core/UIState.svelte.ts';
   import { fade, scale } from 'svelte/transition';
   import { playMenuClick } from '../core/audio';
   import { haptics } from '../core/haptics';
@@ -38,10 +38,12 @@
   ];
 
   function dismiss() {
+    // Hide FIRST: on older iOS Safari a storage throw here left this
+    // full-screen overlay permanently stuck over the game, eating every tap
+    uiState.showOnboarding = false;
     playMenuClick();
     haptics.select();
-    localStorage.setItem('geo_onboarded', '1');
-    uiState.showOnboarding = false;
+    saveLocal('geo_onboarded', '1');
   }
 </script>
 

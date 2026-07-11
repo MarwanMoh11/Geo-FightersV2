@@ -270,8 +270,15 @@ export function resumeMusic(): void {
 
 export function resumeAudioContext(): Promise<void> {
   const c = getCtx();
-  if (c.state === 'suspended') {
-    return c.resume();
+  // iOS Safari: after a call/Siri/backgrounding the context sits in the
+  // WebKit-only 'interrupted' state (not 'suspended'), and resume()'s promise
+  // can hang FOREVER on older versions. resume() must still be called inside
+  // the tap gesture, but the wait is capped so no menu button ever dead-locks
+  // on audio — the game starts and sound catches up when it can.
+  if (c.state !== 'running') {
+    const resumed = c.resume().catch(() => {});
+    const deadline = new Promise<void>((resolve) => setTimeout(resolve, 400));
+    return Promise.race([resumed, deadline]);
   }
   return Promise.resolve();
 }

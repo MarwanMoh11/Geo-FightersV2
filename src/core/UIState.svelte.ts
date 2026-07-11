@@ -14,6 +14,22 @@ function getLocalVal<T>(key: string, fallback: T): T {
   }
 }
 
+/**
+ * Best-effort localStorage write. Older iOS Safari (private mode, low
+ * storage, some webviews) THROWS on setItem — and a throw inside a tap
+ * handler kills everything after it, which read as "menu buttons don't
+ * work" on old iPhones. Pass the exact string you would have passed to
+ * localStorage.setItem.
+ */
+export function saveLocal(key: string, value: string): void {
+  if (!isClient) return;
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* storage unavailable — play on without persistence */
+  }
+}
+
 function getUpgradeDefaults() {
   const defaults = {
     might: 0,
