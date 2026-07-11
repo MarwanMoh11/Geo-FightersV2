@@ -236,6 +236,22 @@ run time, OVERCLOCK double-or-nothing, ICE TRACER on high-security fails,
 CYPHER/BYTE hacking perks, SKELETON KEY rare drop. Replaces walk-on shrines and
 vending pulls with one universal door grammar.
 
+## Phase 1.97 — HORDE: the Vampire Survivors quota engine
+
+**Status: SHIPPED.** The spawner is now a faithful port of VS's documented
+model ([Enemies — VS wiki](https://vampire-survivors.fandom.com/wiki/Enemies)):
+one wave per minute, each with a **minimum-alive quota** (14 → 210 across the
+10-minute run) that is refilled instantly when kills drop the horde below it —
+density is a guaranteed, escalating variable and the screen is never empty.
+At quota, every tick still spawns one of each pool type. Scripted **ring traps**
+(perfect closing circles, the VS flower) and **line walls** fire every minute at
+:30; elites/minibosses run on a fixed chest-bearer schedule (1:30 → 9:00, HYDRA
+at 5:00/9:00). Waves re-serve the same enemies bulkier (hpMult 1.0 → 2.9);
+corruption/curse/party scale quota and tick rate; endless mode keeps growing
+all three. Balance: fodder XP cut (VIRUS 2, GLITCH 5) to hold the VS level-up
+cadence at tripled kill volume, fodder approach speeds raised (VIRUS 1.7,
+GLITCH 1.1), starter weapons pierce 2 so shots plow through packs.
+
 ## Phase 2 — Multiplayer resilience (make co-op shippable-quality)
 
 Already done this cycle: party lobby w/ ready-up, ghosts/revives, kill
