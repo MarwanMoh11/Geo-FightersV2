@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { uiState, showToast } from '../core/UIState.svelte.ts';
+  import { uiState, showToast, saveLocal } from '../core/UIState.svelte.ts';
   import { setGameState } from '../core/GameState';
   import { resumeAudioContext, playMenuBuy, playMenuClick } from '../core/audio';
   import {
@@ -114,8 +114,8 @@
       uiState.permanentUpgrades[upId] = currentLvl + 1;
 
       // Save to localStorage
-      localStorage.setItem('geo_credits', JSON.stringify(uiState.credits));
-      localStorage.setItem('geo_permanent_upgrades', JSON.stringify(uiState.permanentUpgrades));
+      saveLocal('geo_credits', JSON.stringify(uiState.credits));
+      saveLocal('geo_permanent_upgrades', JSON.stringify(uiState.permanentUpgrades));
 
       playMenuBuy();
       haptics.select();
@@ -145,7 +145,7 @@
     }
     playMenuClick();
     uiState.selectedCharacter = charId;
-    localStorage.setItem('geo_selected_character', JSON.stringify(charId));
+    saveLocal('geo_selected_character', JSON.stringify(charId));
     showCharacterSelect = false;
     startSinglePlayer();
   }
@@ -162,7 +162,7 @@
     playMenuClick();
     haptics.select();
     uiState.corruption = Math.max(0, Math.min(5, uiState.corruption + delta));
-    localStorage.setItem('geo_corruption', JSON.stringify(uiState.corruption));
+    saveLocal('geo_corruption', JSON.stringify(uiState.corruption));
   }
 
   // --- Daily run ---
@@ -236,7 +236,7 @@
       return;
     }
     playMenuClick();
-    localStorage.setItem('geo_selected_character', JSON.stringify(charId));
+    saveLocal('geo_selected_character', JSON.stringify(charId));
     setLobbyState({ character: charId });
   }
 
@@ -261,7 +261,7 @@
   }
 
   function saveName() {
-    localStorage.setItem('geo_player_name', uiState.playerName.trim());
+    saveLocal('geo_player_name', uiState.playerName.trim());
   }
 
   /** Character color as a CSS hex string for per-card theming. */
@@ -368,7 +368,7 @@
             placeholder="auto"
             class="server-input"
             bind:value={uiState.customServerUrl}
-            oninput={() => localStorage.setItem('geo_server_url', uiState.customServerUrl)}
+            oninput={() => saveLocal('geo_server_url', uiState.customServerUrl)}
           />
         </label>
       {:else if uiState.networkStatus === 'connecting'}

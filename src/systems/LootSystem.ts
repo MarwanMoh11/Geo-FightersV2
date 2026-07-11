@@ -12,7 +12,7 @@ import * as THREE from 'three';
 import { triggerLevelUp } from './UpgradeSystem';
 import { playCollect, playLevelUp, playCreditCollect } from '../core/audio';
 import { recordCredits } from '../core/ProgressManager';
-import { uiState } from '../core/UIState.svelte.ts';
+import { uiState, saveLocal } from '../core/UIState.svelte.ts';
 import {
   bankXP,
   XP_DESPAWN_RADIUS_SQ,
@@ -275,7 +275,7 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
         uiState.creditsCollected += val;
         uiState.credits += val;
         recordCredits(val);
-        localStorage.setItem('geo_credits', JSON.stringify(uiState.credits));
+        saveLocal('geo_credits', JSON.stringify(uiState.credits));
         playCreditCollect();
       }
       despawn(credit, scene);
