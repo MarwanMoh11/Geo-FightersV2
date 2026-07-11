@@ -59,6 +59,26 @@ export function CollisionSystem(scene: THREE.Scene) {
     // Fail silently if physics not yet initialized
   }
 
+  // 1b. ENEMY ↔ PLAYER CONTACT SWEEP (Phase 1.98 VS contact model)
+  // Rapier only reports contact STARTS — an enemy that stays pressed against
+  // the player fires one event and then never again, so sustained contact
+  // dealt a trickle no matter the cooldown model. A direct distance sweep
+  // makes touch damage continuous and per-enemy: density IS the threat.
+  for (const player of world.with('isPlayer', 'position', 'health')) {
+    if (!player.health || player.health.current <= 0) continue;
+    if (player.invulnTimer && player.invulnTimer > 0) continue; // stagger window
+    for (const enemy of world.with('isEnemy', 'position', 'health')) {
+      const dx = enemy.position.x - player.position.x;
+      const dz = enemy.position.z - player.position.z;
+      // Bigger bodies have longer reach (boss/elite silhouettes)
+      const reach = 1.4 + (enemy.size ?? 1.5) * 0.25;
+      if (dx * dx + dz * dz < reach * reach) {
+        handleEnemyPlayerCollision(enemy, player, scene);
+        if (player.invulnTimer && player.invulnTimer > 0) break; // hit landed
+      }
+    }
+  }
+
   // 2. LASH SPATIAL TEARS DAMAGE SWEEP
   for (const tear of world.with('isLashTear', 'position', 'hitList')) {
     const tearPos = tear.position;
@@ -233,11 +253,32 @@ function applyPlayerHitFeedback(
   }
 }
 
+// VS contact model (Phase 1.98): every enemy carries its OWN contact cooldown,
+// so incoming damage scales with how many bodies are touching you — density IS
+// the threat. The old model was one flat hit behind a global 0.8s i-frame:
+// 6.25 HP/s maximum whether 3 enemies touched you or 300, which made the
+// entire horde cosmetic. A short global stagger keeps same-frame pile hits
+// reading as a drumbeat instead of an instant burst.
+const ENEMY_CONTACT_COOLDOWN = 1.0;
+const PLAYER_CONTACT_STAGGER = 0.15;
+const CONTACT_DAMAGE: Record<string, number> = {
+  virus: 4,
+  glitch: 6,
+  firewall: 12,
+  enforcer: 14,
+  warden: 10,
+  colossus: 18,
+  hydra: 16,
+  overseer: 20,
+};
+
 function handleEnemyPlayerCollision(enemy: any, player: any, _scene: THREE.Scene) {
   if (!enemy.health || enemy.health.current <= 0 || !player.health || player.health.current <= 0)
     return;
 
-  // I-FRAMES: ignore contact while the post-hit window is active
+  // This enemy already landed its hit recently
+  if (enemy.contactCooldown && enemy.contactCooldown > 0) return;
+  // Global stagger window (kept short — it spaces hits, it doesn't gate them)
   if (player.invulnTimer && player.invulnTimer > 0) return;
 
   // INVULNERABILITY: ignore contact while player is in a menu or in Lash's invuln overload state
@@ -253,16 +294,17 @@ function handleEnemyPlayerCollision(enemy: any, player: any, _scene: THREE.Scene
     return;
   }
 
-  const baseDamage = 5;
+  const baseDamage = CONTACT_DAMAGE[enemy.enemyType as string] ?? 5;
   const armor = player.stats?.armor || 0;
   let actualDamage = Math.max(1, baseDamage - armor);
-  // Map 1 Aegis Shrine: halve incoming damage for the buff window
+  // Map 1 Aegis Relay: halve incoming damage for the buff window
   if (player.isLocalPlayer && uiState.shrineArmorTimer > 0) {
     actualDamage = Math.max(1, Math.ceil(actualDamage * 0.5));
   }
 
   player.health.current -= actualDamage;
-  player.invulnTimer = PLAYER_IFRAME_DURATION;
+  player.invulnTimer = PLAYER_CONTACT_STAGGER;
+  enemy.contactCooldown = ENEMY_CONTACT_COOLDOWN;
 
   const dx = player.position.x - enemy.position.x;
   const dz = player.position.z - enemy.position.z;

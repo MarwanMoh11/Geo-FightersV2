@@ -106,6 +106,11 @@ export function EnemySystem(dt: number, scene: THREE.Scene) {
       enemy.confusedTimer -= dt;
     }
 
+    // Tick per-enemy contact-damage cooldown (VS contact model)
+    if (enemy.contactCooldown && enemy.contactCooldown > 0) {
+      enemy.contactCooldown -= dt;
+    }
+
     // STUN CHECK (Early processing)
     if (enemy.stunTimer && enemy.stunTimer > 0) {
       enemy.stunTimer -= dt;

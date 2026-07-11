@@ -32,11 +32,11 @@ import { partySpawnMultiplier } from '../core/difficulty';
 import * as THREE from 'three';
 
 // --- CONFIGURATION ---
-const MAX_ENEMIES = 300; // proven at 60fps with the full map running
+const MAX_ENEMIES = 450; // fps-verify at this cap before every ship
 // Deficit refills spread across ticks: 20 spawns/tick (~57/s at the fastest
 // wave) refills a screen-wipe in ~2s without the spawn burst dropping frames
 // (each spawn builds a Group + Rapier body — 45/tick visibly hitched).
-const MAX_FILL_PER_TICK = 20;
+const MAX_FILL_PER_TICK = 28;
 const INNER_SPAWN_RADIUS = 18; // just outside the visible screen
 const OUTER_SPAWN_RADIUS = 26;
 const RING_RADIUS = 21; // flower-trap rings close from screen edge

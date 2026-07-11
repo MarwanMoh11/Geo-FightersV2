@@ -59,6 +59,9 @@ export type Entity = {
   spawnTimer?: number;
   chargeTimer?: number;
   confusedTimer?: number; // Signal Hijacker: enemy attacks other enemies when > 0
+  // VS contact model (Phase 1.98): per-enemy touch-damage cooldown so
+  // incoming damage scales with how many bodies are touching the player
+  contactCooldown?: number;
 
   // Orbital weapon data
   orbitalData?: {

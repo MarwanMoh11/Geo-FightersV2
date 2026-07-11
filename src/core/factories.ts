@@ -57,8 +57,12 @@ type EnemyStats = { hp: number; speed: number; size: number; color: number; xp: 
 // level-up cadence at the VS rhythm (~every 20-40s) instead of modal spam.
 const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   // Standard enemies
-  [EnemyType.GLITCH]: { hp: 10, speed: 1.1, size: 2.0, color: 0xffffff, xp: 5 },
-  [EnemyType.VIRUS]: { hp: 5, speed: 1.7, size: 1.5, color: 0xffffff, xp: 2 },
+  // P1.98 measured: at speed 1.7/1.1 the horde NEVER touched a kiting player
+  // (harness: minHp 100 through a 215-enemy wave). VS fodder runs at roughly
+  // measured band: 2.4/1.9 killed the kite bot in 6s, 1.7/1.1 never touched
+  // it — 2.1/1.6 is the goldilocks bisection (see PHASE doc).
+  [EnemyType.GLITCH]: { hp: 10, speed: 1.6, size: 2.0, color: 0xffffff, xp: 5 },
+  [EnemyType.VIRUS]: { hp: 5, speed: 2.1, size: 1.5, color: 0xffffff, xp: 2 },
   [EnemyType.FIREWALL]: { hp: 150, speed: 0.5, size: 3.5, color: 0xffffff, xp: 22 },
   // Elite enemies
   [EnemyType.ENFORCER]: { hp: 200, speed: 0.6, size: 3.0, color: 0xffffff, xp: 40 },
