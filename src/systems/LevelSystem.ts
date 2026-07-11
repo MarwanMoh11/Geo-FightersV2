@@ -24,6 +24,9 @@ function loadTexture(url: string, repeatX = 1, repeatY = repeatX): THREE.Texture
     tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(repeatX, repeatY);
     tex.colorSpace = THREE.SRGBColorSpace;
+    // Grazing-angle tiling (the top-down camera sees the ground at a slant)
+    // shimmers without anisotropic filtering, worst on mobile screens
+    tex.anisotropy = 4;
     textureCache.set(key, tex);
   }
   return tex;
@@ -100,6 +103,7 @@ function addNeonGrid(scene: THREE.Scene, level: LevelConfig): void {
   gridMaterial.transparent = true;
   gridMaterial.opacity = 0.18;
   gridMaterial.depthWrite = false;
+  grid.renderOrder = 2; // above the district decks (see addDistrictDecks)
   scene.add(grid);
   obstacleMeshes.push(grid);
 }
@@ -293,6 +297,15 @@ function addNeonLighting(scene: THREE.Scene): void {
  * its own place from the air. Two static quads — negligible cost.
  */
 function addDistrictDecks(scene: THREE.Scene): void {
+  // Mobile z-fight guard: the decks sit 0.012 above the ground plane, which
+  // 16-bit / tiled mobile depth buffers cannot resolve at a 70-unit camera
+  // distance — the two planes flicker through each other. Decals never write
+  // depth; painter's order (renderOrder) layers them over the ground instead.
+  const deckLayer = (mesh: THREE.Mesh) => {
+    (mesh.material as THREE.Material).depthWrite = false;
+    mesh.renderOrder = 1;
+  };
+
   // Neon Courtyard: riveted metal plaza deck
   const courtyard = new THREE.Mesh(
     new THREE.PlaneGeometry(540, 540),
@@ -305,6 +318,7 @@ function addDistrictDecks(scene: THREE.Scene): void {
   );
   courtyard.rotation.x = -Math.PI / 2;
   courtyard.position.set(125, 0.012, 125);
+  deckLayer(courtyard);
   scene.add(courtyard);
   obstacleMeshes.push(courtyard);
 
@@ -320,6 +334,7 @@ function addDistrictDecks(scene: THREE.Scene): void {
   );
   scrapyard.rotation.x = -Math.PI / 2;
   scrapyard.position.set(-292, 0.012, 125);
+  deckLayer(scrapyard);
   scene.add(scrapyard);
   obstacleMeshes.push(scrapyard);
 }
@@ -415,8 +430,9 @@ function addSlumsDecor(scene: THREE.Scene): void {
   }
   railsMesh = new THREE.Mesh(
     BufferGeometryUtils.mergeGeometries(railParts),
-    new THREE.MeshBasicMaterial({ color: 0x00b8cc }),
+    new THREE.MeshBasicMaterial({ color: 0x00b8cc, depthWrite: false }),
   );
+  railsMesh.renderOrder = 3; // ground decal — see the z-fight note in addDistrictDecks
   scene.add(railsMesh);
   obstacleMeshes.push(railsMesh);
 }
