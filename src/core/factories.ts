@@ -52,11 +52,14 @@ export type EnemyType = (typeof EnemyType)[keyof typeof EnemyType];
 
 type EnemyStats = { hp: number; speed: number; size: number; color: number; xp: number };
 
+// Phase 1.97 (VS horde): fodder approaches faster and pays less XP — the
+// quota system multiplies kill volume, so per-kill XP drops to keep the
+// level-up cadence at the VS rhythm (~every 20-40s) instead of modal spam.
 const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   // Standard enemies
-  [EnemyType.GLITCH]: { hp: 12, speed: 0.8, size: 2.0, color: 0xffffff, xp: 10 },
-  [EnemyType.VIRUS]: { hp: 5, speed: 1.2, size: 1.5, color: 0xffffff, xp: 5 },
-  [EnemyType.FIREWALL]: { hp: 150, speed: 0.5, size: 3.5, color: 0xffffff, xp: 30 },
+  [EnemyType.GLITCH]: { hp: 10, speed: 1.1, size: 2.0, color: 0xffffff, xp: 5 },
+  [EnemyType.VIRUS]: { hp: 5, speed: 1.7, size: 1.5, color: 0xffffff, xp: 2 },
+  [EnemyType.FIREWALL]: { hp: 150, speed: 0.5, size: 3.5, color: 0xffffff, xp: 22 },
   // Elite enemies
   [EnemyType.ENFORCER]: { hp: 200, speed: 0.6, size: 3.0, color: 0xffffff, xp: 40 },
   [EnemyType.COLOSSUS]: { hp: 500, speed: 0.3, size: 5.0, color: 0xffffff, xp: 80 },
@@ -1693,17 +1696,19 @@ export function spawnEnemy(
   x: number,
   z: number,
   type: EnemyType = EnemyType.GLITCH,
+  // Phase 1.97: the spawner's wave HP curve (VS re-serves the same enemies
+  // bulkier each minute); swarm bodies pass <1 so ring traps stay brittle
+  hpMult: number = 1,
 ) {
   const stats = ENEMY_STATS[type];
   const group = new THREE.Group();
   group.position.set(x, 0, z);
 
-  // Corruption hardens enemies (+15% HP per level); endless mode keeps
-  // scaling them after the 10:00 victory; co-op makes them tankier per extra
-  // living fighter (neutral 1.0 in solo).
+  // Corruption hardens enemies (+15% HP per level); co-op makes them tankier
+  // per extra living fighter (neutral 1.0 in solo). Time scaling now lives in
+  // the spawner's per-wave hpMult (endless growth included).
   const corruptionHp = 1 + uiState.corruption * 0.15;
-  const endlessHp = uiState.endlessMode ? 1 + Math.max(0, uiState.gameTime - 600) / 180 : 1;
-  const maxHp = Math.round(stats.hp * corruptionHp * endlessHp * partyHpMultiplier());
+  const maxHp = Math.max(1, Math.round(stats.hp * hpMult * corruptionHp * partyHpMultiplier()));
 
   // 1. Build and attach the custom 3D model
   const enemyMesh = buildEnemyMesh(type, stats.size);
