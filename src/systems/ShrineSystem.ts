@@ -1,15 +1,15 @@
 // --- SHRINE & STASH SYSTEM (Map 1: Neon Block Slums) ---
-// The map's "things to do" layer:
+// Phase 1.96 (JACK IN) reshaped this module: shrines are now RELAY TOWER
+// structures whose buffs are granted by winning the tower's breach mini-game
+// (BreachSystem owns the doors, prompts and cooldowns — this module owns the
+// shrine structures, the buff timers, and the roaming black-market stash).
 //
-// • Three NEON SHRINES, one per district, at fixed landmark spots. Walk onto
-//   one to activate a 20s buff themed to its district (fire rate / armor /
-//   move speed), then it powers down for 75s. Beacons are static meshes —
-//   the only per-frame work is one distance check per shrine.
+// • Three RELAY TOWERS, one per district, at fixed landmark spots. Breach one
+//   to earn its district buff (fire rate / armor / move speed).
 //
-// • The BLACK-MARKET STASH: once per run (solo), a smuggler crate surfaces at
-//   one of the map's landmarks. Touching it grants the map-exclusive
-//   SCAVENGER CHIP passive (never appears in the level-up pool) plus a
-//   credit shower. In endless mode it restocks every 4 minutes.
+// • The BLACK-MARKET STASH: a smuggler crate that surfaces NEAR the player
+//   and despawns if ignored. Touching it grants the map-exclusive SCAVENGER
+//   CHIP passive (never appears in the level-up pool) plus a credit shower.
 //
 // Buffs are consumed where the stats are computed: WeaponSystem (fire rate),
 // PlayerControlSystem (speed), CollisionSystem (armor). In co-op the fire and
@@ -22,15 +22,13 @@ import { uiState, announce } from '../core/UIState.svelte.ts';
 import { spawnCredit } from '../core/factories';
 import { playLevelUp, playChestOpen } from '../core/audio';
 import { haptics } from '../core/haptics';
-import { playMenuBuy } from '../core/audio';
 import { getCurrentLevel, isPointInObstacle } from '../core/LevelData';
-import { handleEnemyDeath } from './CollisionSystem';
 import type { Poi } from './WayfindingSystem';
 
 // --- MAP DATA (Neon Block Slums) ---
-type ShrineKind = 'fire' | 'armor' | 'speed';
+export type ShrineKind = 'fire' | 'armor' | 'speed';
 
-interface ShrineSpot {
+export interface ShrineSpot {
   x: number;
   z: number;
   kind: ShrineKind;
@@ -38,13 +36,13 @@ interface ShrineSpot {
   color: number;
 }
 
-const SHRINE_SPOTS: ShrineSpot[] = [
+export const SHRINE_SPOTS: ShrineSpot[] = [
   // Neon Courtyard: aggression near the statue plaza
-  { x: 160, z: 40, kind: 'fire', name: 'PULSE SHRINE', color: 0x00e5ff },
+  { x: 160, z: 40, kind: 'fire', name: 'PULSE RELAY', color: 0x00e5ff },
   // Scrap Yards: survival deep in the maze — worth the detour
-  { x: -320, z: 120, kind: 'armor', name: 'AEGIS SHRINE', color: 0xffaa00 },
+  { x: -320, z: 120, kind: 'armor', name: 'AEGIS RELAY', color: 0xffaa00 },
   // Main Street: speed for the long open lane
-  { x: 140, z: -320, kind: 'speed', name: 'VELOCITY SHRINE', color: 0xff3d77 },
+  { x: 140, z: -320, kind: 'speed', name: 'VELOCITY RELAY', color: 0xff3d77 },
 ];
 
 // Phase 1.95 (P1: the map comes to you): the smuggler surfaces NEAR the
@@ -54,30 +52,13 @@ const STASH_MAX_DIST = 38;
 const STASH_LIFETIME = 25;
 const STASH_RETRY = 45;
 
-// Vending machines (Phase 1.95): the courtyard's four machines become
-// credit slot machines — 15 credits a pull, 45 s restock each.
-const VENDING_SPOTS = [
-  { x: -50, z: 50 },
-  { x: 250, z: 80 },
-  { x: 180, z: 300 },
-  { x: -80, z: 280 },
-];
-const VENDING_COST = 15;
-const VENDING_COOLDOWN = 45;
-const VENDING_RADIUS = 3.4;
-
-const SHRINE_RADIUS = 5.0;
-const SHRINE_BUFF_DURATION = 20;
-const SHRINE_COOLDOWN = 75;
 const STASH_FIRST_AT = 110; // the smuggler shows up before the 2:00 spike
 const STASH_RADIUS = 2.6;
 
 interface ShrineState {
   spot: ShrineSpot;
-  cooldown: number;
   group: THREE.Group;
   crystal: THREE.Mesh;
-  ring: THREE.Mesh;
 }
 
 let shrines: ShrineState[] = [];
@@ -85,36 +66,6 @@ let initialized = false;
 let stashTimer = STASH_FIRST_AT;
 let stashMesh: THREE.Group | null = null;
 let stashLife = 0;
-
-interface VendingState {
-  x: number;
-  z: number;
-  cooldown: number;
-  ring: THREE.Mesh | null;
-}
-const vendings: VendingState[] = [];
-
-const SHRINE_ICONS: Record<ShrineKind, string> = { fire: '⚡', armor: '🛡️', speed: '💨' };
-
-/** Wayfinding: ready shrines always signposted; ready vendors when nearby. */
-export function getShrinePois(): Poi[] {
-  const pois: Poi[] = [];
-  for (const s of shrines) {
-    if (s.cooldown > 0) continue;
-    pois.push({
-      x: s.spot.x,
-      z: s.spot.z,
-      icon: SHRINE_ICONS[s.spot.kind],
-      color: '#' + s.spot.color.toString(16).padStart(6, '0'),
-      maxDist: 999,
-    });
-  }
-  for (const v of vendings) {
-    if (v.cooldown > 0) continue;
-    pois.push({ x: v.x, z: v.z, icon: '🎰', color: '#ffd75e', maxDist: 70 });
-  }
-  return pois;
-}
 
 /** Wayfinding: the live smuggler crate. */
 export function getStashPoi(): Poi | null {
@@ -178,22 +129,8 @@ function buildShrine(scene: THREE.Scene, spot: ShrineSpot): ShrineState {
   crystal.position.y = 3.8;
   group.add(crystal);
 
-  const ringMat = new THREE.MeshBasicMaterial({
-    color: spot.color,
-    transparent: true,
-    opacity: 0.4,
-    side: THREE.DoubleSide,
-  });
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(SHRINE_RADIUS - 0.35, SHRINE_RADIUS, 40),
-    ringMat,
-  );
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.y = 0.06;
-  group.add(ring);
-
   scene.add(group);
-  return { spot, cooldown: 0, group, crystal, ring };
+  return { spot, group, crystal };
 }
 
 function buildStash(scene: THREE.Scene, x: number, z: number): THREE.Group {
@@ -225,35 +162,36 @@ function buildStash(scene: THREE.Scene, x: number, z: number): THREE.Group {
   return group;
 }
 
-function setShrineReadyLook(s: ShrineState, ready: boolean): void {
-  const mat = s.crystal.material as THREE.MeshStandardMaterial;
-  mat.emissiveIntensity = ready ? 1.6 : 0.15;
-  (s.ring.material as THREE.MeshBasicMaterial).opacity = ready ? 0.4 : 0.08;
+/** Relay crystal glow tracks the door's ready state (driven by BreachSystem). */
+export function setShrineReadyByKind(kind: ShrineKind, ready: boolean): void {
+  for (const s of shrines) {
+    if (s.spot.kind !== kind) continue;
+    (s.crystal.material as THREE.MeshStandardMaterial).emissiveIntensity = ready ? 1.6 : 0.15;
+  }
 }
 
-function activateShrine(s: ShrineState): void {
-  s.cooldown = SHRINE_COOLDOWN;
-  setShrineReadyLook(s, false);
+/** RELAY TOWER breach reward: the district buff (BreachSystem calls this). */
+export function grantShrineBuff(kind: ShrineKind, duration: number): void {
   playLevelUp();
   haptics.select();
-
-  switch (s.spot.kind) {
+  switch (kind) {
     case 'fire':
-      uiState.shrineFireTimer = SHRINE_BUFF_DURATION;
-      announce('PULSE SHRINE — WEAPONS OVERDRIVEN');
+      uiState.shrineFireTimer = duration;
+      announce('PULSE RELAY — WEAPONS OVERDRIVEN');
       break;
     case 'armor':
-      uiState.shrineArmorTimer = SHRINE_BUFF_DURATION;
-      announce('AEGIS SHRINE — DAMAGE HALVED');
+      uiState.shrineArmorTimer = duration;
+      announce('AEGIS RELAY — DAMAGE HALVED');
       break;
     case 'speed':
-      uiState.shrineSpeedTimer = SHRINE_BUFF_DURATION;
-      announce('VELOCITY SHRINE — SPEED SURGE');
+      uiState.shrineSpeedTimer = duration;
+      announce('VELOCITY RELAY — SPEED SURGE');
       break;
   }
 }
 
-function grantScavengerChip(player: {
+/** Map-exclusive passive. Returns false if the player already owns it. */
+export function grantScavengerChip(player: {
   passiveSlots?: { passiveId: string; level: number }[];
 }): boolean {
   const slots = player.passiveSlots ?? (player.passiveSlots = []);
@@ -293,8 +231,7 @@ function openStash(scene: THREE.Scene, player: any): void {
 /** Full reset for a no-reload restart. */
 export function resetShrineSystem(): void {
   for (const s of shrines) {
-    s.cooldown = 0;
-    setShrineReadyLook(s, true);
+    (s.crystal.material as THREE.MeshStandardMaterial).emissiveIntensity = 1.6;
   }
   if (stashMesh) {
     stashMesh.parent?.remove(stashMesh);
@@ -302,10 +239,6 @@ export function resetShrineSystem(): void {
   }
   stashTimer = STASH_FIRST_AT;
   stashLife = 0;
-  for (const v of vendings) {
-    v.cooldown = 0;
-    if (v.ring) (v.ring.material as THREE.MeshBasicMaterial).opacity = 0.35;
-  }
   uiState.shrineFireTimer = 0;
   uiState.shrineArmorTimer = 0;
   uiState.shrineSpeedTimer = 0;
@@ -315,21 +248,6 @@ export function ShrineSystem(dt: number, scene: THREE.Scene): void {
   if (!initialized) {
     initialized = true;
     shrines = SHRINE_SPOTS.map((spot) => buildShrine(scene, spot));
-    for (const spot of VENDING_SPOTS) {
-      const ring = new THREE.Mesh(
-        new THREE.RingGeometry(VENDING_RADIUS - 0.3, VENDING_RADIUS, 32),
-        new THREE.MeshBasicMaterial({
-          color: 0xffd75e,
-          transparent: true,
-          opacity: 0.35,
-          side: THREE.DoubleSide,
-        }),
-      );
-      ring.rotation.x = -Math.PI / 2;
-      ring.position.set(spot.x, 0.06, spot.z);
-      scene.add(ring);
-      vendings.push({ x: spot.x, z: spot.z, cooldown: 0, ring });
-    }
   }
 
   const player = world.with('isLocalPlayer', 'position', 'health').first;
@@ -340,76 +258,6 @@ export function ShrineSystem(dt: number, scene: THREE.Scene): void {
   if (uiState.shrineFireTimer > 0) uiState.shrineFireTimer -= dt;
   if (uiState.shrineArmorTimer > 0) uiState.shrineArmorTimer -= dt;
   if (uiState.shrineSpeedTimer > 0) uiState.shrineSpeedTimer -= dt;
-
-  // Shrines: cooldowns + proximity activation
-  for (const s of shrines) {
-    if (s.cooldown > 0) {
-      s.cooldown -= dt;
-      if (s.cooldown <= 0) setShrineReadyLook(s, true);
-      continue;
-    }
-    if (dead) continue;
-    const dx = player.position.x - s.spot.x;
-    const dz = player.position.z - s.spot.z;
-    if (dx * dx + dz * dz < SHRINE_RADIUS * SHRINE_RADIUS) {
-      activateShrine(s);
-    }
-  }
-
-  // Vending slot machines: walk up with 15 credits for a pull
-  const soloOrHost = !uiState.isMultiplayer || uiState.isHost;
-  for (const v of vendings) {
-    if (v.cooldown > 0) {
-      v.cooldown -= dt;
-      if (v.cooldown <= 0 && v.ring) {
-        (v.ring.material as THREE.MeshBasicMaterial).opacity = 0.35;
-      }
-      continue;
-    }
-    if (dead || !soloOrHost || uiState.credits < VENDING_COST) continue;
-    const vdx = player.position.x - v.x;
-    const vdz = player.position.z - v.z;
-    if (vdx * vdx + vdz * vdz >= VENDING_RADIUS * VENDING_RADIUS) continue;
-
-    // The pull
-    v.cooldown = VENDING_COOLDOWN;
-    if (v.ring) (v.ring.material as THREE.MeshBasicMaterial).opacity = 0.06;
-    uiState.credits -= VENDING_COST;
-    localStorage.setItem('geo_credits', JSON.stringify(uiState.credits));
-    playMenuBuy();
-    haptics.reward();
-
-    const roll = Math.random();
-    if (roll < 0.6) {
-      const types = ['medkit', 'magnet', 'bomb'];
-      world.add({
-        isPickup: true,
-        pickupType: types[Math.floor(Math.random() * 3)],
-        position: new THREE.Vector3(v.x, 0.8, v.z + 2.2),
-        velocity: new THREE.Vector3(),
-      });
-      announce('VENDOR: PRIZE DISPENSED');
-    } else if (roll < 0.85) {
-      for (let i = 0; i < 8; i++) {
-        const a = (i / 8) * Math.PI * 2;
-        spawnCredit(scene, v.x + Math.cos(a) * 1.6, v.z + Math.sin(a) * 1.6, 4);
-      }
-      announce('VENDOR: JACKPOT');
-    } else {
-      // The machine bites back — at the horde
-      announce('VENDOR: VOLTAGE DISCHARGE');
-      for (const enemy of world.with('isEnemy', 'position', 'health')) {
-        if (!enemy.health) continue;
-        const edx = enemy.position.x - v.x;
-        const edz = enemy.position.z - v.z;
-        if (edx * edx + edz * edz > 14 * 14) continue;
-        enemy.health.current -= 40;
-        enemy.stunTimer = 1.0;
-        enemy.hitFlashTimer = 0.15;
-        if (enemy.health.current <= 0) handleEnemyDeath(enemy, scene);
-      }
-    }
-  }
 
   // Black-market stash: surfaces near the player, leaves if ignored
   if (uiState.isMultiplayer) return;

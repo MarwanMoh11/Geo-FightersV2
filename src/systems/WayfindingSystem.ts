@@ -7,8 +7,9 @@
 import * as THREE from 'three';
 import { world } from '../core/world';
 import { uiState } from '../core/UIState.svelte.ts';
-import { getShrinePois, getStashPoi } from './ShrineSystem';
+import { getStashPoi } from './ShrineSystem';
 import { getEventPois } from './MapEventSystem';
+import { getBreachPois } from './BreachSystem';
 
 export interface Poi {
   x: number;
@@ -33,14 +34,15 @@ const PICKUP_ICONS: Record<string, { icon: string; color: string }> = {
   medkit: { icon: '💊', color: '#4dff88' },
   magnet: { icon: '🧲', color: '#36e6ff' },
   bomb: { icon: '💣', color: '#ff3d77' },
+  key: { icon: '🗝️', color: '#ffd75e' },
 };
 
 /** Every live POI on the map right now (shared with the minimap). */
 export function collectPois(): Poi[] {
   const pois: Poi[] = [];
 
-  // Shrines (ready ones) + black-market stash + scheduled-event sites
-  pois.push(...getShrinePois());
+  // Breach doors (ready ones) + black-market stash + scheduled-event sites
+  pois.push(...getBreachPois());
   const stash = getStashPoi();
   if (stash) pois.push(stash);
   pois.push(...getEventPois());
