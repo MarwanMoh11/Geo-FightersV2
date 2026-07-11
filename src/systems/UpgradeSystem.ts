@@ -67,15 +67,44 @@ let pendingUpgradesCount = 0;
 export function resetUpgradeState(): void {
   isGamePaused = false;
   pendingUpgradesCount = 0;
+  levelUpsDeferredByBreach = 0;
   setMusicDucked(false);
   uiState.showUpgrade = false;
   uiState.upgradeChoices = [];
+}
+
+// Level-ups rolled while the player is jacked into a breach are held back —
+// the world keeps simulating during a breach and the modal would pause it
+// (and bury the mini-game). BreachSystem flushes this on jack-out.
+let levelUpsDeferredByBreach = 0;
+export function flushDeferredLevelUps(): void {
+  while (levelUpsDeferredByBreach > 0) {
+    levelUpsDeferredByBreach--;
+    triggerLevelUp();
+  }
+}
+
+/** ARMORY breach reward: +1 level to a random owned, non-maxed weapon. */
+export function upgradeRandomOwnedWeapon(): string | null {
+  const player = world.with('isLocalPlayer', 'weaponSlots').first;
+  if (!player) return null;
+  const candidates = (player.weaponSlots || []).filter((s) => canLevelUp(s.weaponId, s.level));
+  if (!candidates.length) return null;
+  const pick = candidates[Math.floor(Math.random() * candidates.length)];
+  levelUpWeapon(player, pick.weaponId);
+  uiState.weaponSlots = [...(player.weaponSlots || [])];
+  return WEAPONS[pick.weaponId]?.name ?? pick.weaponId;
 }
 
 // --- PUBLIC API ---
 export function triggerLevelUp() {
   const player = world.with('isLocalPlayer', 'weaponSlots', 'passiveSlots', 'stats').first;
   if (!player) return;
+
+  if (uiState.breach) {
+    levelUpsDeferredByBreach++;
+    return;
+  }
 
   // If the upgrade screen is already showing, queue this level-up instead of overwriting
   if (uiState.showUpgrade) {

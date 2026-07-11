@@ -57,6 +57,7 @@ import { CoopSystem } from './systems/CoopSystem';
 import { ShrineSystem } from './systems/ShrineSystem';
 import { DestructibleSystem } from './systems/DestructibleSystem';
 import { MapEventSystem } from './systems/MapEventSystem';
+import { BreachSystem } from './systems/BreachSystem';
 import { WayfindingSystem } from './systems/WayfindingSystem';
 import { ClientCombatFxSystem } from './systems/ClientCombatFxSystem';
 
@@ -322,6 +323,7 @@ function startGameLoop(
     ShrineSystem(dt, scene);
     DestructibleSystem(dt, scene);
     MapEventSystem(dt, scene);
+    BreachSystem(dt, scene);
 
     if (!isMultiplayer || isHost) {
       ChestSystem(dt, scene);

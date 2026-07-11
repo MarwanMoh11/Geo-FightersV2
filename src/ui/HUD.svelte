@@ -3,6 +3,7 @@
   import { setGameState } from '../core/GameState';
   import { fly } from 'svelte/transition';
   import PoiArrows from './PoiArrows.svelte';
+  import BreachPrompt from './BreachPrompt.svelte';
 
   const isTouchDevice =
     typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
@@ -47,6 +48,9 @@
 <div id="hud-overlay" class:hidden={uiState.gameState !== 'PLAYING'}>
   <!-- Off-screen POI guidance arrows (Phase 1.95 wayfinding) -->
   <PoiArrows />
+
+  <!-- JACK IN door prompt (Phase 1.96) -->
+  <BreachPrompt />
 
   <!-- Damage feedback vignette (re-keyed per hit so the flash restarts) -->
   {#key uiState.damageFlash}

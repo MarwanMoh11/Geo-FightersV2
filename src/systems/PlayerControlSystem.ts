@@ -17,6 +17,13 @@ export function PlayerControlSystem(dt: number) {
       entity.invulnTimer -= dt;
     }
 
+    // Jacked into a breach: the fighter kneels at the terminal — no movement
+    // (BreachSystem maintains the shield; the mini-game owns the keys)
+    if (entity.isLocalPlayer && uiState.breach) {
+      entity.velocity.set(0, 0, 0);
+      continue;
+    }
+
     // Read from Input Component
     _inputVector.set(entity.input.x, 0, entity.input.y);
 

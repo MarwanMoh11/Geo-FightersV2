@@ -43,6 +43,7 @@ const PICKUP_STYLE: Record<string, { color: number; label: string }> = {
   medkit: { color: 0x4dff88, label: 'MEDKIT' },
   magnet: { color: 0x36e6ff, label: 'MAGNA-PULSE' },
   bomb: { color: 0xff3d77, label: 'LOGIC BOMB' },
+  key: { color: 0xffd75e, label: 'SKELETON KEY' },
 };
 
 function isHostOrSolo(): boolean {
@@ -145,7 +146,9 @@ function breakCrate(crate: Entity, scene: THREE.Scene): void {
 
   if (Math.random() < PICKUP_DROP_CHANCE) {
     const roll = Math.random();
-    const type = roll < 0.45 ? 'medkit' : roll < 0.8 ? 'magnet' : 'bomb';
+    // The SKELETON KEY (Phase 1.96) rides the rare tail of the drop table —
+    // roughly one crate in a hundred carries a free breach
+    const type = roll < 0.4 ? 'medkit' : roll < 0.72 ? 'magnet' : roll < 0.88 ? 'bomb' : 'key';
     world.add({
       isPickup: true,
       pickupType: type,
@@ -233,8 +236,16 @@ function applyPickup(type: string, player: Entity, scene: THREE.Scene): void {
       }
       break;
     }
+    case 'key':
+      // Phase 1.96: banked for any breach door — F (or the prompt button) skips
+      // the mini-game and takes the reward
+      uiState.skeletonKeys++;
+      playLevelUp();
+      break;
   }
-  if (player.isLocalPlayer) announce(style.label);
+  if (player.isLocalPlayer) {
+    announce(type === 'key' ? 'SKELETON KEY — FREE BREACH BANKED' : style.label);
+  }
 }
 
 /** Full reset for a no-reload restart (entities are swept by the run reset). */

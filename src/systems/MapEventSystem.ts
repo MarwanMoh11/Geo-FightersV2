@@ -20,7 +20,7 @@ import { getCurrentLevel, isPointInObstacle } from '../core/LevelData';
 import { spawnChest } from './ChestSystem';
 import { handleEnemyDeath } from './CollisionSystem';
 import { setRailGlow } from './LevelSystem';
-import { getShrinePois } from './ShrineSystem';
+import { getReadyRelaySpots } from './BreachSystem';
 import { playLevelUp } from '../core/audio';
 import type { Poi } from './WayfindingSystem';
 
@@ -314,14 +314,14 @@ export function MapEventSystem(dt: number, scene: THREE.Scene): void {
     }
   }
 
-  // Opening choreography beat 2: point at the nearest ready shrine
+  // Opening choreography beat 2: point at the nearest ready relay tower
   if (!shrineBeaconFired && elapsed >= SHRINE_BEACON_AT) {
     shrineBeaconFired = true;
-    const shrines = getShrinePois();
-    if (shrines.length) {
-      let best = shrines[0];
+    const relays = getReadyRelaySpots();
+    if (relays.length) {
+      let best = relays[0];
       let bestD = Infinity;
-      for (const s of shrines) {
+      for (const s of relays) {
         const d = (s.x - player.position.x) ** 2 + (s.z - player.position.z) ** 2;
         if (d < bestD) {
           bestD = d;
@@ -329,7 +329,7 @@ export function MapEventSystem(dt: number, scene: THREE.Scene): void {
         }
       }
       spawnBeacon(scene, best.x, best.z, 0x36e6ff, 4);
-      announce('SHRINE SIGNAL DETECTED');
+      announce('RELAY TOWER DETECTED — JACK IN FOR A BUFF');
     }
   }
 

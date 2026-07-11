@@ -409,6 +409,44 @@ export const LEVEL_1_NEON_SLUMS: LevelConfig = {
       asset: '/textures/environments/prop_metal.jpg',
     },
 
+    // === BREACH NODES (Phase 1.96 JACK IN — enterable buildings) ===
+    // DATA BANK: armored vault on Main Street's east end
+    {
+      id: 'databank',
+      x: 300,
+      z: -230,
+      width: 24,
+      depth: 18,
+      height: 10,
+      type: 'wall',
+      blocking: true,
+      asset: '/textures/environments/prop_metal.jpg',
+    },
+    // SUBSTATION: humming power block deep in the Scrap Yards
+    {
+      id: 'substation',
+      x: -240,
+      z: 330,
+      width: 20,
+      depth: 20,
+      height: 8,
+      type: 'wall',
+      blocking: true,
+      asset: '/textures/environments/prop_rust.jpg',
+    },
+    // STASH DEN: shuttered smuggler front on the Courtyard's east edge
+    {
+      id: 'stashden',
+      x: 320,
+      z: 280,
+      width: 18,
+      depth: 18,
+      height: 7,
+      type: 'wall',
+      blocking: true,
+      asset: '/textures/environments/prop_metal.jpg',
+    },
+
     // === TRANSITION CORRIDORS ===
     // Between Industrial Gate and Scrap Yards
     { id: 'trans_1', x: -380, z: -180, width: 30, depth: 4, type: 'wall', blocking: true },
