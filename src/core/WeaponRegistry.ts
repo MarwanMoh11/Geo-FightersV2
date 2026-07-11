@@ -65,7 +65,7 @@ export const WEAPONS: Record<string, WeaponDef> = {
     baseProjectiles: 1,
     baseSpeed: 30,
     baseLifetime: 1.5,
-    basePierce: 1,
+    basePierce: 2, // P1.97: VS density — starter shots must plow through packs
     baseArea: 1.0,
     baseKnockback: 5,
     baseSpread: 0,
@@ -120,7 +120,7 @@ export const WEAPONS: Record<string, WeaponDef> = {
     baseProjectiles: 2,
     baseSpeed: 55,
     baseLifetime: 1.0,
-    basePierce: 1,
+    basePierce: 2, // P1.97: VS density — needles should skewer two bodies
     baseArea: 0.8,
     baseKnockback: 8,
     baseSpread: 8,
