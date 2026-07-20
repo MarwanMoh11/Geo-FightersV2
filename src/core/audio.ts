@@ -196,10 +196,24 @@ export function getCtx() {
 // While the tab is hidden (or a portal ad is playing) the master gain is held
 // at 0; the user's chosen volume is kept in masterVolume and restored after.
 let backgroundMuted = false;
+// Portal-level mute (CrazyGames SDK settings.muteAudio). Required to take
+// priority over every in-game audio control: while set, nothing may restore
+// the master gain — not the settings slider, not a background unmute.
+let portalMuted = false;
+
+export function setPortalMute(muted: boolean): void {
+  portalMuted = muted;
+  if (masterGainNode && ctx) {
+    masterGainNode.gain.setValueAtTime(
+      muted || backgroundMuted ? 0 : masterVolume,
+      ctx.currentTime,
+    );
+  }
+}
 
 export function setMasterGain(value: number): void {
   masterVolume = Math.max(0, Math.min(1, value));
-  if (masterGainNode && !backgroundMuted) {
+  if (masterGainNode && !backgroundMuted && !portalMuted) {
     masterGainNode.gain.setValueAtTime(masterVolume, ctx?.currentTime || 0);
   }
 }
@@ -221,7 +235,7 @@ export function unmuteFromBackground(): void {
   if (ctx && ctx.state === 'suspended') {
     void ctx.resume();
   }
-  if (masterGainNode && ctx) {
+  if (masterGainNode && ctx && !portalMuted) {
     masterGainNode.gain.setValueAtTime(masterVolume, ctx.currentTime);
   }
 }

@@ -75,6 +75,8 @@ export function resetRun(): void {
   // Reset the run-scoped UI state the modals key off
   uiState.isGameOver = false;
   uiState.isVictory = false;
+  uiState.showSecondChance = false;
+  uiState.secondChanceUsed = false;
   uiState.showVictoryChoice = false;
   uiState.showChestCeremony = false;
   uiState.showProtocolChoice = false;
