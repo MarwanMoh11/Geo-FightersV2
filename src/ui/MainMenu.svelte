@@ -312,8 +312,9 @@
           <button class="btn compact" onclick={() => (uiState.showGrimoire = true)}>
             <span class="label">Evolutions</span>
           </button>
-          <button class="btn compact" onclick={() => (showMpOptions = true)}>
+          <button class="btn compact soon" disabled title="Co-op is coming soon">
             <span class="label">Co-op</span>
+            <span class="soon-badge">SOON</span>
           </button>
         </div>
 
@@ -782,6 +783,30 @@
   }
   .btn.compact .label {
     font-size: 0.82rem;
+  }
+
+  .btn.compact.soon {
+    position: relative;
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+  .btn.compact.soon:hover {
+    background: rgba(255, 255, 255, 0.035);
+    border-color: var(--color-border);
+    transform: none;
+  }
+  .soon-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    font-size: 0.46rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    color: #04060f;
+    background: var(--color-gold, #ffd75e);
+    padding: 0.15rem 0.35rem;
+    border-radius: 999px;
+    line-height: 1;
   }
 
   /* Tertiary rows (settings/install) stay quiet */
