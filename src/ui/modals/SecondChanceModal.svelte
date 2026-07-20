@@ -121,6 +121,8 @@
 
   .revive-btn {
     all: unset;
+    box-sizing: border-box;
+    width: 100%;
     cursor: pointer;
     padding: 1.1rem;
     border-radius: var(--r-md);
