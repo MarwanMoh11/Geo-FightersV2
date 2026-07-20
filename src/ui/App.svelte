@@ -6,6 +6,7 @@
   import PauseModal from './modals/PauseModal.svelte';
   import UpgradeModal from './modals/UpgradeModal.svelte';
   import GameOverModal from './modals/GameOverModal.svelte';
+  import SecondChanceModal from './modals/SecondChanceModal.svelte';
   import GrimoireModal from './modals/GrimoireModal.svelte';
   import ProtocolModal from './modals/ProtocolModal.svelte';
   import ChestCeremonyModal from './modals/ChestCeremonyModal.svelte';
@@ -35,6 +36,7 @@
   <PauseModal />
   <SettingsModal />
   <UpgradeModal />
+  <SecondChanceModal />
   <GameOverModal />
   <GrimoireModal />
   <ProtocolModal />

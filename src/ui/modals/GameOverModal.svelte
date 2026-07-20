@@ -2,18 +2,26 @@
   import { uiState } from '../../core/UIState.svelte.ts';
   import { getNearestLocked, ACHIEVEMENTS } from '../../core/ProgressManager';
   import { resetRun } from '../../core/runReset';
+  import { requestMidgameAd } from '../../core/portal';
   import { fade, fly } from 'svelte/transition';
 
   let leaving = $state(false);
 
   function restart() {
-    // Brief fade-out so the click feels acknowledged, then an IN-PLACE run
-    // reset (no page reload — instant, keeps the app alive on mobile wrappers)
+    if (leaving) return;
+    // End of a run is the portal's natural interstitial break. Requested HERE
+    // (player-initiated tap-through) instead of on GAME_OVER entry so it can
+    // never collide with the rewarded SECOND CHANCE offer. Without an SDK the
+    // callback runs immediately — identical to the old behavior.
     leaving = true;
-    setTimeout(() => {
-      resetRun();
-      leaving = false;
-    }, 250);
+    requestMidgameAd(() => {
+      // Brief fade-out so the click feels acknowledged, then an IN-PLACE run
+      // reset (no page reload — instant, keeps the app alive on mobile wrappers)
+      setTimeout(() => {
+        resetRun();
+        leaving = false;
+      }, 250);
+    });
   }
 
   // The "one more run" tease: what was earned + what's almost earned.
