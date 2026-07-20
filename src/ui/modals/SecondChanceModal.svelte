@@ -27,14 +27,16 @@
 {#if uiState.showSecondChance}
   <div id="second-chance-modal" transition:fade={{ duration: 250 }}>
     <div class="content glass" in:fly={{ y: 30, duration: 400, delay: 150 }}>
-      <div class="pulse-ring"></div>
       <h2 class="title">SIGNAL LOST</h2>
       <div class="subtitle">EMERGENCY PROTOCOL AVAILABLE</div>
 
-      <button class="revive-btn" disabled={requesting} onclick={watchAd}>
-        <span class="btn-text">▶ SECOND CHANCE</span>
-        <span class="btn-subtext">{requesting ? 'LOADING…' : 'WATCH AD · REVIVE AT 50% HP'}</span>
-      </button>
+      <div class="revive-wrap">
+        <div class="pulse-ring" aria-hidden="true"></div>
+        <button class="revive-btn" disabled={requesting} onclick={watchAd}>
+          <span class="btn-text">▶ SECOND CHANCE</span>
+          <span class="btn-subtext">{requesting ? 'LOADING…' : 'WATCH AD · REVIVE AT 50% HP'}</span>
+        </button>
+      </div>
 
       <button class="decline-btn" disabled={requesting} onclick={declineSecondChance}>
         ACCEPT FATE
@@ -69,25 +71,27 @@
     text-align: center;
   }
 
+  /* Pulse traces the revive button's own shape (not a floating decoration
+     elsewhere on the card), so the "click here" cue sits exactly where the
+     tap needs to land. */
+  .revive-wrap {
+    position: relative;
+  }
   .pulse-ring {
     position: absolute;
-    top: -18px;
-    left: 50%;
-    width: 36px;
-    height: 36px;
-    margin-left: -18px;
-    border-radius: 50%;
+    inset: 0;
+    border-radius: var(--r-md);
     border: 2px solid var(--color-gold);
-    animation: sc-pulse 1.2s ease-out infinite;
+    animation: sc-pulse 1.4s ease-out infinite;
     pointer-events: none;
   }
   @keyframes sc-pulse {
     0% {
-      transform: scale(0.7);
-      opacity: 0.9;
+      transform: scale(1);
+      opacity: 0.8;
     }
     100% {
-      transform: scale(1.6);
+      transform: scale(1.08);
       opacity: 0;
     }
   }
