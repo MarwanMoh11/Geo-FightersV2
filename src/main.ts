@@ -27,7 +27,7 @@ initPortal();
 import { InputSystem } from './systems/InputSystem';
 import { PlayerControlSystem } from './systems/PlayerControlSystem';
 import { PhysicsSystem } from './systems/PhysicsSystem';
-import { RenderSystem } from './systems/RenderSystem';
+import { RenderSystem, prewarmEnemyMeshes } from './systems/RenderSystem';
 import { AimSystem } from './systems/AimSystem';
 import { WeaponSystem } from './systems/WeaponSystem';
 import { LifecycleSystem } from './systems/LifecycleSystem';
@@ -145,6 +145,14 @@ preloadTextures(updateLoadingProgress).then(async () => {
   // --- INITIAL SETUP ---
   spawnPlayer(scene);
   initDamageNumbers();
+
+  // Pre-warm every enemy type's instanced meshes + shaders now, then render one
+  // frame so WebGL compiles their (heavy) programs while the loading screen is
+  // still up. Without this, each new enemy type's first appearance mid-run
+  // (first FIREWALL at 3:00, elites on schedule) compiled its shader on the
+  // spot — a brief but jarring hitch. See prewarmEnemyMeshes().
+  prewarmEnemyMeshes(scene);
+  renderFrame();
 
   onStateChange((newState, oldState) => {
     if (newState === 'PLAYING' && oldState === 'MENU') {
