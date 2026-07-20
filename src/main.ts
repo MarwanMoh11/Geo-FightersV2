@@ -15,13 +15,14 @@ import { uiState } from './core/UIState.svelte.ts';
 import { DEBUG, dlog } from './core/debug';
 import { initPWA } from './core/pwa';
 import { getFpsLimit } from './core/SettingsManager';
-import { initPortal, portalLoadingFinished } from './core/portal';
+import { portalLoadingFinished, isPortalEmbed } from './core/portal';
 import { updateDynamicResolution } from './core/quality';
 
-// Register service worker + install-prompt brokering as early as possible.
-initPWA();
-// Portal SDK (CrazyGames etc.) — no-op outside portal embeds.
-initPortal();
+// Register service worker + install-prompt brokering as early as possible —
+// but never inside a portal iframe: the portal's CDN origin isn't ours, and a
+// SW/install prompt there is at best dead weight, at worst a QA rejection.
+// (Portal SDK boot itself already ran in boot.ts before this module loaded.)
+if (!isPortalEmbed()) initPWA();
 
 // Systems
 import { InputSystem } from './systems/InputSystem';
@@ -40,7 +41,7 @@ import { LootSystem, LootRenderSystem } from './systems/LootSystem';
 import { ChestSystem } from './systems/ChestSystem';
 import { UISystem } from './systems/UISystem';
 import { isGamePaused } from './systems/UpgradeSystem';
-import { isGameOver } from './systems/GameManager';
+import { isGameOver, SoloDeathWatchdog } from './systems/GameManager';
 import { FinaleBossSystem } from './systems/FinaleBoss';
 import { PassiveEffectsSystem } from './systems/PassiveEffectsSystem';
 import { OrbitalSystem } from './systems/OrbitalSystem';
@@ -280,7 +281,8 @@ function startGameLoop(
         !isGameOver &&
         !uiState.showVictoryChoice &&
         !uiState.showChestCeremony &&
-        !uiState.showProtocolChoice;
+        !uiState.showProtocolChoice &&
+        !uiState.showSecondChance;
     }
 
     if (!shouldRunGame) {
@@ -306,6 +308,7 @@ function startGameLoop(
     if (!isMultiplayer || isHost) {
       CollisionSystem(scene);
     }
+    if (!isMultiplayer) SoloDeathWatchdog();
 
     // 3. Physics/Visuals
     PhysicsSystem(dt);

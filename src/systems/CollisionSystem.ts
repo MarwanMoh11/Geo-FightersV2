@@ -14,7 +14,7 @@ import * as THREE from 'three';
 import { addTrauma } from './CameraSystem';
 import { WEAPONS } from '../core/WeaponRegistry';
 import { spawnXP, spawnCredit } from '../core/factories';
-import { triggerGameOver } from './GameManager';
+import { offerSecondChanceOrEnd } from './GameManager';
 import { playExplosion, playHurt, playCollect } from '../core/audio';
 import { reportDamageTaken, reportKill } from '../core/FlowStateManager';
 import { recordKill, recordDamage, recordVaultCracked } from '../core/ProgressManager';
@@ -327,7 +327,7 @@ function handleEnemyPlayerCollision(enemy: any, player: any, _scene: THREE.Scene
       }
     }
     if (!anyAlive) {
-      triggerGameOver();
+      offerSecondChanceOrEnd();
     }
   }
 }
@@ -378,7 +378,7 @@ function handleEnemyProjectilePlayerCollision(bullet: any, player: any, scene: T
       }
     }
     if (!anyAlive) {
-      triggerGameOver();
+      offerSecondChanceOrEnd();
     }
   }
 }

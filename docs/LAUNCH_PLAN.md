@@ -324,7 +324,38 @@ snapshot spawn amortization. Remaining:
 
 ### 4A. Web portals (fastest revenue — do first)
 
-- **CrazyGames**: `portal.ts` SDK hooks already exist. Add: `sdk.gameplayStart/Stop` around runs, **rewarded ad hooks** (see Phase 5), `happytime()` on victory, portal-required sitelock. Submit. (S/M)
+> **Status (2026-07-20): CrazyGames integration SHIPPED — the build is
+> submission-ready.** Verified live against the SDK's local environment
+> (`?portal=crazygames`): loadingStart/Stop, gameplayStart/Stop, happytime,
+> save-blob Set/Get, settings listener, adblock probe, rewarded + midgame ads.
+>
+> - **SDK-first boot** (`src/boot.ts`): index.html loads a bootstrap that runs
+>   sitelock → SDK init (6s timeout so a hung SDK can't brick loading) → save
+>   hydration BEFORE any game module evaluates, then imports the app.
+> - **Sitelock**: origin whitelist (CrazyGames family, our deploys, other
+>   planned portals, local dev) checked against host + referrer + frame
+>   ancestors; a stolen rehost gets a lock screen instead of the game.
+> - **Cloud saves**: the whole `geo_*` profile mirrors into one SDK data-module
+>   blob (timestamped, newest-device-wins) at run end / pause / tab-hide, and
+>   hydrates back at boot — cross-device progression on the portal.
+> - **Rewarded SECOND CHANCE** (Phase 5's headline): on solo death, BEFORE any
+>   run bookkeeping, the world freezes and a SIGNAL LOST modal offers one
+>   ad-gated revive per run (50% HP, 3s invuln, knockback shockwave). Decline
+>   or ad failure → normal game over. Adblock hides the offer entirely.
+> - **Interstitial**: moved from GAME_OVER entry to the INITIATE REBOOT tap so
+>   it can never collide with the revive offer.
+> - **Portal mute**: SDK `settings.muteAudio` (+ change listener) hard-gates
+>   the master bus above every in-game audio control.
+> - **Hardening**: SW/PWA registration skipped inside portal iframes; solo
+>   death watchdog makes a "dead but still running" state impossible; budget
+>   verified 3.9 MB total / 23 files (limits 250 MB / 1500) — ~1.2 MB gz
+>   initial, under even the 20 MB mobile-homepage bar.
+>
+> Remaining before revenue flows: create the CrazyGames developer account,
+> upload the dist zip, enable the "Progress Save" toggle, fill metadata
+> (thumbnail/description/controls), pass their QA tool — owner steps.
+
+- **CrazyGames**: ✅ SHIPPED (see status above). Submit via developer portal. (S)
 - **Poki / GameDistribution / itch.io**: same build (relative base path already configured ✓). Each has its own SDK shim — build a tiny `AdsProvider` interface with per-portal adapters. (M)
 - **PWA (own domain)**: already installable (manifest + SW + offline). Add richer manifest (screenshots, categories) for Chrome's install promotion. (S)
 

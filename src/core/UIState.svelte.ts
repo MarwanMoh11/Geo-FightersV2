@@ -85,6 +85,10 @@ export const uiState = $state({
   isPaused: false,
   isGameOver: false,
   isVictory: false,
+  // Rewarded SECOND CHANCE (portal builds): offered once per solo run at the
+  // moment of death, before the game-over bookkeeping runs.
+  showSecondChance: false,
+  secondChanceUsed: false,
   bossHealth: { current: 0, max: 100, active: false },
 
   // Feedback pulses (incrementing counters restart the CSS animations)
