@@ -19,11 +19,38 @@
  * that loses the race from mid-game on (high saturation).
  */
 
+import * as THREE from 'three';
 import { world } from './world';
 import { uiState } from './UIState.svelte.ts';
 import { updateVirtualJoystick, resetVirtualJoystick } from '../systems/InputSystem';
 import { debugGrantWeapon, upgradeRandomOwnedWeapon } from '../systems/UpgradeSystem';
 import { getSpawnerDebugInfo } from '../systems/TimelineSpawner';
+import { spawnEnemy, EnemyType } from './factories';
+
+/**
+ * Synchronous spawn-cost microbench (no render loop needed). Times a burst of
+ * real spawns the way the deficit-fill does, then cleans up. Returns total
+ * and per-spawn ms so we can see the batch spike source directly.
+ */
+function benchSpawn(n = 28): object {
+  const scene = world.with('isLocalPlayer', 'transform').first?.transform?.parent as
+    | THREE.Scene
+    | undefined;
+  if (!scene) return { error: 'no scene' };
+  const created: ReturnType<typeof spawnEnemy>[] = [];
+  const t0 = performance.now();
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    created.push(spawnEnemy(scene, Math.cos(a) * 500, Math.sin(a) * 500, EnemyType.VIRUS));
+  }
+  const total = performance.now() - t0;
+  // cleanup so the bench doesn't perturb the run
+  for (const e of created) {
+    if (e.transform?.parent) e.transform.parent.remove(e.transform);
+    world.remove(e);
+  }
+  return { n, totalMs: +total.toFixed(2), perSpawnMs: +(total / n).toFixed(3) };
+}
 
 type BotMode = 'off' | 'kite' | 'still';
 
@@ -155,5 +182,6 @@ export function initBalanceHarness(): void {
     start,
     stop,
     report,
+    benchSpawn,
   };
 }
