@@ -7,6 +7,7 @@ import {
   getEnemySolidMaterial,
   getEnemyGlowMaterial,
   getEnemyWireMaterial,
+  pregenerateAllEnemyGeometries,
 } from '../core/factories';
 
 const hitFlashMaterial = new THREE.MeshBasicMaterial({
@@ -34,6 +35,110 @@ const ELITE_AURA_COLORS: Partial<Record<EnemyType, number>> = {
 };
 
 const MAX_ENEMY_INSTANCES = 500;
+
+const _white = new THREE.Color(0xffffff);
+
+/**
+ * Create the solid/glow/wire InstancedMeshes for one enemy type (once) and add
+ * them to the scene. Extracted so the render loop and the load-time pre-warm
+ * share one code path.
+ *
+ * Phase 1.99: the first time a type's InstancedMesh is drawn, WebGL compiles
+ * its (heavy, instanced, shadow-casting MeshStandardMaterial) shader program
+ * synchronously on the main thread — a 10-40ms stall. Doing this lazily meant
+ * a hitch every time a NEW enemy type first appeared mid-run (first FIREWALL
+ * at 3:00, each elite on its schedule). prewarmEnemyMeshes() runs this for all
+ * types at load so the compile happens on the loading screen instead.
+ */
+function ensureEnemyTypeMeshes(type: EnemyType, scene: THREE.Scene): void {
+  const geomData = cachedEnemyGeometries.get(type);
+  if (!geomData) return;
+
+  if (!enemySolidInstances.get(type)) {
+    const solidMesh = new THREE.InstancedMesh(
+      geomData.solid,
+      getEnemySolidMaterial(type),
+      MAX_ENEMY_INSTANCES,
+    );
+    solidMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    solidMesh.castShadow = true;
+    solidMesh.receiveShadow = false;
+    solidMesh.frustumCulled = false;
+    solidMesh.count = 0; // nothing to draw until the render loop fills it
+    for (let j = 0; j < MAX_ENEMY_INSTANCES; j++) solidMesh.setColorAt(j, _white);
+    scene.add(solidMesh);
+    enemySolidInstances.set(type, solidMesh);
+  }
+
+  if (!enemyGlowInstances.get(type) && geomData.glow) {
+    const glowMesh = new THREE.InstancedMesh(
+      geomData.glow,
+      getEnemyGlowMaterial(),
+      MAX_ENEMY_INSTANCES,
+    );
+    glowMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    glowMesh.frustumCulled = false;
+    glowMesh.count = 0;
+    for (let j = 0; j < MAX_ENEMY_INSTANCES; j++) glowMesh.setColorAt(j, _white);
+    scene.add(glowMesh);
+    enemyGlowInstances.set(type, glowMesh);
+  }
+
+  if (!enemyWireInstances.get(type) && geomData.wire) {
+    const wireMesh = new THREE.InstancedMesh(
+      geomData.wire,
+      getEnemyWireMaterial(type),
+      MAX_ENEMY_INSTANCES,
+    );
+    wireMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    wireMesh.frustumCulled = false;
+    wireMesh.count = 0;
+    for (let j = 0; j < MAX_ENEMY_INSTANCES; j++) wireMesh.setColorAt(j, _white);
+    scene.add(wireMesh);
+    enemyWireInstances.set(type, wireMesh);
+  }
+}
+
+/**
+ * Pre-create every enemy type's instanced meshes + shadow/aura layers at load
+ * so their shaders compile during the loading screen, not mid-run. Called once
+ * from main.ts after the level is built; safe to call again (idempotent).
+ * The caller should render one frame afterward to force the compile.
+ */
+export function prewarmEnemyMeshes(scene: THREE.Scene): void {
+  if (cachedEnemyGeometries.size === 0) pregenerateAllEnemyGeometries();
+  if (!shadowInstances) {
+    const shadowGeo = new THREE.CircleGeometry(0.4, 16);
+    const shadowMat = new THREE.MeshBasicMaterial({
+      color: 0x000000,
+      transparent: true,
+      opacity: 0.4,
+    });
+    shadowInstances = new THREE.InstancedMesh(shadowGeo, shadowMat, MAX_ENEMY_INSTANCES * 4);
+    shadowInstances.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    shadowInstances.frustumCulled = false;
+    shadowInstances.count = 0;
+    scene.add(shadowInstances);
+  }
+  if (!eliteAuraInstances) {
+    const auraGeo = new THREE.RingGeometry(0.42, 0.5, 32);
+    const auraMat = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0.35,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    eliteAuraInstances = new THREE.InstancedMesh(auraGeo, auraMat, MAX_ELITE_AURAS);
+    eliteAuraInstances.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    eliteAuraInstances.frustumCulled = false;
+    eliteAuraInstances.count = 0;
+    scene.add(eliteAuraInstances);
+  }
+  for (const type of Object.values(EnemyType)) {
+    ensureEnemyTypeMeshes(type as EnemyType, scene);
+  }
+}
 
 // Reusable math objects to prevent per-frame allocations during rendering
 const _tempPos = new THREE.Vector3();
@@ -437,68 +542,10 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
     const count = counts.get(type) ?? 0;
 
     if (count < MAX_ENEMY_INSTANCES) {
-      // Lazy-initialize solid instanced mesh per enemy type
-      let solidMesh = enemySolidInstances.get(type);
-      if (!solidMesh) {
-        const geomData = cachedEnemyGeometries.get(type);
-        if (geomData) {
-          const mat = getEnemySolidMaterial(type);
-          solidMesh = new THREE.InstancedMesh(geomData.solid, mat, MAX_ENEMY_INSTANCES);
-          solidMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-          solidMesh.castShadow = true;
-          solidMesh.receiveShadow = false; // Disable shadow receiving to prevent solid black shadow maps on enemies
-          solidMesh.frustumCulled = false; // Disable frustum culling
-
-          const white = new THREE.Color(0xffffff);
-          for (let j = 0; j < MAX_ENEMY_INSTANCES; j++) {
-            solidMesh.setColorAt(j, white);
-          }
-
-          scene.add(solidMesh);
-          enemySolidInstances.set(type, solidMesh);
-        }
-      }
-
-      // Lazy-initialize the additive glow layer per enemy type
-      let glowMesh = enemyGlowInstances.get(type);
-      if (!glowMesh) {
-        const geomData = cachedEnemyGeometries.get(type);
-        if (geomData && geomData.glow) {
-          glowMesh = new THREE.InstancedMesh(
-            geomData.glow,
-            getEnemyGlowMaterial(),
-            MAX_ENEMY_INSTANCES,
-          );
-          glowMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-          glowMesh.frustumCulled = false;
-          const white = new THREE.Color(0xffffff);
-          for (let j = 0; j < MAX_ENEMY_INSTANCES; j++) {
-            glowMesh.setColorAt(j, white);
-          }
-          scene.add(glowMesh);
-          enemyGlowInstances.set(type, glowMesh);
-        }
-      }
-
-      // Lazy-initialize wireframe instanced mesh per enemy type (if wire geometry exists)
-      let wireMesh = enemyWireInstances.get(type);
-      if (!wireMesh) {
-        const geomData = cachedEnemyGeometries.get(type);
-        if (geomData && geomData.wire) {
-          const mat = getEnemyWireMaterial(type);
-          wireMesh = new THREE.InstancedMesh(geomData.wire, mat, MAX_ENEMY_INSTANCES);
-          wireMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-          wireMesh.frustumCulled = false; // Disable frustum culling
-
-          const white = new THREE.Color(0xffffff);
-          for (let j = 0; j < MAX_ENEMY_INSTANCES; j++) {
-            wireMesh.setColorAt(j, white);
-          }
-
-          scene.add(wireMesh);
-          enemyWireInstances.set(type, wireMesh);
-        }
-      }
+      ensureEnemyTypeMeshes(type, scene);
+      const solidMesh = enemySolidInstances.get(type);
+      const glowMesh = enemyGlowInstances.get(type);
+      const wireMesh = enemyWireInstances.get(type);
 
       // Compose instance matrix — all enemy body language happens here so the
       // rendering stays fully instanced (extra sin() calls, zero extra draws).

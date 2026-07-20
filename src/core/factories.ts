@@ -1017,7 +1017,7 @@ type Parts = THREE.BufferGeometry[];
 const V3 = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 const S3 = (s: number) => new THREE.Vector3(s, s, s);
 
-function pregenerateAllEnemyGeometries(): void {
+export function pregenerateAllEnemyGeometries(): void {
   // 1. GLITCH — a torn fragment of corrupted data: jagged shard cluster with
   //    glow slivers that read as the render tearing itself apart.
   {

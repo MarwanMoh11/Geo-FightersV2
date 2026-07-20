@@ -262,8 +262,7 @@ driven by its measurements, iterated until the curves landed:
 - **Contact damage was fake.** One flat 5 HP hit behind a global 0.8s i-frame
   (6.25 HP/s max from ANY horde size), and Rapier only fires contact-START
   events so enemies pressed against the player never re-hit. Now: direct
-  contact sweep + per-enemy 1.0s cooldowns + typed damage (VIRUS 4 → OVERSEER
-  20) + 0.15s stagger — density IS the threat.
+  contact sweep + per-enemy 1.0s cooldowns + typed damage (VIRUS 4 → OVERSEER 20) + 0.15s stagger — density IS the threat.
 - **Fodder never caught a kiting player** (measured minHp 100 through a
   215-enemy wave at speeds 1.7/1.1). Bisected: 2.4/1.9 killed the kite bot in
   6s; **2.1/1.6 is the band** — mid-game run carved 100→23 HP but survivable.
@@ -274,6 +273,22 @@ driven by its measurements, iterated until the curves landed:
   ×1.5 (rings up to 84). Measured 330-340 alive sustained at min 8, 60 fps.
 - Standstill at min-6 density: ~3s convergence + ~4s to melt. Standing still
   is death, kiting is life — the VS covenant.
+
+## Phase 1.99 — Spawn hitch fix (shader pre-warm)
+
+**Status: SHIPPED.** Diagnosed the "brief but jarring lag spike when new
+entities spawn" with a synchronous spawn-cost microbench (added to the ?debug
+BalanceHarness as `benchSpawn`): a 28-body deficit fill costs ~0.5ms and 100
+spawns ~1.8ms, so physics/allocation was NOT the spike — that ruled out the
+obvious guess. The real cause was GPU-side: each enemy type gets its own
+instanced, shadow-casting `MeshStandardMaterial`, whose shader WebGL compiles
+synchronously on the main thread the first time that type is drawn (~10-40ms).
+Doing it lazily meant a hitch every time a NEW type first appeared mid-run
+(first FIREWALL at 3:00, each elite on schedule). Fix: `prewarmEnemyMeshes()`
+eagerly builds all 8 types' solid/glow/wire instanced meshes at load and
+main.ts renders one frame so every shader compiles behind the loading screen.
+Verified: 23 instanced meshes present immediately on run start with only VIRUS
+alive — every type pre-warmed, so first-appearance mid-run creates nothing.
 
 ## Phase 2 — Multiplayer resilience (make co-op shippable-quality)
 
