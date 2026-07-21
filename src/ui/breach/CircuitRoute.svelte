@@ -187,7 +187,10 @@
 </script>
 
 <div class="cr-wrap">
-  <div class="cr-board" style={`grid-template-columns: auto repeat(${W}, 1fr) auto;`}>
+  <div
+    class="cr-board"
+    style={`grid-template-columns: var(--edge) repeat(${W}, var(--t)) var(--edge); grid-auto-rows: var(--t);`}
+  >
     {#each board as row, r (r)}
       <div class="edge src" class:on={r === srcRow}>{r === srcRow ? '⚡' : ''}</div>
       {#each row as tile, c (c)}
@@ -213,29 +216,35 @@
 
 <style>
   .cr-wrap {
+    /* No forced aspect-ratio: the square tile grid drives its own size, so
+       the board can't be crushed/overflowed by a wide 13:9 box on phones
+       (that fight is what "butchered" the layout on mobile). */
     display: flex;
     align-items: center;
     justify-content: center;
-    aspect-ratio: 13 / 9;
+    min-height: 12rem;
     background: rgba(0, 0, 0, 0.5);
     border-radius: 8px;
     padding: 0.5rem;
+    overflow: hidden;
   }
 
   .cr-board {
+    /* Fixed square tiles that always fit a phone width: W(<=6) tiles + 2
+       edges + gaps stays well under a 320px viewport. Rows == columns via
+       grid-auto-rows:var(--t) (set inline) so tiles are perfect squares. */
+    --t: min(12vw, 2.9rem);
+    --edge: 1rem;
     display: grid;
     gap: 3px;
-    width: 100%;
-    max-width: 26rem;
-    align-items: stretch;
+    justify-content: center;
   }
 
   .edge {
-    width: 1.5rem;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.95rem;
+    font-size: 0.9rem;
     color: rgba(255, 255, 255, 0.25);
   }
   .edge.on {
@@ -252,7 +261,8 @@
 
   .tile {
     position: relative;
-    aspect-ratio: 1;
+    width: 100%;
+    height: 100%;
     border-radius: 6px;
     border: 1px solid rgba(255, 255, 255, 0.12);
     background: rgba(16, 26, 40, 0.85);
