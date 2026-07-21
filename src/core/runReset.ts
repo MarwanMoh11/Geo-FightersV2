@@ -29,6 +29,7 @@ import { resetBreachSystem } from '../systems/BreachSystem';
 import { resetGameFlags } from '../systems/GameManager';
 import { resetUpgradeState } from '../systems/UpgradeSystem';
 import { clearDamageNumbers } from '../systems/DamageNumberSystem';
+import { resetCamera } from '../systems/CameraSystem';
 
 export function resetRun(): void {
   const local = world.with('isLocalPlayer').first;
@@ -88,6 +89,9 @@ export function resetRun(): void {
   uiState.gameTime = 0;
   uiState.combo = 0;
   uiState.bossHealth = { active: false, current: 0, max: 1 };
+
+  // Re-center the camera rig so the next run doesn't pan in from the old spot
+  resetCamera();
 
   // Back to the menu; music re-arms (stopMusic tore the scheduler down on death)
   setGameState('MENU');
