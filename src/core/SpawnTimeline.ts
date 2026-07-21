@@ -62,21 +62,22 @@ export interface EliteEvent {
 
 // --- STAGE 1: NEON BLOCK SLUMS, 10 MINUTES ---
 
-// THE PIT quota curve, VS-INSANITY tune: peak 340 alive in a 140-unit room
-// where EVERY enemy is on-screen — dramatically denser than the old slums
-// ever felt. Owner feel-test said the conservative first pass (peak 260)
-// was too easy; late-wave hpMult also rises so fodder isn't pure confetti.
+// THE PIT quota curve, VS-INSANITY+50% tune: peak 510 alive in a 140-unit
+// room where EVERY enemy is on-screen. All minAlive values are the prior
+// VS-INSANITY pass x1.5 (owner request: "increase everything by 50%").
+// hpMult/interval/pool are UNCHANGED — this is a pure count/scale increase,
+// not a toughness or spawn-rate change.
 export const STAGE_1_WAVES: Wave[] = [
   {
     minute: 0,
-    minAlive: 20,
+    minAlive: 30,
     interval: 0.6,
     hpMult: 1.0,
     pool: [{ type: EnemyType.VIRUS, weight: 100 }],
   },
   {
     minute: 1,
-    minAlive: 50,
+    minAlive: 75,
     interval: 0.55,
     hpMult: 1.0,
     pool: [
@@ -86,7 +87,7 @@ export const STAGE_1_WAVES: Wave[] = [
   },
   {
     minute: 2,
-    minAlive: 45,
+    minAlive: 68,
     interval: 0.5,
     hpMult: 1.1,
     pool: [
@@ -96,7 +97,7 @@ export const STAGE_1_WAVES: Wave[] = [
   },
   {
     minute: 3,
-    minAlive: 95,
+    minAlive: 143,
     interval: 0.5,
     hpMult: 1.25,
     pool: [
@@ -107,7 +108,7 @@ export const STAGE_1_WAVES: Wave[] = [
   },
   {
     minute: 4,
-    minAlive: 130,
+    minAlive: 195,
     interval: 0.45,
     hpMult: 1.4,
     pool: [
@@ -118,7 +119,7 @@ export const STAGE_1_WAVES: Wave[] = [
   },
   {
     minute: 5,
-    minAlive: 170,
+    minAlive: 255,
     interval: 0.45,
     hpMult: 1.55,
     pool: [
@@ -129,7 +130,7 @@ export const STAGE_1_WAVES: Wave[] = [
   },
   {
     minute: 6,
-    minAlive: 210,
+    minAlive: 315,
     interval: 0.4,
     hpMult: 1.75,
     pool: [
@@ -140,7 +141,7 @@ export const STAGE_1_WAVES: Wave[] = [
   },
   {
     minute: 7,
-    minAlive: 250,
+    minAlive: 375,
     interval: 0.4,
     hpMult: 1.95,
     pool: [
@@ -151,7 +152,7 @@ export const STAGE_1_WAVES: Wave[] = [
   },
   {
     minute: 8,
-    minAlive: 300,
+    minAlive: 450,
     interval: 0.35,
     hpMult: 2.2,
     pool: [
@@ -162,7 +163,7 @@ export const STAGE_1_WAVES: Wave[] = [
   },
   {
     minute: 9,
-    minAlive: 340,
+    minAlive: 510,
     interval: 0.35,
     hpMult: 2.5,
     pool: [
@@ -175,8 +176,8 @@ export const STAGE_1_WAVES: Wave[] = [
 
 // Endless mode: the last wave keeps growing past 10:00
 export const ENDLESS_GROWTH = {
-  minAlivePerMinute: 30,
-  minAliveCap: 370, // headroom under MAX_ENEMIES for swarms/elites
+  minAlivePerMinute: 45, // was 30
+  minAliveCap: 555, // was 370 — headroom under MAX_ENEMIES for swarms/elites
   hpMultPerMinute: 0.4,
   intervalFloor: 0.3,
 };
@@ -184,26 +185,28 @@ export const ENDLESS_GROWTH = {
 // --- SCRIPTED SWARMS (every minute at :30, alternating trap shapes) ---
 // Rings are the VS flower trap: a perfect closing circle you must break
 // through. Lines are walls that sweep across the approach lane.
+// Counts x1.5 (owner request). hpMult/speedMult untouched — swarms stay
+// exactly as brittle/fast as before, there are just 50% more bodies in them.
 export const STAGE_1_SWARMS: SwarmEvent[] = [
-  { at: 90, kind: 'ring', type: EnemyType.VIRUS, count: 44, hpMult: 0.6, speedMult: 1.35 },
-  { at: 150, kind: 'line', type: EnemyType.GLITCH, count: 33, hpMult: 0.6, speedMult: 1.2 },
-  { at: 210, kind: 'ring', type: EnemyType.VIRUS, count: 90, hpMult: 0.6, speedMult: 1.35 },
-  { at: 270, kind: 'line', type: EnemyType.GLITCH, count: 41, hpMult: 0.6, speedMult: 1.2 },
-  { at: 330, kind: 'ring', type: EnemyType.VIRUS, count: 75, hpMult: 0.6, speedMult: 1.35 },
-  { at: 390, kind: 'line', type: EnemyType.GLITCH, count: 48, hpMult: 0.6, speedMult: 1.2 },
-  { at: 450, kind: 'ring', type: EnemyType.VIRUS, count: 60, hpMult: 0.6, speedMult: 1.4 },
-  { at: 510, kind: 'line', type: EnemyType.GLITCH, count: 56, hpMult: 0.6, speedMult: 1.25 },
+  { at: 90, kind: 'ring', type: EnemyType.VIRUS, count: 66, hpMult: 0.6, speedMult: 1.35 },
+  { at: 150, kind: 'line', type: EnemyType.GLITCH, count: 50, hpMult: 0.6, speedMult: 1.2 },
+  { at: 210, kind: 'ring', type: EnemyType.VIRUS, count: 135, hpMult: 0.6, speedMult: 1.35 },
+  { at: 270, kind: 'line', type: EnemyType.GLITCH, count: 62, hpMult: 0.6, speedMult: 1.2 },
+  { at: 330, kind: 'ring', type: EnemyType.VIRUS, count: 113, hpMult: 0.6, speedMult: 1.35 },
+  { at: 390, kind: 'line', type: EnemyType.GLITCH, count: 72, hpMult: 0.6, speedMult: 1.2 },
+  { at: 450, kind: 'ring', type: EnemyType.VIRUS, count: 90, hpMult: 0.6, speedMult: 1.4 },
+  { at: 510, kind: 'line', type: EnemyType.GLITCH, count: 84, hpMult: 0.6, speedMult: 1.25 },
   // Pre-finale panic ring
-  { at: 570, kind: 'ring', type: EnemyType.VIRUS, count: 110, hpMult: 0.6, speedMult: 1.45 },
+  { at: 570, kind: 'ring', type: EnemyType.VIRUS, count: 165, hpMult: 0.6, speedMult: 1.45 },
 ];
 
 // Endless: keep the ring traps coming every 60s after the authored list ends
 export const ENDLESS_SWARM = {
   interval: 60,
   base: { kind: 'ring' as const, type: EnemyType.VIRUS, hpMult: 0.6, speedMult: 1.45 },
-  count: 110,
-  countPerMinute: 5,
-  countCap: 150,
+  count: 165, // was 110
+  countPerMinute: 7.5, // was 5
+  countCap: 225, // was 150
 };
 
 // --- ELITE SCHEDULE (chest bearers + minibosses) ---
