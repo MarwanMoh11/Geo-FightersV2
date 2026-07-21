@@ -75,9 +75,27 @@ if (typeof window !== 'undefined') {
 }
 
 // --- VIRTUAL JOYSTICK API ---
+// A planted thumb never holds perfectly still — the touch point trembles a few
+// pixels every frame, so the raw normalized vector wobbles continuously. On
+// desktop the keyboard yields clean unit vectors and this can't happen; on
+// mobile that tremor drives a constantly-jittering velocity → the player drifts
+// and vibrates and the followed camera shakes with it. A small radial deadzone
+// discards sub-threshold throw, then rescales what's left so the full analog
+// range (and precise slow movement) is preserved above the deadzone. Unlike
+// low-passing the input, a deadzone adds no latency.
+const STICK_DEADZONE = 0.12;
 export function updateVirtualJoystick(x: number, y: number, isShooting = false) {
-  inputState.x = x;
-  inputState.y = y;
+  const mag = Math.sqrt(x * x + y * y);
+  if (mag <= STICK_DEADZONE) {
+    inputState.x = 0;
+    inputState.y = 0;
+  } else {
+    // Remap [deadzone, 1] → [0, 1] along the same direction so there's no speed
+    // step at the deadzone edge and full-throw still reads as full speed.
+    const rescaled = Math.min(1, (mag - STICK_DEADZONE) / (1 - STICK_DEADZONE)) / mag;
+    inputState.x = x * rescaled;
+    inputState.y = y * rescaled;
+  }
   inputState.isShooting = isShooting;
 }
 
