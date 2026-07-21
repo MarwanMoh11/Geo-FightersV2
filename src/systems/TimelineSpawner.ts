@@ -34,10 +34,11 @@ import { partySpawnMultiplier } from '../core/difficulty';
 import * as THREE from 'three';
 
 // --- CONFIGURATION ---
-// THE PIT: 320 (was 450). All enemies live on one ~2-screen arena now — a
-// denser blob per screen at a lower absolute count, and the separation /
-// contact sweeps stay cheap on the CrazyGames Chromebook floor.
-const MAX_ENEMIES = 320; // fps-verify at this cap before every ship
+// THE PIT: 400. The arena renders in ~30 static draw calls (vs ~120 in the
+// old slums) and the P1.98 pass held 330-340 alive at 60fps on the heavier
+// map — the budget goes to the horde. If a low-end device dips at min 8-9,
+// the fallback lever is lowering this and raising wave hpMult instead.
+const MAX_ENEMIES = 400; // fps-verify at this cap before every ship
 // Deficit refills spread across ticks: 20 spawns/tick (~57/s at the fastest
 // wave) refills a screen-wipe in ~2s without the spawn burst dropping frames
 // (each spawn builds a Group + Rapier body — 45/tick visibly hitched).
