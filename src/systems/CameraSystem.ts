@@ -18,7 +18,19 @@ export function addTrauma(_amount: number) {
 // screen at once (same FOV — no distortion change).
 const BASE_CAMERA_HEIGHT = 46;
 const BASE_CAMERA_DISTANCE = 15;
-const LOOKAHEAD = 0.35; // seconds of velocity to lead by
+// Velocity lookahead: leads the view into the direction of travel. This is the
+// ONLY camera term that scales with velocity, and velocity is the only thing
+// that differs between desktop (clean WASD unit vectors) and mobile (an analog
+// thumb that never holds a steady vector). On the mobile rig the camera is a
+// far, narrow-fov (35°) TELEPHOTO follow-cam — height 65, distance 26 — so any
+// wobble in the lookahead is hugely magnified on screen, and distant props (a
+// crate across the arena) swing the hardest. That is the "whole map shakes,
+// only when I move" symptom. Desktop's close rig + clean input never shows it.
+// So mobile gets almost no lookahead (the far cam already reveals plenty ahead);
+// desktop keeps the full lead where it reads well and can't wobble.
+const LOOKAHEAD_DESKTOP = 0.35; // seconds of velocity to lead by
+const LOOKAHEAD_MOBILE = 0.06; // near-zero: kills the telephoto amplification
+const MAX_LOOK = 2.0; // hard cap on the lookahead offset (units) — safety clamp
 const FOLLOW_DAMPING = 6.0; // higher = tighter follow
 const LOOK_DAMPING = 4.0; // how fast the smoothed lookahead eases to velocity
 // How much void past the wall the view may show before the focus clamps.
@@ -49,14 +61,22 @@ export function CameraSystem(dt: number, camera: THREE.Camera) {
     (window.innerWidth < 768 || 'ontouchstart' in window || navigator.maxTouchPoints > 0);
   const cameraHeight = isMobile ? 65 : BASE_CAMERA_HEIGHT;
   const cameraDistance = isMobile ? 26 : BASE_CAMERA_DISTANCE;
+  const lookahead = isMobile ? LOOKAHEAD_MOBILE : LOOKAHEAD_DESKTOP;
 
   // Ease the lookahead toward the current velocity instead of snapping to it,
   // so per-frame joystick noise can't shake the camera target.
   const lookT = 1 - Math.exp(-LOOK_DAMPING * dt);
   const vx = player.velocity ? player.velocity.x : 0;
   const vz = player.velocity ? player.velocity.z : 0;
-  _look.x += (vx * LOOKAHEAD - _look.x) * lookT;
-  _look.z += (vz * LOOKAHEAD - _look.z) * lookT;
+  _look.x += (vx * lookahead - _look.x) * lookT;
+  _look.z += (vz * lookahead - _look.z) * lookT;
+  // Hard safety cap: the lookahead offset can never exceed MAX_LOOK, so no input
+  // spike can ever throw the camera target far enough to read as a violent jump.
+  const lookLen = Math.hypot(_look.x, _look.z);
+  if (lookLen > MAX_LOOK) {
+    _look.x = (_look.x / lookLen) * MAX_LOOK;
+    _look.z = (_look.z / lookLen) * MAX_LOOK;
+  }
 
   _desired.copy(player.transform.position);
   _desired.x += _look.x;
@@ -95,4 +115,55 @@ export function CameraSystem(dt: number, camera: THREE.Camera) {
 
   // Look at the focus point to keep the view centered
   camera.lookAt(_focus.x, 0, _focus.z);
+
+  frameDebug(dt, _focus, _look, player.velocity);
+}
+
+// --- ?fdebug ON-SCREEN FRAME DIAGNOSTIC (temporary) -------------------------
+// Add ?fdebug to the URL to overlay live numbers, readable on a phone while the
+// shake happens: dt (frame time), camera-target jump per frame (the actual
+// visible shake — spikes here == the view lurching), lookahead offset, and
+// input velocity. It reports the PEAK of each over a ~0.4s window so transient
+// spikes are catchable in a screenshot. Costs nothing when the flag is absent.
+const _fdOn =
+  typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('fdebug');
+let _fdEl: HTMLDivElement | null = null;
+let _fdPrevX = 0;
+let _fdPrevZ = 0;
+let _fdAcc = 0;
+let _fdMaxDt = 0;
+let _fdMaxJump = 0;
+let _fdMaxLook = 0;
+let _fdMaxVel = 0;
+function frameDebug(
+  dt: number,
+  focus: THREE.Vector3,
+  look: THREE.Vector3,
+  vel?: THREE.Vector3,
+): void {
+  if (!_fdOn) return;
+  const jump = Math.hypot(focus.x - _fdPrevX, focus.z - _fdPrevZ); // camera-target move this frame
+  _fdPrevX = focus.x;
+  _fdPrevZ = focus.z;
+  _fdMaxDt = Math.max(_fdMaxDt, dt * 1000);
+  _fdMaxJump = Math.max(_fdMaxJump, jump);
+  _fdMaxLook = Math.max(_fdMaxLook, Math.hypot(look.x, look.z));
+  _fdMaxVel = Math.max(_fdMaxVel, vel ? Math.hypot(vel.x, vel.z) : 0);
+  _fdAcc += dt;
+  if (_fdAcc < 0.4) return;
+  _fdAcc = 0;
+  if (!_fdEl) {
+    _fdEl = document.createElement('div');
+    _fdEl.style.cssText =
+      'position:fixed;top:8px;left:8px;z-index:99999;background:rgba(0,0,0,.8);' +
+      'color:#0f0;font:12px/1.4 monospace;padding:6px 8px;border-radius:4px;' +
+      'pointer-events:none;white-space:pre;';
+    document.body.appendChild(_fdEl);
+  }
+  _fdEl.textContent =
+    `dt peak   ${_fdMaxDt.toFixed(1)} ms\n` +
+    `cam jump  ${_fdMaxJump.toFixed(3)} u/frame\n` +
+    `lookahead ${_fdMaxLook.toFixed(3)} u\n` +
+    `velocity  ${_fdMaxVel.toFixed(2)} u/s`;
+  _fdMaxDt = _fdMaxJump = _fdMaxLook = _fdMaxVel = 0;
 }
