@@ -75,16 +75,17 @@ const COOLDOWN_ABORT = 5;
 function buildNodeDefs(): NodeDef[] {
   const defs: NodeDef[] = [];
 
-  // SUPPLY DEPOTS: the four courtyard vending machines (15w × 25d), doors
-  // facing the open plaza. The gentle tutorial nodes.
+  // Positions mirror THE PIT's LevelData obstacles — keep them in sync.
+
+  // SUPPLY DEPOTS: the four wall-inset vending machines, doors facing the
+  // arena. The gentle tutorial nodes.
   const depots = [
-    { x: -50, z: 50, dx: 1, dz: 0 },
-    { x: 250, z: 80, dx: -1, dz: 0 },
-    { x: 180, z: 300, dx: 0, dz: -1 },
-    { x: -80, z: 280, dx: 1, dz: 0 },
+    { x: 0, z: -60, dx: 0, dz: 1, half: 2 }, // north wall, faces south
+    { x: 0, z: 60, dx: 0, dz: -1, half: 2 }, // south wall, faces north
+    { x: 60, z: 20, dx: -1, dz: 0, half: 2 }, // east wall, faces west
+    { x: -60, z: -20, dx: 1, dz: 0, half: 2 }, // west wall, faces east
   ];
   depots.forEach((d, i) => {
-    const half = d.dx !== 0 ? 7.5 : 12.5;
     defs.push({
       id: `depot_${i + 1}`,
       kind: 'depot',
@@ -93,78 +94,78 @@ function buildNodeDefs(): NodeDef[] {
       color: 0xffd75e,
       x: d.x,
       z: d.z,
-      signY: 5.2,
-      doorX: d.x + d.dx * (half + 1.2),
-      doorZ: d.z + d.dz * (half + 1.2),
+      signY: 6.4,
+      doorX: d.x + d.dx * (d.half + 1.2),
+      doorZ: d.z + d.dz * (d.half + 1.2),
       dirX: d.dx,
       dirZ: d.dz,
       doorH: 2.6,
     });
   });
 
-  // ARMORY: the watchtower (26×26, h22), door on the south face
+  // ARMORY: NW corner bunker (16×16, h12), door on the south face
   defs.push({
     id: 'armory',
     kind: 'armory',
     name: 'ARMORY',
     icon: '🔫',
     color: 0xff8c3a,
-    x: -332,
-    z: -368,
+    x: -52,
+    z: -52,
     signY: 14,
-    doorX: -332,
-    doorZ: -368 + 14.2,
+    doorX: -52,
+    doorZ: -52 + 9.2,
     dirX: 0,
     dirZ: 1,
     doorH: 4,
   });
 
-  // DATA BANK (24×18, h10), door south
+  // DATA BANK: NE vault (16×14, h10), door south
   defs.push({
     id: 'databank',
     kind: 'bank',
     name: 'DATA BANK',
     icon: '🏦',
     color: 0xffcc33,
-    x: 300,
-    z: -230,
+    x: 52,
+    z: -52,
     signY: 12,
-    doorX: 300,
-    doorZ: -230 + 10.2,
+    doorX: 52,
+    doorZ: -52 + 8.2,
     dirX: 0,
     dirZ: 1,
     doorH: 4,
   });
 
-  // SUBSTATION (20×20, h8), door north
+  // SUBSTATION: SW power block (14×14, h8), door north
   defs.push({
     id: 'substation',
     kind: 'substation',
     name: 'SUBSTATION',
     icon: '🔌',
     color: 0x9dff57,
-    x: -240,
-    z: 330,
+    x: -52,
+    z: 52,
     signY: 10,
-    doorX: -240,
-    doorZ: 330 - 11.2,
+    doorX: -52,
+    doorZ: 52 - 8.2,
     dirX: 0,
     dirZ: -1,
     doorH: 3.6,
   });
 
-  // STASH DEN (18×18, h7), door west
+  // STASH DEN: SE smuggler front (13×13, h7), door west
   defs.push({
     id: 'stashden',
     kind: 'stashden',
     name: 'STASH DEN',
     icon: '🔒',
     color: 0xc46bff,
-    x: 320,
-    z: 280,
+    x: 52,
+    z: 52,
     signY: 9,
-    doorX: 320 - 10.2,
-    doorZ: 280,
+    doorX: 52 - 7.7,
+    doorZ: 52,
     dirX: -1,
     dirZ: 0,
     doorH: 3.4,

@@ -33,8 +33,8 @@ const DEFAULT_SETTINGS: GameSettings = {
   // Display
   screenShake: true,
   showFps: false,
-  qualityLevel: 'auto',
-  fpsLimit: 60,
+  qualityLevel: 'high',
+  fpsLimit: 0,
 
   // Gameplay
   autoAimStrength: 50,

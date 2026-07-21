@@ -1,5 +1,6 @@
 import { world } from '../core/world';
 import * as THREE from 'three';
+import { getCurrentLevel } from '../core/LevelData';
 
 /**
  * Screen shake was removed deliberately: the whole-view offset made enemies
@@ -13,10 +14,14 @@ export function addTrauma(_amount: number) {
 
 // Camera rig: fixed top-down offset, smoothed focus point with velocity
 // lookahead so the view leads slightly into the direction of travel.
-const BASE_CAMERA_HEIGHT = 40;
+// THE PIT: desktop height raised 40 → 46 so more of the small arena is on
+// screen at once (same FOV — no distortion change).
+const BASE_CAMERA_HEIGHT = 46;
 const BASE_CAMERA_DISTANCE = 15;
 const LOOKAHEAD = 0.35; // seconds of velocity to lead by
 const FOLLOW_DAMPING = 6.0; // higher = tighter follow
+// How much void past the wall the view may show before the focus clamps.
+const CLAMP_MARGIN = 10;
 
 const _focus = new THREE.Vector3();
 const _desired = new THREE.Vector3();
@@ -45,6 +50,23 @@ export function CameraSystem(dt: number, camera: THREE.Camera) {
   } else {
     const t = 1 - Math.exp(-FOLLOW_DAMPING * dt);
     _focus.lerp(_desired, t);
+  }
+
+  // ARENA CLAMP: in a small bounded map the follow-cam must not waste half
+  // the screen on the void past the walls. Clamp the focus so the visible
+  // ground extent stays within [wall + margin]. Extents derive from the real
+  // fov/aspect so the clamp adapts to any window shape; if the whole arena
+  // fits on screen the clamp collapses to 0 and the camera pins center.
+  const persp = camera as THREE.PerspectiveCamera;
+  if (persp.isPerspectiveCamera) {
+    const half = getCurrentLevel().mapWidth / 2;
+    const vExtent = cameraHeight * Math.tan(((persp.fov / 2) * Math.PI) / 180);
+    const hExtent = vExtent * persp.aspect;
+    const clampX = Math.max(0, half + CLAMP_MARGIN - hExtent);
+    // The tilt (camera sits +z of focus) shows extra far-side ground; bias for it
+    const clampZ = Math.max(0, half + CLAMP_MARGIN - vExtent - cameraDistance * 0.45);
+    _focus.x = Math.max(-clampX, Math.min(clampX, _focus.x));
+    _focus.z = Math.max(-clampZ, Math.min(clampZ, _focus.z));
   }
 
   camera.position.x = _focus.x;

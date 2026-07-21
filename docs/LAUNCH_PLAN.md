@@ -290,6 +290,44 @@ main.ts renders one frame so every shader compiles behind the loading screen.
 Verified: 23 instanced meshes present immediately on run start with only VIRUS
 alive — every type pre-warmed, so first-appearance mid-run creates nothing.
 
+## Phase 2.0 — THE PIT: Binding-of-Isaac-scale arena rebuild
+
+**Status: SHIPPED (first-pass balance — owner feel-test pending).** Stage 1 is
+no longer an 800-unit city; it is **THE PIT**, one handcrafted 140×140 room
+(~2 screens) where the whole map is a single composed picture: walls always
+visible, geography memorized in ten seconds, every corner intentional. The
+completion of the Phase 1.95 doctrine — instead of parachuting content to the
+player, the room is small enough that everything already IS the screen.
+
+- **Data-gates**: enemies enter through 8 glowing wall gates (Isaac doors,
+  cyberpunk skin) that flare hot as they pour through (`PIT_GATES` in
+  LevelData is the shared source for visuals + spawns). Ring swarms became
+  **BREACH — ALL GATES** (all eight flood at once); line walls became
+  **WALL BREACH** (one wall's full length flushes).
+- **Layout**: corner breach vaults (ARMORY / DATA BANK / SUBSTATION / STASH
+  DEN), one wall-inset SUPPLY DEPOT per wall, THE CORE monument on the center
+  deck, relay pylon triangle mid-field, two cover containers, and the maglev
+  hazard lane crossing z=0 (the MAGLEV RUN now tears through the arena's
+  middle — a dodge event, not scenery).
+- **Camera**: desktop rig raised 40→46 (more arena on screen, same FOV), and
+  the follow focus clamps against the walls (fov/aspect-derived) so the view
+  never wastes half the screen on the void. A dark apron platform floats
+  under the arena so the seam past the walls reads intentional.
+- **UI cuts**: minimap and wayfinding arrows retired — a 2-screen arena IS
+  its own minimap; the radar corner is reclaimed premium space on phones.
+  (Modules kept in-repo for future large stages.)
+- **Retunes for the small room**: enemy distance-despawn disabled (a far-gate
+  crosser is gameplay, not garbage — recycling never fires in-bounds);
+  MAX_ENEMIES 450→320 and quota curve scaled ~25-30% down (peak 360→260) —
+  every living enemy is on-screen now, so per-screen density is far higher at
+  equal counts.
+- **Verified live**: arena builds clean, gate spawning fills quotas, camera
+  clamp holds, ARMORY breach prompt fires at the new door, zero console
+  errors. Balance numbers are a reasoned first pass — re-run the
+  `?debug` BalanceHarness protocol (with an upgrade auto-picker — the bot's
+  unattended level-up modal freezes the world and poisons samples) and
+  feel-test on real hardware before portal submission.
+
 ## Phase 2 — Multiplayer resilience (make co-op shippable-quality)
 
 Already done this cycle: party lobby w/ ready-up, ghosts/revives, kill

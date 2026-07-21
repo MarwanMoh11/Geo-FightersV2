@@ -12,6 +12,7 @@ import {
   resumeMusic,
   setMusicIntensity,
   setMusicDucked,
+  setMusicUserEnabled,
 } from '../core/audio';
 
 import { uiState } from '../core/UIState.svelte.ts';
@@ -105,6 +106,7 @@ function applySettingsToGame(settings: GameSettings): void {
   setMasterGain(settings.masterVolume / 100);
   setMusicGain(settings.musicVolume / 100);
   setSFXGain(settings.sfxVolume / 100);
+  setMusicUserEnabled(settings.musicEnabled);
 
   // Apply control layout
   document.body.classList.toggle('inverted-controls', settings.invertControls);

@@ -62,6 +62,10 @@ export interface EliteEvent {
 
 // --- STAGE 1: NEON BLOCK SLUMS, 10 MINUTES ---
 
+// THE PIT quota curve: ~25-30% below the slums numbers. In the 140-unit
+// arena EVERY living enemy is on/near screen, so per-screen pressure at
+// equal quotas is several times the old open-map feel — 260 alive in the
+// pit reads denser than 360 ever did spread over 800 units.
 export const STAGE_1_WAVES: Wave[] = [
   {
     minute: 0,
@@ -72,7 +76,7 @@ export const STAGE_1_WAVES: Wave[] = [
   },
   {
     minute: 1,
-    minAlive: 65,
+    minAlive: 45,
     interval: 0.55,
     hpMult: 1.0,
     pool: [
@@ -92,7 +96,7 @@ export const STAGE_1_WAVES: Wave[] = [
   },
   {
     minute: 3,
-    minAlive: 95,
+    minAlive: 70,
     interval: 0.5,
     hpMult: 1.2,
     pool: [
@@ -103,7 +107,7 @@ export const STAGE_1_WAVES: Wave[] = [
   },
   {
     minute: 4,
-    minAlive: 130,
+    minAlive: 95,
     interval: 0.45,
     hpMult: 1.35,
     pool: [
@@ -114,7 +118,7 @@ export const STAGE_1_WAVES: Wave[] = [
   },
   {
     minute: 5,
-    minAlive: 170,
+    minAlive: 125,
     interval: 0.45,
     hpMult: 1.5,
     pool: [
@@ -125,7 +129,7 @@ export const STAGE_1_WAVES: Wave[] = [
   },
   {
     minute: 6,
-    minAlive: 215,
+    minAlive: 155,
     interval: 0.4,
     hpMult: 1.65,
     pool: [
@@ -136,7 +140,7 @@ export const STAGE_1_WAVES: Wave[] = [
   },
   {
     minute: 7,
-    minAlive: 260,
+    minAlive: 190,
     interval: 0.4,
     hpMult: 1.8,
     pool: [
@@ -147,7 +151,7 @@ export const STAGE_1_WAVES: Wave[] = [
   },
   {
     minute: 8,
-    minAlive: 310,
+    minAlive: 225,
     interval: 0.35,
     hpMult: 2.0,
     pool: [
@@ -158,7 +162,7 @@ export const STAGE_1_WAVES: Wave[] = [
   },
   {
     minute: 9,
-    minAlive: 360,
+    minAlive: 260,
     interval: 0.35,
     hpMult: 2.2,
     pool: [
@@ -171,8 +175,8 @@ export const STAGE_1_WAVES: Wave[] = [
 
 // Endless mode: the last wave keeps growing past 10:00
 export const ENDLESS_GROWTH = {
-  minAlivePerMinute: 35,
-  minAliveCap: 400, // headroom under MAX_ENEMIES for swarms/elites
+  minAlivePerMinute: 25,
+  minAliveCap: 290, // headroom under MAX_ENEMIES for swarms/elites
   hpMultPerMinute: 0.4,
   intervalFloor: 0.3,
 };
