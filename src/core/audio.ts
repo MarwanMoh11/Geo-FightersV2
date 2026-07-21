@@ -343,68 +343,36 @@ const SWING = 0.14; // fraction of a sixteenth added to odd steps
 
 const midiHz = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 
-// Am – F – C – G (i–VI–III–VII): the loop resolves forever without landing.
 interface Chord {
   bass: number; // midi
   pad: number[]; // pad voicing (smooth voice-leading)
   tones: number[]; // arp pool, low to high
 }
-const CHORDS: Chord[] = [
-  { bass: 33, pad: [57, 60, 64, 69], tones: [57, 60, 64, 69, 72, 76] }, // Am
-  { bass: 29, pad: [57, 60, 65, 69], tones: [53, 57, 60, 65, 69, 72] }, // F
-  { bass: 36, pad: [55, 60, 64, 67], tones: [55, 60, 64, 67, 72, 76] }, // C
-  { bass: 31, pad: [55, 59, 62, 67], tones: [55, 59, 62, 67, 71, 74] }, // G
-];
-
-// Composed lead hook — one 2-bar phrase per chord (step within chord block).
 interface LeadNote {
-  step: number;
+  step: number; // step within the chord block
   midi: number;
   len: number; // in sixteenths
 }
-const LEAD_PHRASES: LeadNote[][] = [
-  // Am
-  [
-    { step: 0, midi: 76, len: 2 },
-    { step: 4, midi: 74, len: 2 },
-    { step: 6, midi: 72, len: 2 },
-    { step: 8, midi: 69, len: 5 },
-    { step: 20, midi: 72, len: 2 },
-    { step: 22, midi: 74, len: 2 },
-    { step: 24, midi: 76, len: 6 },
-  ],
-  // F
-  [
-    { step: 0, midi: 69, len: 2 },
-    { step: 4, midi: 72, len: 2 },
-    { step: 6, midi: 76, len: 2 },
-    { step: 8, midi: 77, len: 6 },
-    { step: 20, midi: 76, len: 2 },
-    { step: 24, midi: 72, len: 5 },
-  ],
-  // C
-  [
-    { step: 0, midi: 79, len: 2 },
-    { step: 4, midi: 76, len: 2 },
-    { step: 6, midi: 74, len: 2 },
-    { step: 8, midi: 76, len: 6 },
-    { step: 20, midi: 72, len: 2 },
-    { step: 24, midi: 67, len: 5 },
-  ],
-  // G
-  [
-    { step: 0, midi: 71, len: 2 },
-    { step: 4, midi: 74, len: 2 },
-    { step: 6, midi: 79, len: 2 },
-    { step: 8, midi: 74, len: 4 },
-    { step: 16, midi: 71, len: 2 },
-    { step: 20, midi: 72, len: 2 },
-    { step: 24, midi: 74, len: 6 },
-  ],
-];
 
-// Rolling 8th-note bass: root / octave with a fifth pickup into the next bar.
-const BASS_PATTERN: (0 | 7 | 12 | null)[] = [
+/**
+ * A MusicCue is one self-contained piece of music: its own progression,
+ * lead hook, bass groove, and a `character` that reshapes the drums/arps.
+ * The sequencer plays whichever cue is active; the MusicDirector swaps them
+ * by game state (menu / exploration / boss / hacking / victory). Tempo stays
+ * fixed (110 BPM) — identity comes from harmony + character, not BPM, so
+ * switches never desync the running scheduler.
+ */
+type CueCharacter = 'ambient' | 'groove' | 'boss' | 'breach' | 'victory';
+interface MusicCue {
+  chords: Chord[];
+  lead: LeadNote[][] | null; // per-chord phrases, or null for no lead
+  bass: (number | null)[]; // 16-step interval pattern over the chord root
+  character: CueCharacter;
+  barsPerChord: number; // how many bars each chord holds
+}
+
+// Rolling 8th bass: root / octave with a fifth pickup — the synthwave engine.
+const GROOVE_BASS: (number | null)[] = [
   0,
   null,
   0,
@@ -422,6 +390,224 @@ const BASS_PATTERN: (0 | 7 | 12 | null)[] = [
   7,
   null,
 ];
+// Driving straight-8ths, root-heavy — boss relentlessness.
+const BOSS_BASS: (number | null)[] = [
+  0,
+  null,
+  0,
+  0,
+  0,
+  null,
+  0,
+  null,
+  12,
+  null,
+  0,
+  0,
+  7,
+  null,
+  7,
+  null,
+];
+// Pulsing offbeat — the "ticking clock" of a live hack.
+const BREACH_BASS: (number | null)[] = [
+  0,
+  null,
+  7,
+  null,
+  0,
+  null,
+  7,
+  null,
+  0,
+  null,
+  7,
+  null,
+  5,
+  null,
+  7,
+  null,
+];
+
+// --- EXPLORE: Am–F–C–G (i–VI–III–VII), the endless-resolving main groove ---
+const EXPLORE_CHORDS: Chord[] = [
+  { bass: 33, pad: [57, 60, 64, 69], tones: [57, 60, 64, 69, 72, 76] }, // Am
+  { bass: 29, pad: [57, 60, 65, 69], tones: [53, 57, 60, 65, 69, 72] }, // F
+  { bass: 36, pad: [55, 60, 64, 67], tones: [55, 60, 64, 67, 72, 76] }, // C
+  { bass: 31, pad: [55, 59, 62, 67], tones: [55, 59, 62, 67, 71, 74] }, // G
+];
+const EXPLORE_LEAD: LeadNote[][] = [
+  [
+    { step: 0, midi: 76, len: 2 },
+    { step: 4, midi: 74, len: 2 },
+    { step: 6, midi: 72, len: 2 },
+    { step: 8, midi: 69, len: 5 },
+    { step: 20, midi: 72, len: 2 },
+    { step: 22, midi: 74, len: 2 },
+    { step: 24, midi: 76, len: 6 },
+  ],
+  [
+    { step: 0, midi: 69, len: 2 },
+    { step: 4, midi: 72, len: 2 },
+    { step: 6, midi: 76, len: 2 },
+    { step: 8, midi: 77, len: 6 },
+    { step: 20, midi: 76, len: 2 },
+    { step: 24, midi: 72, len: 5 },
+  ],
+  [
+    { step: 0, midi: 79, len: 2 },
+    { step: 4, midi: 76, len: 2 },
+    { step: 6, midi: 74, len: 2 },
+    { step: 8, midi: 76, len: 6 },
+    { step: 20, midi: 72, len: 2 },
+    { step: 24, midi: 67, len: 5 },
+  ],
+  [
+    { step: 0, midi: 71, len: 2 },
+    { step: 4, midi: 74, len: 2 },
+    { step: 6, midi: 79, len: 2 },
+    { step: 8, midi: 74, len: 4 },
+    { step: 16, midi: 71, len: 2 },
+    { step: 20, midi: 72, len: 2 },
+    { step: 24, midi: 74, len: 6 },
+  ],
+];
+
+// --- BOSS: Am–F–Dm–E (i–VI–iv–V), dread pulling back to the tonic. Low,
+// heavy, minor; the E major V-chord is the menace. ---
+const BOSS_CHORDS: Chord[] = [
+  { bass: 33, pad: [57, 60, 64, 69], tones: [45, 48, 52, 57, 60, 64] }, // Am
+  { bass: 29, pad: [57, 60, 65, 69], tones: [41, 45, 48, 53, 57, 60] }, // F
+  { bass: 26, pad: [53, 57, 62, 65], tones: [38, 41, 45, 50, 53, 57] }, // Dm
+  { bass: 28, pad: [56, 59, 64, 68], tones: [40, 44, 47, 52, 56, 59] }, // E
+];
+const BOSS_LEAD: LeadNote[][] = [
+  [
+    { step: 0, midi: 69, len: 3 },
+    { step: 6, midi: 68, len: 2 },
+    { step: 8, midi: 69, len: 4 },
+    { step: 24, midi: 64, len: 6 },
+  ],
+  [
+    { step: 0, midi: 65, len: 3 },
+    { step: 8, midi: 69, len: 4 },
+    { step: 24, midi: 68, len: 5 },
+  ],
+  [
+    { step: 0, midi: 62, len: 3 },
+    { step: 8, midi: 65, len: 4 },
+    { step: 24, midi: 69, len: 5 },
+  ],
+  [
+    { step: 0, midi: 68, len: 2 },
+    { step: 4, midi: 71, len: 2 },
+    { step: 8, midi: 68, len: 4 },
+    { step: 24, midi: 64, len: 6 },
+  ],
+];
+
+// --- BREACH: Am ↔ Bbm chromatic oscillation — unresolved, unstable, "inside
+// the machine." One bar per chord so it churns. No kick/snare; the arp and a
+// ticking hat carry a live-hack urgency. ---
+const BREACH_CHORDS: Chord[] = [
+  { bass: 45, pad: [57, 60, 64, 69], tones: [69, 72, 76, 79, 81, 84] }, // Am (high)
+  { bass: 46, pad: [58, 61, 65, 70], tones: [70, 73, 77, 82, 84, 87] }, // Bbm (high)
+];
+
+// --- VICTORY: C–G–Am–F (I–V–vi–IV), the bright uplifting loop. ---
+const VICTORY_CHORDS: Chord[] = [
+  { bass: 36, pad: [55, 60, 64, 67], tones: [60, 64, 67, 72, 76, 79] }, // C
+  { bass: 31, pad: [55, 59, 62, 67], tones: [59, 62, 67, 71, 74, 79] }, // G
+  { bass: 33, pad: [57, 60, 64, 69], tones: [57, 60, 64, 69, 72, 76] }, // Am
+  { bass: 29, pad: [57, 60, 65, 69], tones: [53, 57, 60, 65, 69, 72] }, // F
+];
+const VICTORY_LEAD: LeadNote[][] = [
+  [
+    { step: 0, midi: 72, len: 2 },
+    { step: 4, midi: 76, len: 2 },
+    { step: 8, midi: 79, len: 6 },
+    { step: 24, midi: 84, len: 6 },
+  ],
+  [
+    { step: 0, midi: 74, len: 2 },
+    { step: 4, midi: 79, len: 2 },
+    { step: 8, midi: 83, len: 6 },
+    { step: 24, midi: 79, len: 5 },
+  ],
+  [
+    { step: 0, midi: 76, len: 2 },
+    { step: 4, midi: 72, len: 2 },
+    { step: 8, midi: 69, len: 6 },
+    { step: 24, midi: 76, len: 5 },
+  ],
+  [
+    { step: 0, midi: 77, len: 2 },
+    { step: 4, midi: 81, len: 2 },
+    { step: 8, midi: 84, len: 6 },
+    { step: 24, midi: 88, len: 6 },
+  ],
+];
+
+const CUES: Record<string, MusicCue> = {
+  // Menu shares the explore harmony but plays as an ambient bed (character
+  // suppresses drums/lead regardless of intensity).
+  menu: {
+    chords: EXPLORE_CHORDS,
+    lead: null,
+    bass: GROOVE_BASS,
+    character: 'ambient',
+    barsPerChord: 2,
+  },
+  explore: {
+    chords: EXPLORE_CHORDS,
+    lead: EXPLORE_LEAD,
+    bass: GROOVE_BASS,
+    character: 'groove',
+    barsPerChord: 2,
+  },
+  boss: {
+    chords: BOSS_CHORDS,
+    lead: BOSS_LEAD,
+    bass: BOSS_BASS,
+    character: 'boss',
+    barsPerChord: 2,
+  },
+  breach: {
+    chords: BREACH_CHORDS,
+    lead: null,
+    bass: BREACH_BASS,
+    character: 'breach',
+    barsPerChord: 1,
+  },
+  victory: {
+    chords: VICTORY_CHORDS,
+    lead: VICTORY_LEAD,
+    bass: GROOVE_BASS,
+    character: 'victory',
+    barsPerChord: 2,
+  },
+};
+
+let activeCue: MusicCue = CUES.menu;
+let pendingCue: MusicCue | null = null;
+
+/**
+ * Request a musical cue. The swap lands on the next bar boundary so it's
+ * always musically clean; passing the already-active cue is a no-op.
+ */
+export function setMusicCue(name: keyof typeof CUES | string): void {
+  const cue = CUES[name];
+  if (!cue || cue === activeCue) {
+    if (cue === activeCue) pendingCue = null; // cancel a stale pending swap
+    return;
+  }
+  pendingCue = cue;
+}
+
+export function resetMusicCue(): void {
+  activeCue = CUES.menu;
+  pendingCue = null;
+}
 
 let isMusicPlaying = false;
 let musicTimer: ReturnType<typeof setInterval> | null = null;
@@ -464,50 +650,89 @@ export function startMusic() {
 function scheduleStep(step: number, t: number): void {
   const stepInBar = step % STEPS_PER_BAR;
   const bar = Math.floor(step / STEPS_PER_BAR);
-  const chordIdx = Math.floor(bar / BARS_PER_CHORD) % CHORDS.length;
-  const chord = CHORDS[chordIdx];
-  const stepInChord = step % (STEPS_PER_BAR * BARS_PER_CHORD);
+
+  // Apply a queued cue swap on the bar line so it's musically clean.
+  if (stepInBar === 0 && pendingCue) {
+    activeCue = pendingCue;
+    pendingCue = null;
+  }
+
+  const cue = activeCue;
+  const bpc = cue.barsPerChord;
+  const stepsPerChord = STEPS_PER_BAR * bpc;
+  const chordIdx = Math.floor(bar / bpc) % cue.chords.length;
+  const chord = cue.chords[chordIdx];
+  const stepInChord = step % stepsPerChord;
   const barIn16 = bar % 16;
-  const isSectionB = barIn16 >= 8; // bars 8–15: full arrangement
+  const isSectionB = barIn16 >= 8; // bars 8–15: fuller arrangement
   const isFillBar = barIn16 === 15; // last bar: drum fill into the loop top
 
   // Swing every odd sixteenth.
   if (stepInBar % 2 === 1) t += SIXTEENTH * SWING;
 
   const I = musicIntensity;
-  const drums = clamp01((I - 0.25) / 0.35);
-  const hats = clamp01((I - 0.35) / 0.4);
-  const bassLvl = clamp01((I - 0.15) / 0.3);
-  const leadLvl = clamp01((I - 0.5) / 0.3);
-  const arpLvl = 0.35 + 0.65 * I;
-  const padLvl = 1 - 0.25 * I;
 
-  // PADS — retrigger on each chord change.
+  // Per-cue character reshapes the drum/arp/lead behavior around the shared
+  // instrument set. Everything below routes through these flags.
+  const ch = cue.character;
+  const isAmbient = ch === 'ambient';
+  const isBoss = ch === 'boss';
+  const isBreach = ch === 'breach';
+  const isVictory = ch === 'victory';
+
+  // Layer levels. Boss/victory force a full, loud arrangement; ambient/breach
+  // suppress the kit; groove keeps the run-heat fade.
+  const forceFull = isBoss || isVictory;
+  const drums = isAmbient || isBreach ? 0 : forceFull ? 1 : clamp01((I - 0.25) / 0.35);
+  const hats = isAmbient ? 0 : forceFull ? 1 : clamp01((I - 0.35) / 0.4);
+  const bassLvl = isAmbient
+    ? clamp01((I - 0.05) / 0.3) * 0.5
+    : forceFull
+      ? 1
+      : clamp01((I - 0.15) / 0.3);
+  const leadLvl = cue.lead === null ? 0 : forceFull ? 1 : clamp01((I - 0.5) / 0.3);
+  const arpLvl = isBreach ? 1 : isAmbient ? 0.25 + 0.35 * I : 0.35 + 0.65 * I;
+  const padLvl = (isBreach ? 0.7 : 1) - 0.25 * I;
+
+  // PADS — retrigger on each chord change (length follows the cue's chord span).
   if (stepInChord === 0) {
-    playPad(t, chord.pad, padLvl);
+    playPad(t, chord.pad, padLvl, bpc);
   }
 
-  // KICK — four on the floor.
-  if (drums > 0 && stepInBar % 4 === 0) {
-    playKick(t, 0.5 * drums);
-    pumpSidechain(t);
+  // KICK — four-on-floor for groove/victory; driving 8ths for the boss.
+  if (drums > 0) {
+    if (isBoss) {
+      if (stepInBar % 2 === 0) {
+        playKick(t, (stepInBar % 4 === 0 ? 0.6 : 0.4) * drums);
+        pumpSidechain(t);
+      }
+    } else if (stepInBar % 4 === 0) {
+      playKick(t, 0.5 * drums);
+      pumpSidechain(t);
+    }
   }
 
-  // SNARE — beats 2 & 4, plus a rising fill in the last bar of the cycle.
+  // SNARE — backbeat 2 & 4, harder in section B; boss adds ghost hits.
   if (drums > 0 && (stepInBar === 4 || stepInBar === 12)) {
-    playSnare(t, (isSectionB ? 0.22 : 0.13) * drums);
+    playSnare(t, (isSectionB || forceFull ? 0.24 : 0.13) * drums);
+  }
+  if (drums > 0 && isBoss && (stepInBar === 7 || stepInBar === 15)) {
+    playSnare(t, 0.09 * drums); // ghost snares drive the boss forward
   }
   if (drums > 0 && isFillBar && stepInBar >= 8 && stepInBar % 2 === 0) {
     playSnare(t, 0.1 * drums * (0.5 + (stepInBar - 8) / 14));
   }
 
-  // HATS — 8ths with offbeat accents; 16ths join in section B.
-  if (hats > 0) {
+  // HATS — 8ths + offbeat accents; BREACH gets a quiet mechanical 16th tick.
+  if (isBreach) {
+    // Ticking clock: soft closed hat on every 16th, accent the downbeats.
+    playHat(t, (stepInBar % 4 === 0 ? 0.05 : 0.022) * clamp01(0.4 + I), false);
+  } else if (hats > 0) {
     const isEighth = stepInBar % 2 === 0;
     const accent = stepInBar % 4 === 2;
     if (isEighth) {
       playHat(t, (accent ? 0.09 : 0.05) * hats, false);
-    } else if (isSectionB && hats > 0.6) {
+    } else if ((isSectionB || forceFull) && hats > 0.6) {
       playHat(t, 0.025 * hats, false);
     }
     if (stepInBar === 14 && bar % 2 === 1) {
@@ -515,30 +740,34 @@ function scheduleStep(step: number, t: number): void {
     }
   }
 
-  // BASS — rolling 8ths on the chord root.
+  // BASS — the cue's own groove pattern over the chord root.
   if (bassLvl > 0) {
-    const iv = BASS_PATTERN[stepInBar];
+    const iv = cue.bass[stepInBar];
     if (iv !== null) {
       const accent = stepInBar % 4 !== 0; // duck under the kick
-      playBass(t, midiHz(chord.bass + iv), (accent ? 0.2 : 0.13) * bassLvl);
+      const octave = isBoss ? -12 : 0; // boss bass drops a register for weight
+      playBass(t, midiHz(chord.bass + iv + octave), (accent ? 0.2 : 0.13) * bassLvl);
     }
   }
 
-  // ARP — plucky 16ths cycling chord tones; sparser at low intensity.
+  // ARP — plucky 16ths cycling chord tones. BREACH is always dense (the
+  // urgent data-stream); groove/victory thicken with intensity.
   {
-    const pattern = [0, 2, 4, 5, 4, 2, 1, 3];
-    const idx = pattern[(step >> 1) % pattern.length];
-    const dense = I > 0.55; // 16ths when the run heats up, 8ths before that
+    const pattern = isBreach ? [0, 3, 5, 2, 4, 1, 5, 3] : [0, 2, 4, 5, 4, 2, 1, 3];
+    const idx = pattern[(step >> (isBreach ? 0 : 1)) % pattern.length];
+    const dense = isBreach || isVictory || I > 0.55;
     if ((dense || stepInBar % 2 === 0) && arpLvl > 0) {
-      const tone = chord.tones[idx % chord.tones.length] + 12;
+      const tone = chord.tones[idx % chord.tones.length] + (isBreach ? 0 : 12);
       const vel = (stepInBar % 4 === 0 ? 0.055 : 0.035) * arpLvl;
       playArp(t, midiHz(tone), vel);
     }
   }
 
-  // LEAD — composed hook, section B only.
-  if (leadLvl > 0 && isSectionB) {
-    for (const n of LEAD_PHRASES[chordIdx]) {
+  // LEAD — composed hook. Section B only for groove; boss/victory play it
+  // throughout (they're always "full").
+  if (leadLvl > 0 && cue.lead && (isSectionB || forceFull)) {
+    const phrase = cue.lead[chordIdx % cue.lead.length];
+    for (const n of phrase) {
       if (n.step === stepInChord) {
         playLead(t, midiHz(n.midi), n.len * SIXTEENTH, 0.075 * leadLvl);
       }
@@ -546,7 +775,7 @@ function scheduleStep(step: number, t: number): void {
   }
 
   // RISER — filtered noise swell over the final bar of the 16-bar cycle.
-  if (isFillBar && stepInBar === 0 && I > 0.4) {
+  if (isFillBar && stepInBar === 0 && !isBreach && !isAmbient && (forceFull || I > 0.4)) {
     playRiser(t, STEPS_PER_BAR * SIXTEENTH, 0.05);
   }
 }
@@ -672,9 +901,9 @@ function playBass(t: number, freq: number, vol: number): void {
   sq.stop(t + 0.22);
 }
 
-function playPad(t: number, midis: number[], vol: number): void {
+function playPad(t: number, midis: number[], vol: number, bars = BARS_PER_CHORD): void {
   const c = ctx!;
-  const chordDur = STEPS_PER_BAR * BARS_PER_CHORD * SIXTEENTH;
+  const chordDur = STEPS_PER_BAR * bars * SIXTEENTH;
   const lp = c.createBiquadFilter();
   lp.type = 'lowpass';
   lp.frequency.setValueAtTime(700, t);

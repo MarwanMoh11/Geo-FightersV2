@@ -48,6 +48,7 @@ import { OrbitalSystem } from './systems/OrbitalSystem';
 import { OverloadSystem } from './systems/OverloadSystem';
 import { AnomalySystem } from './systems/AnomalySystem';
 import { updateFPS } from './systems/MainMenuSystem';
+import { MusicDirector } from './systems/MusicDirector';
 import { initLevel, updateGateFx } from './systems/LevelSystem';
 // MinimapSystem + WayfindingSystem retired with THE PIT: the whole 140-unit
 // arena is on/near screen, so a radar and off-screen arrows were clutter.
@@ -258,6 +259,10 @@ function startGameLoop(
 
     // Update FPS counter
     updateFPS(performance.now());
+
+    // Score the game (menus + win screens too) — picks the musical cue and
+    // intensity from live state, so it runs before the shouldRunGame gate.
+    MusicDirector(dt);
 
     // Adaptive resolution: feed the un-clamped frame time so sustained slowness
     // scales the render resolution down (and back up when there's headroom).
