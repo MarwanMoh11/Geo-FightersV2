@@ -35,11 +35,14 @@
 
 <style>
   .breach-prompt {
-    position: absolute;
+    /* FIXED + above the mobile steering layer (z 80): at its old z-index 6
+       the full-screen joystick zone swallowed every tap on JACK IN, which
+       made breaches unreachable on touch devices. */
+    position: fixed;
     left: 50%;
     bottom: 24%;
     transform: translateX(-50%);
-    z-index: 6;
+    z-index: 110;
     display: flex;
     flex-direction: column;
     align-items: center;

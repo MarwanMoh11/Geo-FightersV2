@@ -33,6 +33,7 @@ import {
   type ShrineKind,
 } from './ShrineSystem';
 import { upgradeRandomOwnedWeapon, flushDeferredLevelUps } from './UpgradeSystem';
+import { resetVirtualJoystick } from './InputSystem';
 import type { Poi } from './WayfindingSystem';
 
 export type BreachKind = 'depot' | 'armory' | 'bank' | 'relay' | 'substation' | 'stashden';
@@ -396,6 +397,9 @@ export function startBreach(overclock: boolean): void {
   firstBreachDone = true;
   uiState.breachPrompt = null;
   uiState.breachShield = 1;
+  // Park the fighter: a touch drag that opened the breach must not keep
+  // steering the ship underneath the mini-game.
+  resetVirtualJoystick();
   uiState.breach = {
     nodeId: node.id,
     kind: node.kind,
