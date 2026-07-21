@@ -3,7 +3,7 @@
 
 import * as THREE from 'three';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
-import { getCurrentLevel, type Obstacle, type LevelConfig } from '../core/LevelData';
+import { getCurrentLevel, PIT_GATES, type Obstacle, type LevelConfig } from '../core/LevelData';
 import { createStaticCuboid, isRapierInitialized } from '../core/RapierWorld';
 import { dlog } from '../core/debug';
 import { getQualityProfile } from '../core/quality';
@@ -57,9 +57,8 @@ export function initLevel(scene: THREE.Scene): void {
   addNeonGrid(scene, level);
   addBoundaryGlow(scene, level);
 
-  // Map 1 dressing: district ground decks, holo-statue, market signs, transit rail
-  addDistrictDecks(scene);
-  addSlumsDecor(scene);
+  // THE PIT dressing: void apron, center deck, maglev lane, data-gates, CORE
+  addPitDecor(scene, level);
 
   // Spawn all obstacles (visual + physics)
   for (const obstacle of level.obstacles) {
@@ -293,69 +292,82 @@ function addNeonLighting(scene: THREE.Scene): void {
 }
 
 /**
- * District ground decks: large textured patches that make each zone read as
- * its own place from the air. Two static quads — negligible cost.
+ * THE PIT set dressing: the void apron the arena floats on, the riveted
+ * center deck, the maglev hazard lane crossing z=0, THE CORE monument, and
+ * the eight data-gates enemies pour in from. Everything static and merged
+ * where it repeats — a handful of draw calls total.
  */
-function addDistrictDecks(scene: THREE.Scene): void {
-  // Mobile z-fight guard: the decks sit 0.012 above the ground plane, which
-  // 16-bit / tiled mobile depth buffers cannot resolve at a 70-unit camera
-  // distance — the two planes flicker through each other. Decals never write
-  // depth; painter's order (renderOrder) layers them over the ground instead.
+function addPitDecor(scene: THREE.Scene, level: LevelConfig): void {
+  const half = level.mapWidth / 2;
+  const _m = new THREE.Matrix4();
+
+  // Mobile z-fight guard: ground decals sit 0.012 above the ground plane,
+  // which 16-bit / tiled mobile depth buffers cannot resolve at camera
+  // distance — the planes flicker through each other. Decals never write
+  // depth; painter's order (renderOrder) layers them over the ground.
   const deckLayer = (mesh: THREE.Mesh) => {
     (mesh.material as THREE.Material).depthWrite = false;
     mesh.renderOrder = 1;
   };
 
-  // Neon Courtyard: riveted metal plaza deck
-  const courtyard = new THREE.Mesh(
-    new THREE.PlaneGeometry(540, 540),
+  // --- VOID APRON: a dark platform under/around the arena so the camera
+  // never shows raw background past the walls — the pit floats in a
+  // datacenter void, and the seam reads intentional.
+  const apron = new THREE.Mesh(
+    new THREE.PlaneGeometry(level.mapWidth * 4, level.mapHeight * 4),
+    new THREE.MeshStandardMaterial({ color: 0x06060d, roughness: 0.95, metalness: 0.05 }),
+  );
+  apron.rotation.x = -Math.PI / 2;
+  apron.position.y = -1.5;
+  scene.add(apron);
+  obstacleMeshes.push(apron);
+
+  // --- CENTER DECK: riveted metal plaza around THE CORE
+  const deck = new THREE.Mesh(
+    new THREE.PlaneGeometry(64, 64),
     new THREE.MeshStandardMaterial({
-      map: loadTexture('/textures/environments/deck_metalplates.jpg', 9),
+      map: loadTexture('/textures/environments/deck_metalplates.jpg', 4),
       color: 0x4c5260,
       roughness: 0.7,
       metalness: 0.35,
     }),
   );
-  courtyard.rotation.x = -Math.PI / 2;
-  courtyard.position.set(125, 0.012, 125);
-  deckLayer(courtyard);
-  scene.add(courtyard);
-  obstacleMeshes.push(courtyard);
+  deck.rotation.x = -Math.PI / 2;
+  deck.position.set(0, 0.012, 0);
+  deckLayer(deck);
+  scene.add(deck);
+  obstacleMeshes.push(deck);
 
-  // Scrap Yards: rusted-over floor
-  const scrapyard = new THREE.Mesh(
-    new THREE.PlaneGeometry(215, 540),
-    new THREE.MeshStandardMaterial({
-      map: loadTexture('/textures/environments/prop_rust.jpg', 4, 9),
-      color: 0x5a4c42,
-      roughness: 0.9,
-      metalness: 0.1,
-    }),
+  // --- MAGLEV LANE: the hazard line crossing the arena's center (z = 0).
+  // MapEventSystem's MAGLEV RUN sends the train down this lane.
+  const railParts: THREE.BufferGeometry[] = [];
+  for (const zOff of [-1.2, 1.2]) {
+    const rail = new THREE.BoxGeometry(level.mapWidth, 0.1, 0.55);
+    _m.makeTranslation(0, 0.04, zOff);
+    rail.applyMatrix4(_m);
+    railParts.push(rail);
+  }
+  railsMesh = new THREE.Mesh(
+    BufferGeometryUtils.mergeGeometries(railParts),
+    // Idle rails whisper (the lane crosses mid-screen constantly in the
+    // small arena); setRailGlow flares them white-hot for the MAGLEV RUN.
+    new THREE.MeshBasicMaterial({ color: RAIL_IDLE_COLOR, depthWrite: false }),
   );
-  scrapyard.rotation.x = -Math.PI / 2;
-  scrapyard.position.set(-292, 0.012, 125);
-  deckLayer(scrapyard);
-  scene.add(scrapyard);
-  obstacleMeshes.push(scrapyard);
-}
+  railsMesh.renderOrder = 3; // ground decal — see the z-fight note above
+  scene.add(railsMesh);
+  obstacleMeshes.push(railsMesh);
 
-/**
- * Neon Block Slums set dressing: the courtyard holo-statue landmark, the
- * market-row neon signs, and the transit rail line. Everything is static
- * and merged where it repeats — a handful of draw calls total.
- */
-function addSlumsDecor(scene: THREE.Scene): void {
-  // --- THE FOUNDER: holographic statue on the courtyard pedestal ---
+  // --- THE CORE: holographic monument on the center plinth
   const statue = new THREE.Group();
-  statue.position.set(100, 0, 100);
+  statue.position.set(0, 0, -20); // atop the statue_base obstacle
   const pedestal = new THREE.Mesh(
-    new THREE.CylinderGeometry(5, 7, 5, 8),
+    new THREE.CylinderGeometry(2.6, 3.6, 3, 8),
     new THREE.MeshStandardMaterial({ color: 0x1c2430, roughness: 0.4, metalness: 0.8 }),
   );
-  pedestal.position.y = 4.5; // rises out of the statue_base plinth
+  pedestal.position.y = 2.5;
   statue.add(pedestal);
   const holo = new THREE.Mesh(
-    new THREE.OctahedronGeometry(4, 1),
+    new THREE.OctahedronGeometry(2.6, 1),
     new THREE.MeshBasicMaterial({
       color: 0x00e5ff,
       wireframe: true,
@@ -363,85 +375,121 @@ function addSlumsDecor(scene: THREE.Scene): void {
       opacity: 0.45,
     }),
   );
-  holo.position.y = 11;
+  holo.position.y = 7;
   statue.add(holo);
   const holoCore = new THREE.Mesh(
-    new THREE.OctahedronGeometry(1.6),
+    new THREE.OctahedronGeometry(1.1),
     new THREE.MeshBasicMaterial({ color: 0x66f2ff, transparent: true, opacity: 0.7 }),
   );
-  holoCore.position.y = 11;
+  holoCore.position.y = 7;
   statue.add(holoCore);
   scene.add(statue);
   obstacleMeshes.push(statue);
 
-  // --- MARKET ROW NEON SIGNS: merged into two meshes (poles + panels) ---
-  const poleParts: THREE.BufferGeometry[] = [];
-  const panelParts: THREE.BufferGeometry[] = [];
-  const panelColors = [0x00e5ff, 0xff3d77, 0xffaa00];
-  const signSpots = [
-    { x: -40, z: -382 },
-    { x: 40, z: -382 },
-    { x: 130, z: -382 },
-    { x: -100, z: -338 },
-    { x: 80, z: -308 },
-    { x: 250, z: -348 },
-  ];
-  const _m = new THREE.Matrix4();
-  signSpots.forEach((spot, i) => {
-    const pole = new THREE.BoxGeometry(0.5, 8, 0.5);
-    _m.makeTranslation(spot.x, 4, spot.z);
-    pole.applyMatrix4(_m);
-    poleParts.push(pole);
+  // --- DATA-GATES: for each gate, a glowing panel set into the wall's inner
+  // face + a floor threshold decal. Frame posts merge into one mesh. Panel
+  // materials are stored per-gate so the spawner can telegraph breaches
+  // (pulseGate → updateGateFx decay).
+  gateMats.length = 0;
+  gateHeat.length = 0;
+  const postParts: THREE.BufferGeometry[] = [];
+  for (const gate of PIT_GATES) {
+    const alongX = gate.nz !== 0; // gate opening runs along the X axis
+    const panelW = gate.width;
+    const panelH = 7;
 
-    let panel: THREE.BufferGeometry = new THREE.BoxGeometry(6.5, 2.6, 0.3);
-    _m.makeTranslation(spot.x, 8.6, spot.z);
-    panel = panel.applyMatrix4(_m).toNonIndexed();
-    const color = new THREE.Color(panelColors[i % 3]);
-    const count = panel.attributes.position.count;
-    const colors = new Float32Array(count * 3);
-    for (let v = 0; v < count; v++) {
-      colors[v * 3] = color.r;
-      colors[v * 3 + 1] = color.g;
-      colors[v * 3 + 2] = color.b;
+    const panelMat = new THREE.MeshBasicMaterial({
+      color: GATE_IDLE_COLOR,
+      transparent: true,
+      opacity: 0.85,
+    });
+    const panel = new THREE.Mesh(new THREE.PlaneGeometry(panelW, panelH), panelMat);
+    // Flush against the wall's inner face, looking into the arena
+    panel.position.set(gate.x + gate.nx * 0.4, panelH / 2, gate.z + gate.nz * 0.4);
+    panel.rotation.y = Math.atan2(gate.nx, gate.nz);
+    scene.add(panel);
+    obstacleMeshes.push(panel);
+    gateMats.push(panelMat);
+    gateHeat.push(0);
+
+    // Floor threshold: a short decal strip in front of the gate
+    const threshold = new THREE.Mesh(
+      new THREE.PlaneGeometry(alongX ? panelW : 3.4, alongX ? 3.4 : panelW),
+      new THREE.MeshBasicMaterial({
+        color: GATE_IDLE_COLOR,
+        transparent: true,
+        opacity: 0.22,
+        depthWrite: false,
+      }),
+    );
+    threshold.rotation.x = -Math.PI / 2;
+    threshold.position.set(gate.x + gate.nx * 2.4, 0.03, gate.z + gate.nz * 2.4);
+    threshold.renderOrder = 3;
+    scene.add(threshold);
+    obstacleMeshes.push(threshold);
+
+    // Frame posts at the opening's edges
+    for (const side of [-1, 1]) {
+      const post = new THREE.BoxGeometry(1.1, 9.6, 1.1);
+      const px = gate.x + (alongX ? side * (panelW / 2 + 0.8) : gate.nx * 0.2);
+      const pz = gate.z + (alongX ? gate.nz * 0.2 : side * (panelW / 2 + 0.8));
+      _m.makeTranslation(px, 4.8, pz);
+      post.applyMatrix4(_m);
+      postParts.push(post);
     }
-    panel.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    panelParts.push(panel);
-  });
-  const poles = new THREE.Mesh(
-    BufferGeometryUtils.mergeGeometries(poleParts),
+  }
+  const posts = new THREE.Mesh(
+    BufferGeometryUtils.mergeGeometries(postParts),
     new THREE.MeshStandardMaterial({ color: 0x2a3038, roughness: 0.5, metalness: 0.7 }),
   );
-  scene.add(poles);
-  obstacleMeshes.push(poles);
-  const panels = new THREE.Mesh(
-    BufferGeometryUtils.mergeGeometries(panelParts),
-    new THREE.MeshBasicMaterial({ vertexColors: true }),
-  );
-  scene.add(panels);
-  obstacleMeshes.push(panels);
+  scene.add(posts);
+  obstacleMeshes.push(posts);
 
-  // --- TRANSIT RAIL: dead maglev line separating street from courtyard ---
-  const railParts: THREE.BufferGeometry[] = [];
-  for (const zOff of [-1.2, 1.2]) {
-    const rail = new THREE.BoxGeometry(800, 0.1, 0.55);
-    _m.makeTranslation(0, 0.04, -190 + zOff);
-    rail.applyMatrix4(_m);
-    railParts.push(rail);
+  // Corner accent light for the pit replaces the slums district lights via
+  // addNeonLighting (positions there are player-scale, still fine here).
+  void half;
+}
+
+// --- DATA-GATE TELEGRAPH FX ---
+// The spawner pulses a gate when enemies pour through it; the panel flares
+// hot and decays back to idle. One color lerp per gate per frame — free.
+const GATE_IDLE_COLOR = 0x0d4a55;
+const GATE_HOT_COLOR = 0xff3d77;
+const gateMats: THREE.MeshBasicMaterial[] = [];
+const gateHeat: number[] = [];
+const _gateIdle = new THREE.Color(GATE_IDLE_COLOR);
+const _gateHot = new THREE.Color(GATE_HOT_COLOR);
+let gatesSealed = false;
+
+/** Flare a gate's panel (index into PIT_GATES). Called by the spawner. */
+export function pulseGate(index: number): void {
+  if (index >= 0 && index < gateHeat.length) gateHeat[index] = 1;
+}
+
+/** Boss arena: gates seal (hold hot red) while true. */
+export function setGatesSealed(sealed: boolean): void {
+  gatesSealed = sealed;
+}
+
+/** Per-frame gate glow decay. Called from the main loop. */
+export function updateGateFx(dt: number): void {
+  for (let i = 0; i < gateMats.length; i++) {
+    if (gatesSealed) {
+      gateMats[i].color.copy(_gateHot);
+      continue;
+    }
+    if (gateHeat[i] <= 0) continue;
+    gateHeat[i] = Math.max(0, gateHeat[i] - dt * 1.6);
+    gateMats[i].color.copy(_gateIdle).lerp(_gateHot, gateHeat[i]);
   }
-  railsMesh = new THREE.Mesh(
-    BufferGeometryUtils.mergeGeometries(railParts),
-    new THREE.MeshBasicMaterial({ color: 0x00b8cc, depthWrite: false }),
-  );
-  railsMesh.renderOrder = 3; // ground decal — see the z-fight note in addDistrictDecks
-  scene.add(railsMesh);
-  obstacleMeshes.push(railsMesh);
 }
 
 // MAGLEV RUN event hook: the rails flare white-hot during the telegraph
+const RAIL_IDLE_COLOR = 0x0e3d46;
 let railsMesh: THREE.Mesh | null = null;
 export function setRailGlow(on: boolean): void {
   if (!railsMesh) return;
-  (railsMesh.material as THREE.MeshBasicMaterial).color.setHex(on ? 0xaef8ff : 0x00b8cc);
+  (railsMesh.material as THREE.MeshBasicMaterial).color.setHex(on ? 0xaef8ff : RAIL_IDLE_COLOR);
   railsMesh.scale.y = on ? 8 : 1;
 }
 

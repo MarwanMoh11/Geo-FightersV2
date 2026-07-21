@@ -242,8 +242,27 @@ export function unmuteFromBackground(): void {
 
 export function setMusicGain(value: number): void {
   musicVolume = Math.max(0, Math.min(1, value));
-  if (musicGainNode) {
-    musicGainNode.gain.setValueAtTime(musicVolume, ctx?.currentTime || 0);
+  if (musicGainNode && ctx && !musicUserMuted) {
+    musicGainNode.gain.setValueAtTime(musicVolume, ctx.currentTime);
+  }
+}
+
+// Settings > "Music Enabled" toggle. Independent of the master-bus mutes
+// above (background tab-hide, portal SDK mute) — this silences ONLY the
+// music sub-bus, leaving SFX audible, by gating musicGainNode directly
+// rather than touching the scheduler. The scheduler keeps running (cheap;
+// it already runs whenever a run/menu is active regardless of this toggle)
+// so there's no re-arm timing to get wrong — toggling back on just ramps
+// the gain back up on whatever the scheduler is already producing.
+let musicUserMuted = false;
+
+export function setMusicUserEnabled(enabled: boolean): void {
+  musicUserMuted = !enabled;
+  if (!musicGainNode || !ctx) return;
+  if (musicUserMuted) {
+    musicGainNode.gain.setTargetAtTime(0, ctx.currentTime, 0.08);
+  } else {
+    musicGainNode.gain.setTargetAtTime(musicVolume, ctx.currentTime, 0.1);
   }
 }
 
@@ -277,7 +296,7 @@ export function resumeMusic(): void {
   if (c.state === 'suspended') {
     void c.resume();
   }
-  if (musicGainNode && ctx) {
+  if (musicGainNode && ctx && !musicUserMuted) {
     musicGainNode.gain.setTargetAtTime(musicVolume, ctx.currentTime, 0.1);
   }
 }

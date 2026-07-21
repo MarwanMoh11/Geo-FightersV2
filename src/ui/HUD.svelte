@@ -2,7 +2,9 @@
   import { uiState } from '../core/UIState.svelte.ts';
   import { setGameState } from '../core/GameState';
   import { fly } from 'svelte/transition';
-  import PoiArrows from './PoiArrows.svelte';
+  // PoiArrows retired in THE PIT — everything is on/near screen in a
+  // 140-unit arena; off-screen arrows were pure clutter. (Component kept in
+  // the repo for future large stages.)
   import BreachPrompt from './BreachPrompt.svelte';
 
   const isTouchDevice =
@@ -47,7 +49,6 @@
 
 <div id="hud-overlay" class:hidden={uiState.gameState !== 'PLAYING'}>
   <!-- Off-screen POI guidance arrows (Phase 1.95 wayfinding) -->
-  <PoiArrows />
 
   <!-- JACK IN door prompt (Phase 1.96) -->
   <BreachPrompt />
@@ -82,13 +83,12 @@
     <div class="xp-fill" class:flash={levelFlash} style="width: {xpPercent}%"></div>
   </div>
 
-  <!-- Top HUD: radar (left) · vitals (center) · pause (right) -->
+  <!-- Top HUD: vitals (center) · pause (right). The radar minimap was
+       retired with THE PIT — a 140-unit arena IS its own minimap, and the
+       reclaimed corner is premium space on phones. -->
   <div class="hud-top">
-    <!-- Radar -->
-    <div id="minimap-container" class="radar glass">
-      <canvas id="minimap-canvas" width="150" height="150"></canvas>
-      <span id="minimap-label" class="eyebrow">RADAR</span>
-    </div>
+    <!-- Spacer keeps the vitals centered in the 1fr/auto/1fr grid -->
+    <div class="hud-spacer" aria-hidden="true"></div>
 
     <!-- Vitals -->
     <div class="vitals">
@@ -413,33 +413,8 @@
     gap: var(--sp-3);
   }
 
-  /* Radar (left) */
-  .radar {
+  .hud-spacer {
     justify-self: start;
-    width: 70px;
-    height: 70px;
-    border-radius: var(--r-md);
-    padding: 4px;
-    position: relative;
-    pointer-events: none;
-    overflow: hidden;
-  }
-  #minimap-canvas {
-    width: 100%;
-    height: 100%;
-    border-radius: var(--r-sm);
-    display: block;
-    background: rgba(0, 0, 0, 0.35);
-  }
-  #minimap-label {
-    position: absolute;
-    bottom: 5px;
-    left: 0;
-    right: 0;
-    text-align: center;
-    font-size: 0.4rem;
-    color: var(--color-primary);
-    text-shadow: 0 1px 3px #000;
   }
 
   /* Vitals (center) */
@@ -588,14 +563,10 @@
     transition: width 0.3s ease;
   }
 
-  /* Landscape / wide: nudge radar + give the timer room */
+  /* Landscape / wide: give the timer room */
   @media (min-width: 700px) {
     .timer {
       font-size: 2.4rem;
-    }
-    .radar {
-      width: 84px;
-      height: 84px;
     }
   }
 
