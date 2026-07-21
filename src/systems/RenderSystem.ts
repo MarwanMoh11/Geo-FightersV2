@@ -34,7 +34,12 @@ const ELITE_AURA_COLORS: Partial<Record<EnemyType, number>> = {
   [EnemyType.OVERSEER]: 0xaa44ff,
 };
 
-const MAX_ENEMY_INSTANCES = 500;
+// Per-type instanced-mesh capacity. Was 500; raised alongside the +50%
+// horde scaling (TimelineSpawner MAX_ENEMIES 400->600) so a wave-pool that
+// weights heavily toward one type can't silently stop rendering enemies
+// past this count while they're still alive and counted (see the count <
+// MAX_ENEMY_INSTANCES guard below).
+const MAX_ENEMY_INSTANCES = 750;
 
 const _white = new THREE.Color(0xffffff);
 

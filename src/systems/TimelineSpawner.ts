@@ -34,15 +34,18 @@ import { partySpawnMultiplier } from '../core/difficulty';
 import * as THREE from 'three';
 
 // --- CONFIGURATION ---
-// THE PIT: 400. The arena renders in ~30 static draw calls (vs ~120 in the
-// old slums) and the P1.98 pass held 330-340 alive at 60fps on the heavier
-// map — the budget goes to the horde. If a low-end device dips at min 8-9,
-// the fallback lever is lowering this and raising wave hpMult instead.
-const MAX_ENEMIES = 400; // fps-verify at this cap before every ship
-// Deficit refills spread across ticks: 20 spawns/tick (~57/s at the fastest
-// wave) refills a screen-wipe in ~2s without the spawn burst dropping frames
-// (each spawn builds a Group + Rapier body — 45/tick visibly hitched).
-const MAX_FILL_PER_TICK = 28;
+// THE PIT: 600 (was 400, owner requested +50% across the board). The arena
+// renders in ~30 static draw calls (vs ~120 in the old slums) and the P1.98
+// pass held 330-340 alive at 60fps on the heavier map, so there was headroom
+// to spend on the horde. FPS-VERIFY THIS CAP LIVE before shipping — if a
+// low-end device dips at min 8-9, the fallback lever is lowering this and
+// raising wave hpMult in SpawnTimeline.ts instead.
+const MAX_ENEMIES = 600;
+// Deficit refills spread across ticks (was 28/tick ~57/s @ fastest wave;
+// scaled +50% to keep pace with the larger quotas). 45/tick was measured to
+// visibly hitch (each spawn builds a Group + Rapier body) — 42 stays under
+// that ceiling with headroom.
+const MAX_FILL_PER_TICK = 42;
 const STAGE_END = 600; // FinaleBoss owns 10:00
 
 // --- THE PIT: GATE SPAWNING ---
