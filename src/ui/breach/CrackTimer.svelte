@@ -143,8 +143,10 @@
   });
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
-<div class="ct-wrap" onpointerdown={tap}>
+<!-- A real <button> is the tap surface: mobile Safari reliably fires
+     pointer/touch events on buttons but is flaky on plain divs — that was
+     why "tapping doesn't work" here while the button-based games did. -->
+<button class="ct-wrap" type="button" onpointerdown={tap}>
   <div class="dial" class:good={hitFlash === 'good'} class:bad={hitFlash === 'bad'}>
     <div class="ring" style={`background:${ringStyle};`}></div>
     <div class="ring-mask"></div>
@@ -160,10 +162,16 @@
       <div class="hub-hint">TAP IN THE ARC</div>
     </div>
   </div>
-</div>
+</button>
 
 <style>
   .ct-wrap {
+    /* reset button chrome — this is a full-area tap surface */
+    appearance: none;
+    border: none;
+    font: inherit;
+    color: inherit;
+    width: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -174,12 +182,16 @@
     cursor: pointer;
     user-select: none;
     -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
   }
 
   .dial {
+    /* Height-driven so it never overflows the 13:9 tap surface on phones
+       (height is the tighter dimension); capped so it isn't huge on desktop. */
     position: relative;
-    width: min(64vw, 15rem);
+    height: 86%;
     aspect-ratio: 1;
+    max-width: 92%;
     border-radius: 50%;
     transition: filter 0.15s;
   }
