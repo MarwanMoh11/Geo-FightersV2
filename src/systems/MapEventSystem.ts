@@ -28,17 +28,20 @@ const EVENT_INTERVAL = 75;
 const FIRST_SUPPLY_AT = 20; // opening choreography: teach drops immediately
 const SHRINE_BEACON_AT = 45; // ...then teach that shrines exist
 
-const RAIL_Z = -190; // the maglev line from LevelSystem's decor
-const TRAIN_SPEED = 150; // crosses one screen in ~0.6s — visible, dodgeable
+const RAIL_Z = 0; // THE PIT's maglev lane crosses the arena center
+const TRAIN_SPEED = 110; // fast enough to demand a dodge, slow enough to read
 const TRAIN_HALF_LEN = 15;
 const TRAIN_KILL_HALF_WIDTH = 4.5;
 const TRAIN_PLAYER_DAMAGE = 25;
+// The train starts/ends just past the arena walls (emerges through a gate)
+const TRAIN_START_X = -110;
+const TRAIN_END_X = 110;
 
 const SURGE_DURATION = 25;
+// THE PIT surge zones: halves of the arena (the maglev lane splits them)
 const DISTRICTS = [
-  { name: 'NEON COURTYARD', x1: -150, z1: -150, x2: 400, z2: 400 },
-  { name: 'MAIN STREET', x1: -200, z1: -400, x2: 400, z2: -200 },
-  { name: 'SCRAP YARDS', x1: -400, z1: -150, x2: -180, z2: 400 },
+  { name: 'NORTH DECK', x1: -70, z1: -70, x2: 70, z2: 0 },
+  { name: 'SOUTH DECK', x1: -70, z1: 0, x2: 70, z2: 70 },
 ];
 
 type EventKind = 'supply' | 'maglev' | 'surge';
@@ -171,10 +174,10 @@ function startMaglev(scene: THREE.Scene): void {
     new THREE.BoxGeometry(TRAIN_HALF_LEN * 2, 3, 4),
     new THREE.MeshBasicMaterial({ color: 0x99f6ff }),
   );
-  mesh.position.set(-430, 1.5, RAIL_Z);
+  mesh.position.set(TRAIN_START_X, 1.5, RAIL_Z);
   mesh.visible = false;
   scene.add(mesh);
-  train = { mesh, x: -430, phase: 'telegraph', ttl: 3 };
+  train = { mesh, x: TRAIN_START_X, phase: 'telegraph', ttl: 3 };
 }
 
 function tickMaglev(dt: number, scene: THREE.Scene): void {
@@ -207,7 +210,7 @@ function tickMaglev(dt: number, scene: THREE.Scene): void {
     p.hitFlashTimer = 0.2;
   }
 
-  if (train.x > 430) {
+  if (train.x > TRAIN_END_X) {
     scene.remove(train.mesh);
     train.mesh.geometry.dispose();
     (train.mesh.material as THREE.Material).dispose();

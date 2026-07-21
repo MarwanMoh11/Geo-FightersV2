@@ -48,8 +48,10 @@ import { OrbitalSystem } from './systems/OrbitalSystem';
 import { OverloadSystem } from './systems/OverloadSystem';
 import { AnomalySystem } from './systems/AnomalySystem';
 import { updateFPS } from './systems/MainMenuSystem';
-import { initLevel } from './systems/LevelSystem';
-import { initMinimap, MinimapSystem } from './systems/MinimapSystem';
+import { initLevel, updateGateFx } from './systems/LevelSystem';
+// MinimapSystem + WayfindingSystem retired with THE PIT: the whole 140-unit
+// arena is on/near screen, so a radar and off-screen arrows were clutter.
+// Both modules stay in the repo for future large stages.
 import { DebugSystem } from './systems/DebugSystem';
 import { initParticleComputeSystem, ParticleComputeSystem } from './systems/ParticleComputeSystem';
 import { initEnemyComputeSystem, EnemyComputeSystem } from './systems/EnemyComputeSystem';
@@ -59,7 +61,6 @@ import { ShrineSystem } from './systems/ShrineSystem';
 import { DestructibleSystem } from './systems/DestructibleSystem';
 import { MapEventSystem } from './systems/MapEventSystem';
 import { BreachSystem } from './systems/BreachSystem';
-import { WayfindingSystem } from './systems/WayfindingSystem';
 import { ClientCombatFxSystem } from './systems/ClientCombatFxSystem';
 
 // --- AUDIO UNLOCK & MUSIC START ---
@@ -170,7 +171,6 @@ preloadTextures(updateLoadingProgress).then(async () => {
   const { mount } = await import('svelte');
   const App = (await import('./ui/App.svelte')).default;
   mount(App, { target: document.getElementById('app')! });
-  initMinimap(); // Initialize minimap canvas (now that Svelte has rendered it)
 
   hideLoadingScreen();
   portalLoadingFinished();
@@ -337,6 +337,7 @@ function startGameLoop(
     DestructibleSystem(dt, scene);
     MapEventSystem(dt, scene);
     BreachSystem(dt, scene);
+    updateGateFx(dt); // data-gate telegraph decay (THE PIT)
 
     if (!isMultiplayer || isHost) {
       ChestSystem(dt, scene);
@@ -368,8 +369,6 @@ function startGameLoop(
     CameraSystem(dt, camera);
     DamageNumberSystem(dt, camera);
     UISystem();
-    MinimapSystem(); // Update minimap
-    WayfindingSystem(dt, camera); // Off-screen POI arrows (10 Hz internally)
     if (DEBUG) DebugSystem(scene); // Debug panel (Shift+Alt+D, requires ?debug)
 
     renderFrame();

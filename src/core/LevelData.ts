@@ -26,433 +26,228 @@ export interface LevelConfig {
   obstacles: Obstacle[];
 }
 
-// --- CONSTANTS ---
-export const MAP_HALF_WIDTH = 400; // 800 / 2
-export const MAP_HALF_HEIGHT = 400; // 800 / 2
+/**
+ * A data-gate in the arena wall: where enemies pour in from. Shared source
+ * of truth for LevelSystem (gate visuals + telegraph), TimelineSpawner
+ * (spawn positions), and FinaleBoss (gate sealing).
+ */
+export interface ArenaGate {
+  id: string;
+  /** Which wall the gate sits in — used for "wall breach" line events. */
+  wall: 'n' | 's' | 'e' | 'w';
+  x: number;
+  z: number;
+  /** Inward-facing normal (unit). */
+  nx: number;
+  nz: number;
+  /** Opening width along the wall. */
+  width: number;
+}
 
 // Border wall thickness
-const WALL_THICKNESS = 5;
+const WALL_THICKNESS = 6;
 
-// --- LEVEL 1: NEON BLOCK SLUMS ---
-export const LEVEL_1_NEON_SLUMS: LevelConfig = {
-  name: 'Neon Block Slums',
-  mapWidth: 800,
-  mapHeight: 800,
-  spawnPoint: { x: 0, z: 50 }, // Center of Neon Courtyard area
+// --- STAGE 1: THE PIT ---
+// Binding-of-Isaac-scale arena: one handcrafted 140×140 room where every
+// corner is visible, memorized in ten seconds, and intentional. Enemies
+// enter through eight data-gates in the walls; the maglev lane crosses the
+// center (keep |z| < 6 clear of props); breach vaults hold the corners.
+const PIT_SIZE = 140;
+const PIT_HALF = PIT_SIZE / 2;
+
+export const PIT_GATES: ArenaGate[] = [
+  { id: 'gate_n1', wall: 'n', x: -35, z: -PIT_HALF, nx: 0, nz: 1, width: 12 },
+  { id: 'gate_n2', wall: 'n', x: 35, z: -PIT_HALF, nx: 0, nz: 1, width: 12 },
+  { id: 'gate_s1', wall: 's', x: -35, z: PIT_HALF, nx: 0, nz: -1, width: 12 },
+  { id: 'gate_s2', wall: 's', x: 35, z: PIT_HALF, nx: 0, nz: -1, width: 12 },
+  { id: 'gate_e1', wall: 'e', x: PIT_HALF, z: -35, nx: -1, nz: 0, width: 12 },
+  { id: 'gate_e2', wall: 'e', x: PIT_HALF, z: 35, nx: -1, nz: 0, width: 12 },
+  { id: 'gate_w1', wall: 'w', x: -PIT_HALF, z: -35, nx: 1, nz: 0, width: 12 },
+  { id: 'gate_w2', wall: 'w', x: -PIT_HALF, z: 35, nx: 1, nz: 0, width: 12 },
+];
+
+export const LEVEL_THE_PIT: LevelConfig = {
+  name: 'THE PIT',
+  mapWidth: PIT_SIZE,
+  mapHeight: PIT_SIZE,
+  spawnPoint: { x: 0, z: 16 },
   groundTexture: '/textures/environments/ground_asphalt.jpg',
-  backgroundColor: 0x0a0a12, // Very dark blue-black
+  backgroundColor: 0x0a0a12,
 
   obstacles: [
-    // === BORDER WALLS ===
-    // North Wall
+    // === BORDER WALLS (tall — this is a pit, not a curb) ===
     {
       id: 'wall_n',
       x: 0,
-      z: -MAP_HALF_HEIGHT - WALL_THICKNESS / 2,
-      width: 800 + WALL_THICKNESS * 2,
+      z: -PIT_HALF - WALL_THICKNESS / 2,
+      width: PIT_SIZE + WALL_THICKNESS * 2,
       depth: WALL_THICKNESS,
+      height: 9,
       type: 'wall',
       blocking: true,
     },
-    // South Wall
     {
       id: 'wall_s',
       x: 0,
-      z: MAP_HALF_HEIGHT + WALL_THICKNESS / 2,
-      width: 800 + WALL_THICKNESS * 2,
+      z: PIT_HALF + WALL_THICKNESS / 2,
+      width: PIT_SIZE + WALL_THICKNESS * 2,
       depth: WALL_THICKNESS,
+      height: 9,
       type: 'wall',
       blocking: true,
     },
-    // East Wall
     {
       id: 'wall_e',
-      x: MAP_HALF_WIDTH + WALL_THICKNESS / 2,
+      x: PIT_HALF + WALL_THICKNESS / 2,
       z: 0,
       width: WALL_THICKNESS,
-      depth: 800,
+      depth: PIT_SIZE,
+      height: 9,
       type: 'wall',
       blocking: true,
     },
-    // West Wall
     {
       id: 'wall_w',
-      x: -MAP_HALF_WIDTH - WALL_THICKNESS / 2,
+      x: -PIT_HALF - WALL_THICKNESS / 2,
       z: 0,
       width: WALL_THICKNESS,
-      depth: 800,
+      depth: PIT_SIZE,
+      height: 9,
       type: 'wall',
       blocking: true,
     },
 
-    // === INDUSTRIAL GATE (Northwest) ===
-    // Zone: x=-400 to -250, z=-400 to -200
-    // Large gate structures creating chokepoint
+    // === CORNER VAULTS (Phase 1.96 breach nodes — positions mirrored in
+    // BreachSystem's node registry; keep them in sync) ===
+    // ARMORY: NW bunker
     {
-      id: 'gate_left',
-      x: -375,
-      z: -320,
-      width: 40,
-      depth: 60,
+      id: 'armory',
+      x: -52,
+      z: -52,
+      width: 16,
+      depth: 16,
+      height: 12,
       type: 'wall',
       blocking: true,
       asset: '/textures/environments/prop_metal.jpg',
     },
+    // DATA BANK: NE vault
     {
-      id: 'gate_right',
-      x: -290,
-      z: -320,
-      width: 40,
-      depth: 60,
+      id: 'databank',
+      x: 52,
+      z: -52,
+      width: 16,
+      depth: 14,
+      height: 10,
       type: 'wall',
       blocking: true,
       asset: '/textures/environments/prop_metal.jpg',
     },
-    // Conveyor/machinery blocking side passage
-    { id: 'conveyor', x: -360, z: -240, width: 70, depth: 20, type: 'prop', blocking: true },
-    // Warning lights area
-    { id: 'machinery', x: -280, z: -220, width: 30, depth: 30, type: 'prop', blocking: true },
-
-    // === MAIN STREET (North-Center to East) ===
-    // Zone: x=-200 to 400, z=-400 to -200
-    // Wide street with scattered obstacles
-    // Abandoned taxis
+    // SUBSTATION: SW power block
     {
-      id: 'taxi_1',
-      x: -100,
-      z: -350,
-      width: 25,
-      depth: 45,
-      type: 'prop',
-      blocking: true,
-      asset: '/textures/environments/prop_metal.jpg',
-    },
-    {
-      id: 'taxi_2',
-      x: 80,
-      z: -320,
-      width: 25,
-      depth: 45,
-      type: 'prop',
-      blocking: true,
-      asset: '/textures/environments/prop_metal.jpg',
-    },
-    {
-      id: 'taxi_3',
-      x: 250,
-      z: -360,
-      width: 25,
-      depth: 45,
-      type: 'prop',
-      blocking: true,
-      asset: '/textures/environments/prop_metal.jpg',
-    },
-    // Security barricades (long thin obstacles)
-    { id: 'barrier_1', x: -50, z: -280, width: 80, depth: 8, type: 'prop', blocking: true },
-    { id: 'barrier_2', x: 150, z: -270, width: 100, depth: 8, type: 'prop', blocking: true },
-    { id: 'barrier_3', x: 320, z: -290, width: 60, depth: 8, type: 'prop', blocking: true },
-    // Street vendor carts
-    { id: 'cart_1', x: 0, z: -220, width: 20, depth: 20, type: 'prop', blocking: true },
-    { id: 'cart_2', x: 200, z: -230, width: 20, depth: 20, type: 'prop', blocking: true },
-
-    // === SCRAP YARDS (Southwest) ===
-    // Zone: x=-400 to -180, z=-150 to 400
-    // Tight maze-like corridors
-    // Outer wall creating the "yard" enclosure
-    { id: 'scrap_wall_n', x: -310, z: -150, width: 170, depth: 4, type: 'wall', blocking: true },
-    { id: 'scrap_wall_e', x: -180, z: 100, width: 4, depth: 490, type: 'wall', blocking: true },
-    // Internal maze walls (thinner for better gameplay)
-    { id: 'maze_1', x: -350, z: -50, width: 4, depth: 150, type: 'wall', blocking: true },
-    { id: 'maze_2', x: -280, z: 50, width: 130, depth: 4, type: 'wall', blocking: true },
-    { id: 'maze_3', x: -220, z: -80, width: 4, depth: 120, type: 'wall', blocking: true },
-    { id: 'maze_4', x: -300, z: 180, width: 4, depth: 200, type: 'wall', blocking: true },
-    { id: 'maze_5', x: -240, z: 250, width: 110, depth: 4, type: 'wall', blocking: true },
-    // Dead end pocket
-    { id: 'deadend_s', x: -380, z: 280, width: 4, depth: 100, type: 'wall', blocking: true },
-    { id: 'deadend_e', x: -340, z: 330, width: 90, depth: 4, type: 'wall', blocking: true },
-    // Scrap piles (smaller, scattered)
-    {
-      id: 'scrap_1',
-      x: -330,
-      z: 0,
-      width: 25,
-      depth: 25,
-      type: 'prop',
+      id: 'substation',
+      x: -52,
+      z: 52,
+      width: 14,
+      depth: 14,
+      height: 8,
+      type: 'wall',
       blocking: true,
       asset: '/textures/environments/prop_rust.jpg',
     },
+    // STASH DEN: SE smuggler front
     {
-      id: 'scrap_2',
-      x: -260,
-      z: 120,
-      width: 30,
-      depth: 20,
-      type: 'prop',
+      id: 'stashden',
+      x: 52,
+      z: 52,
+      width: 13,
+      depth: 13,
+      height: 7,
+      type: 'wall',
       blocking: true,
-      asset: '/textures/environments/prop_rust.jpg',
-    },
-    {
-      id: 'scrap_3',
-      x: -350,
-      z: 200,
-      width: 20,
-      depth: 30,
-      type: 'prop',
-      blocking: true,
-      asset: '/textures/environments/prop_rust.jpg',
-    },
-    // Broken mech
-    {
-      id: 'mech',
-      x: -370,
-      z: 100,
-      width: 35,
-      depth: 35,
-      type: 'prop',
-      blocking: true,
-      asset: '/textures/environments/prop_rust.jpg',
-    },
-    // Cargo containers
-    {
-      id: 'container_1',
-      x: -280,
-      z: -20,
-      width: 50,
-      depth: 25,
-      type: 'prop',
-      blocking: true,
-      asset: '/textures/environments/prop_metal.jpg',
-    },
-    {
-      id: 'container_2',
-      x: -210,
-      z: 150,
-      width: 50,
-      depth: 25,
-      type: 'prop',
-      blocking: true,
-      asset: '/textures/environments/prop_metal.jpg',
+      asset: '/textures/environments/prop_vending.png',
     },
 
-    // === NEON COURTYARD (Southeast/Center) ===
-    // Zone: x=-150 to 400, z=-150 to 400
-    // Semi-open plaza with scattered props
-    // Central statue pedestal (the holo-statue decor sits on top of it)
-    {
-      id: 'statue_base',
-      x: 100,
-      z: 100,
-      width: 22,
-      depth: 22,
-      height: 4,
-      type: 'prop',
-      blocking: true,
-      asset: '/textures/environments/deck_metalplates.jpg',
-    },
-    // Vending machines along edges
+    // === SUPPLY DEPOTS: wall-inset vending machines, one per wall ===
     {
       id: 'vending_1',
-      x: -50,
-      z: 50,
-      width: 15,
-      depth: 25,
+      x: 0,
+      z: -60,
+      width: 10,
+      depth: 4,
+      height: 5,
       type: 'prop',
       blocking: true,
       asset: '/textures/environments/prop_vending.png',
     },
     {
       id: 'vending_2',
-      x: 250,
-      z: 80,
-      width: 15,
-      depth: 25,
+      x: 0,
+      z: 60,
+      width: 10,
+      depth: 4,
+      height: 5,
       type: 'prop',
       blocking: true,
       asset: '/textures/environments/prop_vending.png',
     },
     {
       id: 'vending_3',
-      x: 180,
-      z: 300,
-      width: 15,
-      depth: 25,
+      x: 60,
+      z: 20,
+      width: 4,
+      depth: 10,
+      height: 5,
       type: 'prop',
       blocking: true,
       asset: '/textures/environments/prop_vending.png',
     },
     {
       id: 'vending_4',
-      x: -80,
-      z: 280,
-      width: 15,
-      depth: 25,
+      x: -60,
+      z: -20,
+      width: 4,
+      depth: 10,
+      height: 5,
       type: 'prop',
       blocking: true,
       asset: '/textures/environments/prop_vending.png',
     },
-    // Benches
+
+    // === MID-FIELD COVER (sparse — the horde needs room to flow) ===
+    // Central plinth: THE CORE monument base
     {
-      id: 'bench_1',
-      x: 30,
-      z: 150,
-      width: 30,
+      id: 'statue_base',
+      x: 0,
+      z: -20,
+      width: 10,
       depth: 10,
+      height: 3,
       type: 'prop',
       blocking: true,
-      asset: '/textures/environments/prop_bench.png',
+      asset: '/textures/environments/deck_metalplates.jpg',
     },
+    // Cargo containers: diagonal cover, clear of the z=0 maglev lane
     {
-      id: 'bench_2',
-      x: 170,
-      z: 180,
-      width: 30,
-      depth: 10,
-      type: 'prop',
-      blocking: true,
-      asset: '/textures/environments/prop_bench.png',
-    },
-    {
-      id: 'bench_3',
-      x: 50,
-      z: 250,
-      width: 30,
-      depth: 10,
-      type: 'prop',
-      blocking: true,
-      asset: '/textures/environments/prop_bench.png',
-    },
-    {
-      id: 'bench_4',
-      x: 280,
-      z: 200,
-      width: 30,
-      depth: 10,
-      type: 'prop',
-      blocking: true,
-      asset: '/textures/environments/prop_bench.png',
-    },
-    // Narrow exit corridor walls (creating funnels) - thinner
-    { id: 'exit_nw_1', x: -120, z: -50, width: 60, depth: 4, type: 'wall', blocking: true },
-    { id: 'exit_nw_2', x: -120, z: 0, width: 60, depth: 4, type: 'wall', blocking: true },
-    { id: 'exit_ne', x: 350, z: -100, width: 4, depth: 80, type: 'wall', blocking: true },
-    { id: 'exit_se', x: 350, z: 350, width: 4, depth: 80, type: 'wall', blocking: true },
-    { id: 'exit_sw', x: -130, z: 370, width: 4, depth: 50, type: 'wall', blocking: true },
-
-    // === MARKET ROW (Main Street) ===
-    // Stall line gives the long street rhythm + cover against ranged elites
-    {
-      id: 'stall_1',
-      x: -40,
-      z: -390,
-      width: 30,
-      depth: 14,
-      height: 5,
-      type: 'prop',
-      blocking: true,
-    },
-    {
-      id: 'stall_2',
-      x: 40,
-      z: -390,
-      width: 30,
-      depth: 14,
-      height: 5,
-      type: 'prop',
-      blocking: true,
-    },
-    {
-      id: 'stall_3',
-      x: 130,
-      z: -390,
-      width: 30,
-      depth: 14,
-      height: 5,
-      type: 'prop',
-      blocking: true,
-    },
-
-    // === WATCHTOWER (Industrial Gate) ===
-    // Tall landmark visible across the north — orients the player instantly
-    {
-      id: 'watchtower',
-      x: -332,
-      z: -368,
-      width: 26,
-      depth: 26,
-      height: 22,
-      type: 'wall',
-      blocking: true,
-      asset: '/textures/environments/prop_metal.jpg',
-    },
-
-    // === HOLO-BILLBOARD TOWERS (Courtyard entrance) ===
-    {
-      id: 'billboard_1',
-      x: -150,
-      z: -120,
-      width: 14,
-      depth: 14,
-      height: 14,
+      id: 'container_1',
+      x: -26,
+      z: 18,
+      width: 12,
+      depth: 6,
       type: 'prop',
       blocking: true,
       asset: '/textures/environments/prop_metal.jpg',
     },
     {
-      id: 'billboard_2',
-      x: 380,
-      z: 60,
-      width: 14,
-      depth: 14,
-      height: 14,
+      id: 'container_2',
+      x: 26,
+      z: -16,
+      width: 12,
+      depth: 6,
       type: 'prop',
       blocking: true,
       asset: '/textures/environments/prop_metal.jpg',
     },
-
-    // === BREACH NODES (Phase 1.96 JACK IN — enterable buildings) ===
-    // DATA BANK: armored vault on Main Street's east end
-    {
-      id: 'databank',
-      x: 300,
-      z: -230,
-      width: 24,
-      depth: 18,
-      height: 10,
-      type: 'wall',
-      blocking: true,
-      asset: '/textures/environments/prop_metal.jpg',
-    },
-    // SUBSTATION: humming power block deep in the Scrap Yards
-    {
-      id: 'substation',
-      x: -240,
-      z: 330,
-      width: 20,
-      depth: 20,
-      height: 8,
-      type: 'wall',
-      blocking: true,
-      asset: '/textures/environments/prop_rust.jpg',
-    },
-    // STASH DEN: shuttered smuggler front on the Courtyard's east edge
-    {
-      id: 'stashden',
-      x: 320,
-      z: 280,
-      width: 18,
-      depth: 18,
-      height: 7,
-      type: 'wall',
-      blocking: true,
-      asset: '/textures/environments/prop_metal.jpg',
-    },
-
-    // === TRANSITION CORRIDORS ===
-    // Between Industrial Gate and Scrap Yards
-    { id: 'trans_1', x: -380, z: -180, width: 30, depth: 4, type: 'wall', blocking: true },
-    // Between Main Street and Courtyard
-    { id: 'trans_2', x: -140, z: -180, width: 4, depth: 50, type: 'wall', blocking: true },
-    { id: 'trans_3', x: 50, z: -180, width: 4, depth: 40, type: 'wall', blocking: true },
   ],
 };
 
@@ -506,7 +301,7 @@ export const LEVEL_DEBUG: LevelConfig = {
 };
 
 // Helper: Get current level config (for future multi-level support)
-let currentLevel: LevelConfig = LEVEL_1_NEON_SLUMS;
+let currentLevel: LevelConfig = LEVEL_THE_PIT;
 
 export function getCurrentLevel(): LevelConfig {
   // Precalculate halfWidth/halfDepth for obstacles if not present
