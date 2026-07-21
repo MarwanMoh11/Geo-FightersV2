@@ -97,7 +97,12 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="mobile-controls-layer" class:active={uiState.gameState === 'PLAYING'}>
+<!-- Steering layer stands down entirely during a breach: the mini-game owns
+     every touch, and the fighter is parked at the terminal anyway. -->
+<div
+  class="mobile-controls-layer"
+  class:active={uiState.gameState === 'PLAYING' && !uiState.breach}
+>
   <!-- Interaction Zone -->
   <div
     class="joystick-zone"
@@ -143,6 +148,11 @@
 
   .mobile-controls-layer.active {
     opacity: 1;
+  }
+  /* An inactive layer must not eat touches — opacity 0 alone still leaves
+     the full-screen zone interactive, which stole taps from overlays. */
+  .mobile-controls-layer:not(.active) .joystick-zone {
+    pointer-events: none;
   }
 
   /* Touch anywhere to steer: the whole screen is the joystick zone and the
