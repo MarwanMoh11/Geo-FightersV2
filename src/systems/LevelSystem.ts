@@ -641,175 +641,403 @@ function buildTheCore(scene: THREE.Scene): void {
   obstacleMeshes.push(core);
 }
 
+// --- INTERACTION GRAMMAR ---
+// Every enterable structure speaks one visual language so "you can USE
+// this" reads from across the arena: a recessed doorway that frames
+// BreachSystem's glowing door quad, an accent lamp above the opening,
+// shallow entry steps, and a light-spill apron on the floor in front.
+// Buildings are authored in LOCAL space with the door on the +z face, then
+// the whole group is rotated to face its real approach direction — so the
+// grammar always lands exactly on the node's trigger point.
+
+function bodyMat(color: number): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.45 });
+}
+
+function metalMat(): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({ color: C.metal, roughness: 0.4, metalness: 0.7 });
+}
+
+/**
+ * The doorway kit: recess + frame + lamp + steps + floor apron, on the
+ * local +z face at distance `face` from the group origin.
+ */
+function addDoorway(
+  g: THREE.Group,
+  face: number,
+  doorW: number,
+  doorH: number,
+  accent: number,
+): void {
+  // Recess: a dark inset so the additive breach door glows out of a void
+  const recess = new THREE.Mesh(
+    new THREE.PlaneGeometry(doorW, doorH),
+    new THREE.MeshBasicMaterial({ color: 0x04060b }),
+  );
+  recess.position.set(0, doorH / 2, face + 0.03);
+  g.add(recess);
+
+  // Frame posts + lintel around the opening
+  const fm = metalMat();
+  for (const side of [-1, 1]) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.7, doorH + 0.8, 0.8), fm);
+    post.position.set(side * (doorW / 2 + 0.45), (doorH + 0.8) / 2, face + 0.3);
+    post.castShadow = true;
+    g.add(post);
+  }
+  const lintel = new THREE.Mesh(new THREE.BoxGeometry(doorW + 1.9, 0.7, 1.0), fm);
+  lintel.position.set(0, doorH + 0.85, face + 0.3);
+  lintel.castShadow = true;
+  g.add(lintel);
+
+  // Accent lamp above the door — the "OPEN" sign
+  const lamp = new THREE.Mesh(
+    new THREE.BoxGeometry(doorW * 0.85, 0.3, 0.32),
+    new THREE.MeshBasicMaterial({ color: accent }),
+  );
+  lamp.position.set(0, doorH + 0.42, face + 0.55);
+  g.add(lamp);
+
+  // Entry steps down to arena level
+  const sm = new THREE.MeshStandardMaterial({ color: C.wallDark, roughness: 0.6, metalness: 0.4 });
+  const stepSpecs = [
+    { h: 0.34, out: 0.9 },
+    { h: 0.17, out: 1.9 },
+  ];
+  for (const s of stepSpecs) {
+    const step = new THREE.Mesh(new THREE.BoxGeometry(doorW + 1.8, s.h, 1.1), sm);
+    step.position.set(0, s.h / 2, face + s.out);
+    step.receiveShadow = true;
+    g.add(step);
+  }
+
+  // Light spill on the floor — the standing spot glows in the node's color
+  const apron = new THREE.Mesh(
+    new THREE.PlaneGeometry(doorW + 3.2, 4.8),
+    new THREE.MeshBasicMaterial({
+      color: accent,
+      transparent: true,
+      opacity: 0.11,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
+  );
+  apron.rotation.x = -Math.PI / 2;
+  apron.position.set(0, 0.045, face + 2.7);
+  apron.renderOrder = 3;
+  g.add(apron);
+}
+
 // --- CORNER VAULTS ---
-// Each breach node has its own silhouette + accent color. Bodies are
-// simple composed primitives; the personality is in proportions and trim.
-
-function vaultBase(w: number, h: number, d: number, color: number): THREE.Mesh {
-  const m = new THREE.Mesh(
-    new THREE.BoxGeometry(w, h, d),
-    new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.45 }),
-  );
-  m.position.y = h / 2;
-  m.castShadow = true;
-  m.receiveShadow = true;
-  return m;
-}
-
-function accentStrip(w: number, d: number, y: number, color: number): THREE.Mesh {
-  const m = new THREE.Mesh(
-    new THREE.BoxGeometry(w, 0.32, d),
-    new THREE.MeshBasicMaterial({ color }),
-  );
-  m.position.y = y;
-  return m;
-}
-
+// Rebuilt around their entrances. Solid decoration stays inside each
+// collider footprint; only flat steps/aprons spill onto walkable floor.
 function buildVaults(scene: THREE.Scene): void {
-  // ARMORY (-52,-52 · 16×16 · h12): bunker — sloped glacis face + barrels
+  // ARMORY (-52,-52 · faces +z): military checkpoint — twin turret pods
+  // flank the recessed blast door; ammo cases stacked against the facade.
   {
     const g = new THREE.Group();
     g.position.set(-52, 0, -52);
-    g.add(vaultBase(16, 10, 14, C.wall));
-    const glacis = new THREE.Mesh(
-      new THREE.BoxGeometry(16, 7, 5),
-      new THREE.MeshStandardMaterial({ color: C.metal, roughness: 0.5, metalness: 0.55 }),
-    );
-    glacis.position.set(0, 3.2, 6.2);
-    glacis.rotation.x = 0.5;
-    glacis.castShadow = true;
-    g.add(glacis);
-    g.add(accentStrip(16.3, 14.3, 10.2, C.armory));
-    // Barrel stack beside the door
-    for (let i = 0; i < 3; i++) {
-      const barrel = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.85, 0.85, 2.4, 10),
-        new THREE.MeshStandardMaterial({ color: 0x3a4152, roughness: 0.6, metalness: 0.5 }),
+
+    const body = new THREE.Mesh(new THREE.BoxGeometry(16, 8, 14), bodyMat(C.wall));
+    body.position.y = 4;
+    body.castShadow = true;
+    body.receiveShadow = true;
+    g.add(body);
+    const upper = new THREE.Mesh(new THREE.BoxGeometry(12, 3, 10), bodyMat(C.wallDark));
+    upper.position.set(0, 9.5, -1);
+    upper.castShadow = true;
+    g.add(upper);
+
+    // Twin turret pods watching the approach
+    for (const side of [-1, 1]) {
+      const pod = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.7, 2.6, 10), metalMat());
+      pod.position.set(side * 5.4, 9.2, 4.2);
+      pod.castShadow = true;
+      g.add(pod);
+      const gun = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 2.6), metalMat());
+      gun.position.set(side * 5.4, 9.4, 6);
+      g.add(gun);
+      const eye = new THREE.Mesh(
+        new THREE.SphereGeometry(0.34, 8, 6),
+        new THREE.MeshBasicMaterial({ color: C.armory }),
       );
-      barrel.position.set(-9.6, 1.2, -3 + i * 2.4);
-      barrel.castShadow = true;
-      g.add(barrel);
+      eye.position.set(side * 5.4, 9.4, 7.2);
+      g.add(eye);
     }
+
+    // Ammo cases by the door (inside the footprint)
+    for (const [cx, cy] of [
+      [-5.6, 0.65],
+      [-5.6, 1.95],
+      [5.9, 0.65],
+    ]) {
+      const box = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.3, 1.7), bodyMat(0x3a4152));
+      box.position.set(cx, cy, 6);
+      box.castShadow = true;
+      g.add(box);
+    }
+
+    // Accent cornice
+    const strip = new THREE.Mesh(
+      new THREE.BoxGeometry(16.3, 0.34, 14.3),
+      new THREE.MeshBasicMaterial({ color: C.armory }),
+    );
+    strip.position.y = 8.2;
+    g.add(strip);
+
+    addDoorway(g, 7, 3.8, 4.2, C.armory);
     scene.add(g);
     obstacleMeshes.push(g);
   }
 
-  // DATA BANK (52,-52 · 16×14 · h10): columned vault + gold cornice
+  // DATA BANK (52,-52 · faces +z): grand vault — portico columns frame the
+  // entrance, a huge round vault-door dish sits in the recess wall.
   {
     const g = new THREE.Group();
     g.position.set(52, 0, -52);
-    g.add(vaultBase(16, 9, 12, C.wall));
-    for (const cx of [-6, -2, 2, 6]) {
-      const col = new THREE.Mesh(
-        new THREE.BoxGeometry(1.4, 9.6, 1.4),
-        new THREE.MeshStandardMaterial({ color: C.metal, roughness: 0.35, metalness: 0.75 }),
-      );
-      col.position.set(cx, 4.8, 6.4);
+
+    const body = new THREE.Mesh(new THREE.BoxGeometry(16, 9, 12), bodyMat(C.wall));
+    body.position.y = 4.5;
+    body.castShadow = true;
+    body.receiveShadow = true;
+    g.add(body);
+
+    // Portico: columns either side of the door only — the entrance is the
+    // composition's center, not decoration
+    for (const cx of [-5.9, -3.1, 3.1, 5.9]) {
+      const col = new THREE.Mesh(new THREE.BoxGeometry(1.4, 9.8, 1.4), metalMat());
+      col.position.set(cx, 4.9, 6.2);
       col.castShadow = true;
       g.add(col);
     }
-    const cornice = new THREE.Mesh(
-      new THREE.BoxGeometry(17.4, 1.1, 14.6),
-      new THREE.MeshStandardMaterial({ color: C.wallDark, roughness: 0.4, metalness: 0.7 }),
-    );
-    cornice.position.y = 9.8;
+    const cornice = new THREE.Mesh(new THREE.BoxGeometry(17.4, 1.2, 14), bodyMat(C.wallDark));
+    cornice.position.y = 9.9;
+    cornice.castShadow = true;
     g.add(cornice);
-    g.add(accentStrip(17.6, 14.8, 10.5, C.bank));
+    const strip = new THREE.Mesh(
+      new THREE.BoxGeometry(17.6, 0.36, 14.2),
+      new THREE.MeshBasicMaterial({ color: C.bank }),
+    );
+    strip.position.y = 10.6;
+    g.add(strip);
+
+    // The vault dish: a big gold-ringed disk above the doorway
+    const dish = new THREE.Mesh(
+      new THREE.TorusGeometry(1.9, 0.3, 8, 28),
+      new THREE.MeshBasicMaterial({ color: C.bank }),
+    );
+    dish.position.set(0, 6.8, 6.05);
+    g.add(dish);
+
+    addDoorway(g, 6, 3.4, 4.2, C.bank);
     scene.add(g);
     obstacleMeshes.push(g);
   }
 
-  // SUBSTATION (-52,52 · 14×14 · h8): transformer — coil stacks + vents
+  // SUBSTATION (-52,52 · faces -z after rotation): live transformer yard —
+  // coil stacks arc green, vent grills glow, hazard chevrons at the door.
   {
     const g = new THREE.Group();
     g.position.set(-52, 0, 52);
-    g.add(vaultBase(14, 6, 14, C.wall));
-    for (const [cx, cz] of [
-      [-3.5, -2.5],
-      [3.5, -2.5],
-    ]) {
-      const coil = new THREE.Mesh(
-        new THREE.CylinderGeometry(2.1, 2.4, 5, 10),
-        new THREE.MeshStandardMaterial({ color: C.metal, roughness: 0.45, metalness: 0.65 }),
-      );
-      coil.position.set(cx, 8.4, cz);
+    g.rotation.y = Math.PI; // authored +z door → real -z approach
+
+    const body = new THREE.Mesh(new THREE.BoxGeometry(14, 5.5, 14), bodyMat(C.wall));
+    body.position.y = 2.75;
+    body.castShadow = true;
+    body.receiveShadow = true;
+    g.add(body);
+
+    for (const cx of [-3.6, 3.6]) {
+      const coil = new THREE.Mesh(new THREE.CylinderGeometry(2, 2.3, 4.6, 10), metalMat());
+      coil.position.set(cx, 7.7, -2);
       coil.castShadow = true;
       g.add(coil);
+      for (let ring = 0; ring < 3; ring++) {
+        const disc = new THREE.Mesh(
+          new THREE.CylinderGeometry(2.35, 2.35, 0.22, 10),
+          new THREE.MeshBasicMaterial({ color: C.substation, transparent: true, opacity: 0.55 }),
+        );
+        disc.position.set(cx, 6.4 + ring * 1.5, -2);
+        g.add(disc);
+      }
       const cap = new THREE.Mesh(
-        new THREE.CylinderGeometry(1.1, 1.1, 1.1, 8),
+        new THREE.CylinderGeometry(0.9, 0.9, 1, 8),
         new THREE.MeshBasicMaterial({ color: C.substation }),
       );
-      cap.position.set(cx, 11.5, cz);
+      cap.position.set(cx, 10.4, -2);
       g.add(cap);
     }
-    g.add(accentStrip(14.3, 14.3, 6.2, C.substation));
+
+    // Glowing vent grills flanking the door
+    for (const side of [-1, 1]) {
+      const vent = new THREE.Mesh(
+        new THREE.PlaneGeometry(2.6, 1.5),
+        new THREE.MeshBasicMaterial({ color: C.substation, transparent: true, opacity: 0.4 }),
+      );
+      vent.position.set(side * 4.6, 2.4, 7.04);
+      g.add(vent);
+    }
+
+    const strip = new THREE.Mesh(
+      new THREE.BoxGeometry(14.3, 0.34, 14.3),
+      new THREE.MeshBasicMaterial({ color: C.substation }),
+    );
+    strip.position.y = 5.7;
+    g.add(strip);
+
+    addDoorway(g, 7, 3.4, 3.6, C.substation);
     scene.add(g);
     obstacleMeshes.push(g);
   }
 
-  // STASH DEN (52,52 · 13×13 · h7): smuggler shanty — awning + crates
+  // STASH DEN (52,52 · faces -x after rotation): smuggler front — shutter
+  // slats over the recess, tilted awning, crooked neon sign, crate clutter.
   {
     const g = new THREE.Group();
     g.position.set(52, 0, 52);
-    g.add(vaultBase(13, 6, 13, C.wall));
-    const awning = new THREE.Mesh(
-      new THREE.BoxGeometry(4.6, 0.3, 9),
-      new THREE.MeshStandardMaterial({ color: 0x33203f, roughness: 0.7, metalness: 0.2 }),
-    );
-    awning.position.set(-7.6, 4.4, 0);
-    awning.rotation.z = 0.22;
+    g.rotation.y = -Math.PI / 2; // authored +z door → real -x approach
+
+    const body = new THREE.Mesh(new THREE.BoxGeometry(13, 6, 13), bodyMat(C.wall));
+    body.position.y = 3;
+    body.castShadow = true;
+    body.receiveShadow = true;
+    g.add(body);
+
+    addDoorway(g, 6.5, 3.4, 3.8, C.stash);
+
+    // Half-raised shutter slats hanging in the doorway
+    for (let i = 0; i < 3; i++) {
+      const slat = new THREE.Mesh(new THREE.BoxGeometry(3.3, 0.34, 0.2), metalMat());
+      slat.position.set(0, 3.5 - i * 0.42, 6.58);
+      g.add(slat);
+    }
+
+    // Tilted awning over the entrance
+    const awning = new THREE.Mesh(new THREE.BoxGeometry(6.4, 0.28, 2.6), bodyMat(0x33203f));
+    awning.position.set(0, 5.1, 7);
+    awning.rotation.x = 0.3;
     awning.castShadow = true;
     g.add(awning);
-    for (const [cx, cz, s] of [
-      [-8.4, 4.4, 1.6],
-      [-8.9, 2.6, 1.2],
+
+    // Crooked neon sign beside the door
+    const sign = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.1, 2.8),
+      new THREE.MeshBasicMaterial({ color: C.stash, transparent: true, opacity: 0.75 }),
+    );
+    sign.position.set(4.1, 3.4, 6.56);
+    sign.rotation.z = -0.06;
+    g.add(sign);
+
+    // Crate clutter against the facade
+    for (const [cx, cy, s] of [
+      [-4.8, 0.8, 1.6],
+      [-4.5, 2.2, 1.2],
+      [4.9, 0.7, 1.4],
     ]) {
-      const crate = new THREE.Mesh(
-        new THREE.BoxGeometry(s, s, s),
-        new THREE.MeshStandardMaterial({ color: 0x3d4356, roughness: 0.65, metalness: 0.4 }),
-      );
-      crate.position.set(cx, s / 2, cz);
+      const crate = new THREE.Mesh(new THREE.BoxGeometry(s, s, s), bodyMat(0x3d4356));
+      crate.position.set(cx, cy, 5.6);
       crate.castShadow = true;
       g.add(crate);
     }
-    g.add(accentStrip(13.3, 13.3, 6.2, C.stash));
+
     scene.add(g);
     obstacleMeshes.push(g);
   }
+}
+
+// --- SUPPLY DEPOT KIOSKS ---
+// Vending machines became service kiosks: cantilevered canopy over the
+// interaction spot, big menu screen, side light strips, lit floor pad —
+// the "stand here" square is architectural, not implied.
+function buildDepotKiosk(scene: THREE.Scene, x: number, z: number, rotY: number): void {
+  const g = new THREE.Group();
+  g.position.set(x, 0, z);
+  g.rotation.y = rotY;
+
+  // Machine body (authored 10 wide × 4 deep, door on +z)
+  const body = new THREE.Mesh(new THREE.BoxGeometry(10, 5.2, 4), bodyMat(0x1c2330));
+  body.position.y = 2.6;
+  body.castShadow = true;
+  body.receiveShadow = true;
+  g.add(body);
+
+  // Menu screen spanning the front
+  const screen = new THREE.Mesh(
+    new THREE.PlaneGeometry(7.6, 2.4),
+    new THREE.MeshBasicMaterial({ color: C.depot, transparent: true, opacity: 0.8 }),
+  );
+  screen.position.set(0, 3.1, 2.04);
+  g.add(screen);
+  // Item shelf glow line under the screen
+  const shelf = new THREE.Mesh(
+    new THREE.BoxGeometry(7.6, 0.22, 0.2),
+    new THREE.MeshBasicMaterial({ color: 0xfff2c0 }),
+  );
+  shelf.position.set(0, 1.6, 2.06);
+  g.add(shelf);
+
+  // Side light strips
+  for (const side of [-1, 1]) {
+    const stripLight = new THREE.Mesh(
+      new THREE.BoxGeometry(0.3, 4.6, 0.3),
+      new THREE.MeshBasicMaterial({ color: C.depot }),
+    );
+    stripLight.position.set(side * 4.9, 2.5, 1.9);
+    g.add(stripLight);
+  }
+
+  // Cantilevered canopy over the standing spot (no ground posts — braces
+  // hang from the machine top, so nothing solid sits in walkable space)
+  const canopy = new THREE.Mesh(new THREE.BoxGeometry(11, 0.34, 6.4), bodyMat(C.wallDark));
+  canopy.position.set(0, 5.6, 1.6);
+  canopy.castShadow = true;
+  g.add(canopy);
+  const canopyEdge = new THREE.Mesh(
+    new THREE.BoxGeometry(11.1, 0.2, 0.3),
+    new THREE.MeshBasicMaterial({ color: C.depot }),
+  );
+  canopyEdge.position.set(0, 5.6, 4.75);
+  g.add(canopyEdge);
+  for (const side of [-1, 1]) {
+    const brace = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 3.6), metalMat());
+    brace.position.set(side * 4.6, 5.15, 3.1);
+    brace.rotation.x = -0.35;
+    g.add(brace);
+  }
+
+  // Lit floor pad under the canopy — the interaction square
+  const pad = new THREE.Mesh(
+    new THREE.PlaneGeometry(8, 4),
+    new THREE.MeshBasicMaterial({
+      color: C.depot,
+      transparent: true,
+      opacity: 0.1,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
+  );
+  pad.rotation.x = -Math.PI / 2;
+  pad.position.set(0, 0.045, 3.4);
+  pad.renderOrder = 3;
+  g.add(pad);
+
+  scene.add(g);
+  obstacleMeshes.push(g);
 }
 
 // --- DEPOTS + CONTAINERS ---
 function buildDepotsAndContainers(scene: THREE.Scene): void {
   const level = getCurrentLevel();
+
+  // Kiosks: authored facing +z, rotated to their approach direction
+  // (must mirror BreachSystem's depot door directions)
+  buildDepotKiosk(scene, 0, -60, 0); // north wall, faces +z (south)
+  buildDepotKiosk(scene, 0, 60, Math.PI); // south wall, faces -z
+  buildDepotKiosk(scene, 60, 20, -Math.PI / 2); // east wall, faces -x
+  buildDepotKiosk(scene, -60, -20, Math.PI / 2); // west wall, faces +x
+
   for (const obs of level.obstacles) {
-    if (obs.id.startsWith('vending_')) {
-      const alongX = obs.width >= obs.depth; // N/S depots are wide, E/W deep
-      const g = new THREE.Group();
-      g.position.set(obs.x, 0, obs.z);
-      const body = new THREE.Mesh(
-        new THREE.BoxGeometry(obs.width, 5, obs.depth),
-        new THREE.MeshStandardMaterial({ color: 0x1c2330, roughness: 0.45, metalness: 0.6 }),
-      );
-      body.position.y = 2.5;
-      body.castShadow = true;
-      g.add(body);
-      // Emissive vend-screen facing the arena
-      const screen = new THREE.Mesh(
-        new THREE.PlaneGeometry(alongX ? obs.width - 2 : 3, 2.2),
-        new THREE.MeshBasicMaterial({ color: C.depot, transparent: true, opacity: 0.85 }),
-      );
-      const inward = { x: Math.sign(-obs.x), z: Math.sign(-obs.z) };
-      if (alongX) {
-        screen.position.set(0, 3, (obs.depth / 2 + 0.06) * (inward.z || 1));
-        screen.rotation.y = inward.z >= 0 ? 0 : Math.PI;
-      } else {
-        screen.position.set((obs.width / 2 + 0.06) * (inward.x || 1), 3, 0);
-        screen.rotation.y = inward.x >= 0 ? Math.PI / 2 : -Math.PI / 2;
-      }
-      g.add(screen);
-      scene.add(g);
-      obstacleMeshes.push(g);
-    } else if (obs.id.startsWith('container_')) {
+    if (obs.id.startsWith('container_')) {
       const g = new THREE.Group();
       g.position.set(obs.x, 0, obs.z);
       const body = new THREE.Mesh(
