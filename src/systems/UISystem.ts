@@ -1,6 +1,5 @@
 import { world } from '../core/world';
 import { uiState } from '../core/UIState.svelte.ts';
-import { setMusicIntensity } from '../core/audio';
 import { getGameTime } from './ChestSystem';
 import { tickCombo } from './CollisionSystem';
 import { isGamePaused as _isPauseGlobal } from './UpgradeSystem';
@@ -37,11 +36,7 @@ export function UISystem() {
   uiState.isPaused = _isPauseGlobal;
   uiState.isGameOver = _isGameOverGlobal;
 
-  // Soundtrack builds over the run: half-strength at spawn, everything in by
-  // the boss at 8:00 (480s).
-  if (uiState.gameState === 'PLAYING') {
-    setMusicIntensity(0.55 + 0.45 * Math.min(1, uiState.gameTime / 480));
-  }
+  // (Soundtrack intensity + cue selection now live in MusicDirector.)
 
   // Expire the kill-combo chain when the window lapses.
   tickCombo();

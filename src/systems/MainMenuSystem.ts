@@ -10,7 +10,6 @@ import {
   setMusicGain,
   setSFXGain,
   resumeMusic,
-  setMusicIntensity,
   setMusicDucked,
   setMusicUserEnabled,
 } from '../core/audio';
@@ -52,10 +51,8 @@ function handleStateChange(newState: GameStateType, _oldState: GameStateType): v
     resumeMusic();
   }
 
-  // Menu plays a stripped ambient bed; UISystem ramps intensity during a run.
-  if (newState === 'MENU') {
-    setMusicIntensity(0.2);
-  }
+  // Cue + intensity are owned by MusicDirector (menu bed, run groove, boss,
+  // breach, victory). Here we only handle the pause muffle.
 
   // Muffle (don't stop) the soundtrack while paused.
   setMusicDucked(newState === 'PAUSED');
