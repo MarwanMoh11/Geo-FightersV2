@@ -226,9 +226,24 @@ function startGameLoop(
   });
 
   // --- GAME LOOP ---
-  const clock = new THREE.Clock();
+  // dt is derived from the rAF timestamp (vsync-aligned), NOT from a
+  // performance.now() sample taken inside the callback. The callback fires at a
+  // jittery offset from vsync under load — sampling the wall clock there makes
+  // the measured dt disagree with the interval the frame is actually shown for,
+  // and since everything advances by `pos += vel * dt`, that noise turns into a
+  // whole-view micro-stutter (worst on mobile / high-refresh panels, and worse
+  // the more per-frame CPU work is on screen). The rAF timestamp is the frame's
+  // scheduled present time, so successive deltas track the real display cadence.
+  let prevFrameTime = 0; // ms, last rendered frame's rAF timestamp
+  let smoothDt = 1 / 60; // low-passed dt fed to gameplay
   // Clamp dt so a backgrounded tab doesn't cause physics to tunnel on return
   const MAX_DT = 1 / 20;
+  // Light delta smoothing: strips residual per-frame jitter while preserving the
+  // average (so every dt-accumulating timer stays real-time). SNAP_DT is the gap
+  // at which we treat the change as real (a genuine 60→30 drop / a hitch) and
+  // jump instead of easing, so smoothing never lags an actual framerate change.
+  const DT_SMOOTH = 0.15; // per-frame blend toward the raw delta (~100ms settle)
+  const SNAP_DT = 0.008; // >8ms disagreement = real rate change, snap don't ease
   let netSyncTimer = 0;
   const NET_SYNC_INTERVAL = 1 / 30; // 30Hz throttled network sync
 
@@ -240,7 +255,7 @@ function startGameLoop(
   const MENU_FPS = 30;
   let nextFrameAt = 0;
 
-  function animate() {
+  function animate(rafTime: number) {
     requestAnimationFrame(animate);
 
     const userCap = getFpsLimit(); // 0 = uncapped
@@ -254,8 +269,17 @@ function startGameLoop(
       nextFrameAt = nextFrameAt + budget > now ? nextFrameAt + budget : now + budget;
     }
 
-    const rawDt = clock.getDelta();
-    const dt = Math.min(rawDt, MAX_DT);
+    // Vsync-aligned delta from the rAF timestamp (spans skipped frames, since
+    // prevFrameTime only advances on frames that actually run). Guard the first
+    // frame and any missing timestamp with a 60fps fallback.
+    const frameTime = rafTime || performance.now();
+    const rawDt = Math.min(prevFrameTime ? (frameTime - prevFrameTime) / 1000 : 1 / 60, MAX_DT);
+    prevFrameTime = frameTime;
+
+    // Low-pass the delta to remove scheduling jitter; snap on real rate changes.
+    smoothDt =
+      Math.abs(rawDt - smoothDt) > SNAP_DT ? rawDt : smoothDt + (rawDt - smoothDt) * DT_SMOOTH;
+    const dt = smoothDt;
 
     // Update FPS counter
     updateFPS(performance.now());
@@ -379,5 +403,5 @@ function startGameLoop(
     renderFrame();
   }
 
-  animate();
+  requestAnimationFrame(animate); // first frame gets a real vsync timestamp too
 }
