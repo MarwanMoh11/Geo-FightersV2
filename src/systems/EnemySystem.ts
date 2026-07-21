@@ -24,9 +24,12 @@ const STEER_STRENGTH = 8.0;
 const STUN_FRICTION = 0.9;
 const CONFUSED_ATTACK_RANGE_SQ = 2.0 * 2.0; // Range for confused enemy attacks
 
-// --- DESPAWN RADIUS (Screen-bound entity recycling) ---
-// ViewRadius ~20, SpawnRadius ~26, DespawnRadius = 36 (1.8x view)
-const DESPAWN_RADIUS_SQ = 36 * 36;
+// --- DESPAWN RADIUS (screen-bound entity recycling) ---
+// THE PIT: the arena is one bounded room — an enemy crossing from a far
+// gate is GAMEPLAY, not garbage. The radius exceeds the arena's maximum
+// corner-to-corner distance (~198u) so recycling never fires in-bounds;
+// the mechanism stays for future large maps.
+const DESPAWN_RADIUS_SQ = 250 * 250;
 
 // --- MAX SEPARATION CHECKS PER ENEMY (Performance cap) ---
 const MAX_SEPARATION_CHECKS = 10;

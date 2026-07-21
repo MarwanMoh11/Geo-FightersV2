@@ -277,12 +277,22 @@ function wirePortalSettings(): void {
 
 // --- ADS ---
 
+// Portal ad guidance (see LAUNCH_PLAN Phase 5): interstitials only between
+// runs, frequency-capped >=3 min apart. A player who dies repeatedly in
+// quick succession (a rough early run, or just testing) must not get an ad
+// on every single reboot tap — that's the "ad, then instantly another ad"
+// spam the cap exists to prevent. Rewarded ads are exempt: the player
+// explicitly opts in for a reward, so there's nothing to cap.
+const MIDGAME_AD_COOLDOWN_MS = 3 * 60 * 1000;
+let lastMidgameAdAt = 0;
+
 /** Show a midroll ad, muting the game while it plays. Safe no-op without SDK. */
 export function requestMidgameAd(onDone?: () => void): void {
-  if (!sdk) {
+  if (!sdk || Date.now() - lastMidgameAdAt < MIDGAME_AD_COOLDOWN_MS) {
     onDone?.();
     return;
   }
+  lastMidgameAdAt = Date.now();
   const finish = () => {
     unmuteFromBackground();
     onDone?.();

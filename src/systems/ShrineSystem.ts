@@ -36,13 +36,12 @@ export interface ShrineSpot {
   color: number;
 }
 
+// THE PIT: relay pylons form a loose triangle around the center deck,
+// clear of the z=0 maglev lane and the corner vaults.
 export const SHRINE_SPOTS: ShrineSpot[] = [
-  // Neon Courtyard: aggression near the statue plaza
-  { x: 160, z: 40, kind: 'fire', name: 'PULSE RELAY', color: 0x00e5ff },
-  // Scrap Yards: survival deep in the maze — worth the detour
-  { x: -320, z: 120, kind: 'armor', name: 'AEGIS RELAY', color: 0xffaa00 },
-  // Main Street: speed for the long open lane
-  { x: 140, z: -320, kind: 'speed', name: 'VELOCITY RELAY', color: 0xff3d77 },
+  { x: 22, z: -30, kind: 'fire', name: 'PULSE RELAY', color: 0x00e5ff },
+  { x: -32, z: 26, kind: 'armor', name: 'AEGIS RELAY', color: 0xffaa00 },
+  { x: 30, z: 32, kind: 'speed', name: 'VELOCITY RELAY', color: 0xff3d77 },
 ];
 
 // Phase 1.95 (P1: the map comes to you): the smuggler surfaces NEAR the

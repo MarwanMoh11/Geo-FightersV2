@@ -1,10 +1,5 @@
 import { world } from '../core/world';
-import {
-  getBlockingObstacles,
-  checkAABBCollision,
-  MAP_HALF_WIDTH,
-  MAP_HALF_HEIGHT,
-} from '../core/LevelData';
+import { getBlockingObstacles, checkAABBCollision, getCurrentLevel } from '../core/LevelData';
 import { stepPhysics, isRapierInitialized } from '../core/RapierWorld';
 
 // Entity collision radius (hitbox size)
@@ -15,6 +10,9 @@ const PROJECTILE_RADIUS = 0.3;
 
 export function PhysicsSystem(dt: number) {
   const obstacles = getBlockingObstacles();
+  const level = getCurrentLevel();
+  const mapHalfW = level.mapWidth / 2;
+  const mapHalfH = level.mapHeight / 2;
 
   // --- RAPIER PHYSICS STEP ---
   if (isRapierInitialized()) {
@@ -97,12 +95,12 @@ export function PhysicsSystem(dt: number) {
     // 5. MAP BOUNDARY CLAMPING
     const boundaryPadding = radius;
     entity.position.x = Math.max(
-      -MAP_HALF_WIDTH + boundaryPadding,
-      Math.min(MAP_HALF_WIDTH - boundaryPadding, entity.position.x),
+      -mapHalfW + boundaryPadding,
+      Math.min(mapHalfW - boundaryPadding, entity.position.x),
     );
     entity.position.z = Math.max(
-      -MAP_HALF_HEIGHT + boundaryPadding,
-      Math.min(MAP_HALF_HEIGHT - boundaryPadding, entity.position.z),
+      -mapHalfH + boundaryPadding,
+      Math.min(mapHalfH - boundaryPadding, entity.position.z),
     );
 
     // Sync transform
