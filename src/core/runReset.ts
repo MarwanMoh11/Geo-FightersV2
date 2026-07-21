@@ -14,7 +14,7 @@ import { world } from './world';
 import { uiState } from './UIState.svelte';
 import { setGameState } from './GameState';
 import { removeBody } from './RapierWorld';
-import { startMusic } from './audio';
+import { startMusic, resetMusicCue } from './audio';
 import { disconnectNetwork } from './network';
 import { resetRunSubmission } from './leaderboard';
 import { resetFlowState } from './FlowStateManager';
@@ -92,6 +92,8 @@ export function resetRun(): void {
 
   // Re-center the camera rig so the next run doesn't pan in from the old spot
   resetCamera();
+  // Return the soundtrack to the menu bed (MusicDirector re-scores from here)
+  resetMusicCue();
 
   // Back to the menu; music re-arms (stopMusic tore the scheduler down on death)
   setGameState('MENU');
