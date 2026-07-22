@@ -46,6 +46,28 @@ const _white = new THREE.Color(0xffffff);
 // Per-frame enemy list (materialized once for the instanced loop)
 const _renderEnemies: any[] = [];
 
+// --- ?enemydebug: on-screen readout of the enemy render pipeline (temporary) ---
+// Add ?enemydebug to the URL to overlay live enemy-render state on the phone:
+// world enemy count, how many made the render list, the instanced-mesh counts +
+// visibility, the first enemy's real position vs its instance-matrix position
+// (to catch "all stuck at origin"), the GPU backend, and any error thrown while
+// rendering the horde. Costs nothing without the flag.
+const ENEMY_DBG =
+  typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('enemydebug');
+let _dbgEl: HTMLDivElement | null = null;
+let _dbgErr = '';
+let _dbgAcc = 0;
+function gpuBackend(): string {
+  const c = typeof document !== 'undefined' ? document.querySelector('canvas') : null;
+  if (!c) return '?';
+  // A WebGPU canvas can't return a webgl2 context; a WebGL one can.
+  try {
+    return c.getContext('webgl2') ? 'WebGL2' : 'WebGPU';
+  } catch {
+    return 'WebGPU';
+  }
+}
+
 // Dynamic detail thresholds: wire overlay and blob shadows are the first
 // things to go when the horde gets huge (matrix writes scale with count).
 const WIRE_DETAIL_MAX = 700;
@@ -520,270 +542,327 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
     eliteAuraInstances = null;
   }
 
-  // 2. Render all regular enemies using InstancedMesh (bypasses scene graph)
-  const counts = new Map<string, number>();
-  for (const type of Object.values(EnemyType)) {
-    counts.set(type, 0);
-  }
-  let shadowCount = 0;
-
-  // Initialize shadow instances if needed
-  if (!shadowInstances) {
-    const shadowGeo = new THREE.CircleGeometry(0.4, 16);
-    const shadowMat = new THREE.MeshBasicMaterial({
-      color: 0x000000,
-      transparent: true,
-      opacity: 0.4,
-    });
-    shadowInstances = new THREE.InstancedMesh(shadowGeo, shadowMat, MAX_ENEMY_INSTANCES * 4);
-    shadowInstances.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    shadowInstances.frustumCulled = false; // Disable frustum culling to prevent culling outside the origin
-    scene.add(shadowInstances);
-  }
-
-  if (!eliteAuraInstances) {
-    const auraGeo = new THREE.RingGeometry(0.42, 0.5, 32);
-    const auraMat = new THREE.MeshBasicMaterial({
-      transparent: true,
-      opacity: 0.35,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    });
-    eliteAuraInstances = new THREE.InstancedMesh(auraGeo, auraMat, MAX_ELITE_AURAS);
-    eliteAuraInstances.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    eliteAuraInstances.frustumCulled = false;
-    scene.add(eliteAuraInstances);
-  }
-  let auraCount = 0;
-
-  // Materialize the horde once (culling off-screen enemies in normal mode,
-  // bypassed when ?max is active for stress-testing).
-  const localPlayer = world.with('isLocalPlayer', 'position').first;
-  const camPos = localPlayer?.position;
-  const isMaxMode = !!(window as any).__MAX_MODE;
-  const RENDER_DIST_SQ = isMaxMode ? Infinity : 80 * 80;
-
-  _renderEnemies.length = 0;
-  for (const e of world.with('isEnemy', 'position')) {
-    if (e.isBoss) continue;
-    if (camPos && !isMaxMode) {
-      const dx = e.position.x - camPos.x;
-      const dz = e.position.z - camPos.z;
-      if (dx * dx + dz * dz > RENDER_DIST_SQ) continue;
+  // 2. Render all regular enemies using InstancedMesh (bypasses scene graph).
+  // Wrapped so a horde-render throw can't skip CameraSystem + the actual draw
+  // (both run after RenderSystem) and freeze the whole frame on the last image.
+  try {
+    const counts = new Map<string, number>();
+    for (const type of Object.values(EnemyType)) {
+      counts.set(type, 0);
     }
-    _renderEnemies.push(e);
-  }
-  const hordeCount = _renderEnemies.length;
+    let shadowCount = 0;
 
-  // Dynamic detail scaling: wire overlay and blob shadows drop at high counts
-  // to save GPU time, but ?max mode keeps everything on for stress-testing.
-  const drawWire = isMaxMode || hordeCount <= WIRE_DETAIL_MAX;
-  const drawShadows = isMaxMode || hordeCount <= SHADOW_DETAIL_MAX;
+    // Initialize shadow instances if needed
+    if (!shadowInstances) {
+      const shadowGeo = new THREE.CircleGeometry(0.4, 16);
+      const shadowMat = new THREE.MeshBasicMaterial({
+        color: 0x000000,
+        transparent: true,
+        opacity: 0.4,
+      });
+      shadowInstances = new THREE.InstancedMesh(shadowGeo, shadowMat, MAX_ENEMY_INSTANCES * 4);
+      shadowInstances.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      shadowInstances.frustumCulled = false; // Disable frustum culling to prevent culling outside the origin
+      scene.add(shadowInstances);
+    }
 
-  for (const entity of _renderEnemies) {
-    const type = entity.enemyType as EnemyType;
-    const count = counts.get(type) ?? 0;
+    if (!eliteAuraInstances) {
+      const auraGeo = new THREE.RingGeometry(0.42, 0.5, 32);
+      const auraMat = new THREE.MeshBasicMaterial({
+        transparent: true,
+        opacity: 0.35,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+      eliteAuraInstances = new THREE.InstancedMesh(auraGeo, auraMat, MAX_ELITE_AURAS);
+      eliteAuraInstances.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      eliteAuraInstances.frustumCulled = false;
+      scene.add(eliteAuraInstances);
+    }
+    let auraCount = 0;
 
-    if (count < MAX_ENEMY_INSTANCES) {
-      ensureEnemyTypeMeshes(type, scene);
-      const solidMesh = enemySolidInstances.get(type);
-      const glowMesh = enemyGlowInstances.get(type);
-      const wireMesh = drawWire ? enemyWireInstances.get(type) : undefined;
+    // Materialize the horde once (culling off-screen enemies in normal mode,
+    // bypassed when ?max is active for stress-testing).
+    const localPlayer = world.with('isLocalPlayer', 'position').first;
+    const camPos = localPlayer?.position;
+    const isMaxMode = !!(window as any).__MAX_MODE;
+    const RENDER_DIST_SQ = isMaxMode ? Infinity : 80 * 80;
 
-      // Tick the hit flash here — instanced enemies have no scene-graph
-      // traversal to do it, so without this they flash red forever.
-      if (entity.hitFlashTimer !== undefined && entity.hitFlashTimer > 0) {
-        entity.hitFlashTimer -= dt;
+    _renderEnemies.length = 0;
+    for (const e of world.with('isEnemy', 'position')) {
+      if (e.isBoss) continue;
+      if (camPos && !isMaxMode) {
+        const dx = e.position.x - camPos.x;
+        const dz = e.position.z - camPos.z;
+        if (dx * dx + dz * dz > RENDER_DIST_SQ) continue;
       }
+      _renderEnemies.push(e);
+    }
+    const hordeCount = _renderEnemies.length;
 
-      const size = entity.size ?? 1.0;
-      // Golden-angle phase per entity breaks the hover lockstep that made the
-      // whole horde bob as one rigid mass
-      const phase = (entity.id ?? 0) * 2.399963;
-      _tempPos.copy(entity.position);
+    // Dynamic detail scaling: wire overlay and blob shadows drop at high counts
+    // to save GPU time, but ?max mode keeps everything on for stress-testing.
+    const drawWire = isMaxMode || hordeCount <= WIRE_DETAIL_MAX;
+    const drawShadows = isMaxMode || hordeCount <= SHADOW_DETAIL_MAX;
 
-      let scaleMult = 1.0;
-      let rotX = 0;
-      let rotZ = 0;
-      let yawExtra = 0;
-      let hoverY = Math.sin(time * 3 + phase) * 0.05;
+    for (const entity of _renderEnemies) {
+      const type = entity.enemyType as EnemyType;
+      const count = counts.get(type) ?? 0;
 
-      // Per-type motion signature
-      switch (type) {
-        case EnemyType.GLITCH: {
-          // Corrupted data: twitchy micro-jitter with rotation snaps
-          const snap = Math.sin(time * 17 + phase * 7);
-          if (snap > 0.86) {
-            _tempPos.x += Math.sin(time * 53 + phase) * 0.06;
-            yawExtra = snap > 0.93 ? 0.4 : -0.4;
+      if (count < MAX_ENEMY_INSTANCES) {
+        ensureEnemyTypeMeshes(type, scene);
+        const solidMesh = enemySolidInstances.get(type);
+        const glowMesh = enemyGlowInstances.get(type);
+        const wireMesh = drawWire ? enemyWireInstances.get(type) : undefined;
+
+        // Tick the hit flash here — instanced enemies have no scene-graph
+        // traversal to do it, so without this they flash red forever.
+        if (entity.hitFlashTimer !== undefined && entity.hitFlashTimer > 0) {
+          entity.hitFlashTimer -= dt;
+        }
+
+        const size = entity.size ?? 1.0;
+        // Golden-angle phase per entity breaks the hover lockstep that made the
+        // whole horde bob as one rigid mass
+        const phase = (entity.id ?? 0) * 2.399963;
+        _tempPos.copy(entity.position);
+
+        let scaleMult = 1.0;
+        let rotX = 0;
+        let rotZ = 0;
+        let yawExtra = 0;
+        let hoverY = Math.sin(time * 3 + phase) * 0.05;
+
+        // Per-type motion signature
+        switch (type) {
+          case EnemyType.GLITCH: {
+            // Corrupted data: twitchy micro-jitter with rotation snaps
+            const snap = Math.sin(time * 17 + phase * 7);
+            if (snap > 0.86) {
+              _tempPos.x += Math.sin(time * 53 + phase) * 0.06;
+              yawExtra = snap > 0.93 ? 0.4 : -0.4;
+            }
+            break;
           }
-          break;
+          case EnemyType.VIRUS:
+            // Organic pulsing ball, slowly tumbling
+            scaleMult = 1 + 0.09 * Math.sin(time * 4.5 + phase);
+            yawExtra = time * 0.9 + phase;
+            break;
+          case EnemyType.FIREWALL:
+            // Heavy gate: stomping march instead of floating
+            hoverY = Math.abs(Math.sin(time * 2.4 + phase)) * 0.12 - 0.03;
+            rotZ = Math.sin(time * 2.4 + phase) * 0.045;
+            break;
+          case EnemyType.ENFORCER:
+            // Disciplined patrol sway
+            rotZ = Math.sin(time * 1.6 + phase) * 0.06;
+            break;
+          case EnemyType.COLOSSUS:
+            // Slow massive heave with a breathing hull
+            hoverY = Math.sin(time * 1.3 + phase) * 0.09;
+            scaleMult = 1 + 0.04 * Math.sin(time * 1.3 + phase);
+            break;
+          case EnemyType.WARDEN:
+            // Unstable phase-shifter: fast nervous wobble
+            rotZ = Math.sin(time * 7 + phase) * 0.13;
+            rotX = Math.cos(time * 5.3 + phase) * 0.08;
+            break;
+          case EnemyType.HYDRA:
+            // Multi-node serpent undulation
+            rotX = Math.sin(time * 2.2 + phase) * 0.09;
+            hoverY = Math.sin(time * 2.2 + phase * 2) * 0.08;
+            break;
+          case EnemyType.OVERSEER:
+            // Menacing slow breathing and drift rotation
+            scaleMult = 1 + 0.05 * Math.sin(time * 1.4 + phase);
+            yawExtra = time * 0.25;
+            break;
         }
-        case EnemyType.VIRUS:
-          // Organic pulsing ball, slowly tumbling
-          scaleMult = 1 + 0.09 * Math.sin(time * 4.5 + phase);
-          yawExtra = time * 0.9 + phase;
-          break;
-        case EnemyType.FIREWALL:
-          // Heavy gate: stomping march instead of floating
-          hoverY = Math.abs(Math.sin(time * 2.4 + phase)) * 0.12 - 0.03;
-          rotZ = Math.sin(time * 2.4 + phase) * 0.045;
-          break;
-        case EnemyType.ENFORCER:
-          // Disciplined patrol sway
-          rotZ = Math.sin(time * 1.6 + phase) * 0.06;
-          break;
-        case EnemyType.COLOSSUS:
-          // Slow massive heave with a breathing hull
-          hoverY = Math.sin(time * 1.3 + phase) * 0.09;
-          scaleMult = 1 + 0.04 * Math.sin(time * 1.3 + phase);
-          break;
-        case EnemyType.WARDEN:
-          // Unstable phase-shifter: fast nervous wobble
-          rotZ = Math.sin(time * 7 + phase) * 0.13;
-          rotX = Math.cos(time * 5.3 + phase) * 0.08;
-          break;
-        case EnemyType.HYDRA:
-          // Multi-node serpent undulation
-          rotX = Math.sin(time * 2.2 + phase) * 0.09;
-          hoverY = Math.sin(time * 2.2 + phase * 2) * 0.08;
-          break;
-        case EnemyType.OVERSEER:
-          // Menacing slow breathing and drift rotation
-          scaleMult = 1 + 0.05 * Math.sin(time * 1.4 + phase);
-          yawExtra = time * 0.25;
-          break;
-      }
 
-      // Spawn-in pop: ease-out-back from 0 over 0.35s (stamped in spawnEnemy)
-      if (entity.spawnAnimTimer !== undefined && entity.spawnAnimTimer > 0) {
-        entity.spawnAnimTimer -= dt;
-        const p = 1 - Math.max(0, entity.spawnAnimTimer) / 0.35;
-        const q = p - 1;
-        scaleMult *= 1 + 2.7 * q * q * q + 1.7 * q * q;
-      }
+        // Spawn-in pop: ease-out-back from 0 over 0.35s (stamped in spawnEnemy)
+        if (entity.spawnAnimTimer !== undefined && entity.spawnAnimTimer > 0) {
+          entity.spawnAnimTimer -= dt;
+          const p = 1 - Math.max(0, entity.spawnAnimTimer) / 0.35;
+          const q = p - 1;
+          scaleMult *= 1 + 2.7 * q * q * q + 1.7 * q * q;
+        }
 
-      // Hit reaction: brief scale punch alongside the red instance-color flash
-      if (entity.hitFlashTimer && entity.hitFlashTimer > 0) {
-        scaleMult *= 1 + 0.12 * Math.min(1, entity.hitFlashTimer / 0.15);
-      }
-
-      _tempPos.y = size * 0.35 + hoverY;
-      _tempScale.setScalar(size * scaleMult);
-      _tempRot.set(rotX, (entity.rotationY ?? 0) + yawExtra, rotZ);
-      _tempQuat.setFromEuler(_tempRot);
-      _tempMat.compose(_tempPos, _tempQuat, _tempScale);
-
-      // Set matrices and flash colors
-      if (solidMesh) {
-        solidMesh.setMatrixAt(count, _tempMat);
+        // Hit reaction: brief scale punch alongside the red instance-color flash
         if (entity.hitFlashTimer && entity.hitFlashTimer > 0) {
-          _tempColor.setHex(0xff4444);
-        } else if (entity.isVault) {
-          _tempColor.setHex(0xffcc33); // data vault reads as gold loot, not threat
-        } else {
-          _tempColor.setHex(0xffffff);
+          scaleMult *= 1 + 0.12 * Math.min(1, entity.hitFlashTimer / 0.15);
         }
-        solidMesh.setColorAt(count, _tempColor);
-      }
 
-      if (wireMesh) {
-        wireMesh.setMatrixAt(count, _tempMat);
-        if (entity.hitFlashTimer && entity.hitFlashTimer > 0) {
-          _tempColor.setHex(0xff4444);
-        } else {
-          _tempColor.setHex(0xffffff);
+        _tempPos.y = size * 0.35 + hoverY;
+        _tempScale.setScalar(size * scaleMult);
+        _tempRot.set(rotX, (entity.rotationY ?? 0) + yawExtra, rotZ);
+        _tempQuat.setFromEuler(_tempRot);
+        _tempMat.compose(_tempPos, _tempQuat, _tempScale);
+
+        // Set matrices and flash colors
+        if (solidMesh) {
+          solidMesh.setMatrixAt(count, _tempMat);
+          if (entity.hitFlashTimer && entity.hitFlashTimer > 0) {
+            _tempColor.setHex(0xff4444);
+          } else if (entity.isVault) {
+            _tempColor.setHex(0xffcc33); // data vault reads as gold loot, not threat
+          } else {
+            _tempColor.setHex(0xffffff);
+          }
+          solidMesh.setColorAt(count, _tempColor);
         }
-        wireMesh.setColorAt(count, _tempColor);
+
+        if (wireMesh) {
+          wireMesh.setMatrixAt(count, _tempMat);
+          if (entity.hitFlashTimer && entity.hitFlashTimer > 0) {
+            _tempColor.setHex(0xff4444);
+          } else {
+            _tempColor.setHex(0xffffff);
+          }
+          wireMesh.setColorAt(count, _tempColor);
+        }
+
+        if (glowMesh) {
+          glowMesh.setMatrixAt(count, _tempMat);
+          // Additive layer flashes to full white on hit — reads as a spark
+          _tempColor.setHex(entity.hitFlashTimer && entity.hitFlashTimer > 0 ? 0xffffff : 0xdddddd);
+          glowMesh.setColorAt(count, _tempColor);
+        }
+
+        // Elite/miniboss ground aura: flat pulsing ring at the enemy's feet
+        const auraColor = entity.isVault ? 0xffcc33 : ELITE_AURA_COLORS[type];
+        if (auraColor !== undefined && eliteAuraInstances && auraCount < MAX_ELITE_AURAS) {
+          _tempPos.set(entity.position.x, 0.05, entity.position.z);
+          const auraScale = size * (0.62 + 0.05 * Math.sin(time * 2.2 + phase));
+          _tempScale.setScalar(auraScale);
+          _tempRot.set(-Math.PI / 2, 0, 0);
+          _tempQuat.setFromEuler(_tempRot);
+          _tempMat.compose(_tempPos, _tempQuat, _tempScale);
+          eliteAuraInstances.setMatrixAt(auraCount, _tempMat);
+          eliteAuraInstances.setColorAt(auraCount, _tempColor.setHex(auraColor));
+          auraCount++;
+        }
+
+        counts.set(type, count + 1);
       }
 
-      if (glowMesh) {
-        glowMesh.setMatrixAt(count, _tempMat);
-        // Additive layer flashes to full white on hit — reads as a spark
-        _tempColor.setHex(entity.hitFlashTimer && entity.hitFlashTimer > 0 ? 0xffffff : 0xdddddd);
-        glowMesh.setColorAt(count, _tempColor);
-      }
+      if (drawShadows && shadowInstances && shadowCount < MAX_ENEMY_INSTANCES * 4) {
+        const size = entity.size ?? 1.0;
+        _tempPos.copy(entity.position);
+        _tempPos.y = 0.02;
 
-      // Elite/miniboss ground aura: flat pulsing ring at the enemy's feet
-      const auraColor = entity.isVault ? 0xffcc33 : ELITE_AURA_COLORS[type];
-      if (auraColor !== undefined && eliteAuraInstances && auraCount < MAX_ELITE_AURAS) {
-        _tempPos.set(entity.position.x, 0.05, entity.position.z);
-        const auraScale = size * (0.62 + 0.05 * Math.sin(time * 2.2 + phase));
-        _tempScale.setScalar(auraScale);
+        _tempScale.set(size / 2, size / 2, size / 2);
         _tempRot.set(-Math.PI / 2, 0, 0);
         _tempQuat.setFromEuler(_tempRot);
         _tempMat.compose(_tempPos, _tempQuat, _tempScale);
-        eliteAuraInstances.setMatrixAt(auraCount, _tempMat);
-        eliteAuraInstances.setColorAt(auraCount, _tempColor.setHex(auraColor));
-        auraCount++;
+
+        shadowInstances.setMatrixAt(shadowCount, _tempMat);
+        shadowCount++;
+      }
+    }
+
+    // 3. Mark instanced buffers for GPU update
+    for (const type of Object.values(EnemyType)) {
+      const count = counts.get(type) ?? 0;
+
+      const solidMesh = enemySolidInstances.get(type);
+      if (solidMesh) {
+        solidMesh.count = count;
+        solidMesh.instanceMatrix.needsUpdate = true;
+        if (solidMesh.instanceColor) {
+          solidMesh.instanceColor.needsUpdate = true;
+        }
+        solidMesh.visible = count > 0;
       }
 
-      counts.set(type, count + 1);
-    }
-
-    if (drawShadows && shadowInstances && shadowCount < MAX_ENEMY_INSTANCES * 4) {
-      const size = entity.size ?? 1.0;
-      _tempPos.copy(entity.position);
-      _tempPos.y = 0.02;
-
-      _tempScale.set(size / 2, size / 2, size / 2);
-      _tempRot.set(-Math.PI / 2, 0, 0);
-      _tempQuat.setFromEuler(_tempRot);
-      _tempMat.compose(_tempPos, _tempQuat, _tempScale);
-
-      shadowInstances.setMatrixAt(shadowCount, _tempMat);
-      shadowCount++;
-    }
-  }
-
-  // 3. Mark instanced buffers for GPU update
-  for (const type of Object.values(EnemyType)) {
-    const count = counts.get(type) ?? 0;
-
-    const solidMesh = enemySolidInstances.get(type);
-    if (solidMesh) {
-      solidMesh.count = count;
-      solidMesh.instanceMatrix.needsUpdate = true;
-      if (solidMesh.instanceColor) {
-        solidMesh.instanceColor.needsUpdate = true;
+      const wireMesh = enemyWireInstances.get(type);
+      if (wireMesh) {
+        wireMesh.count = drawWire ? count : 0;
+        wireMesh.instanceMatrix.needsUpdate = drawWire;
+        if (wireMesh.instanceColor) {
+          wireMesh.instanceColor.needsUpdate = drawWire;
+        }
+        wireMesh.visible = drawWire && count > 0;
       }
-      solidMesh.visible = count > 0;
-    }
 
-    const wireMesh = enemyWireInstances.get(type);
-    if (wireMesh) {
-      wireMesh.count = drawWire ? count : 0;
-      wireMesh.instanceMatrix.needsUpdate = drawWire;
-      if (wireMesh.instanceColor) {
-        wireMesh.instanceColor.needsUpdate = drawWire;
+      const glowMesh = enemyGlowInstances.get(type);
+      if (glowMesh) {
+        glowMesh.count = count;
+        glowMesh.instanceMatrix.needsUpdate = true;
+        if (glowMesh.instanceColor) {
+          glowMesh.instanceColor.needsUpdate = true;
+        }
+        glowMesh.visible = count > 0;
       }
-      wireMesh.visible = drawWire && count > 0;
     }
 
-    const glowMesh = enemyGlowInstances.get(type);
-    if (glowMesh) {
-      glowMesh.count = count;
-      glowMesh.instanceMatrix.needsUpdate = true;
-      if (glowMesh.instanceColor) {
-        glowMesh.instanceColor.needsUpdate = true;
+    if (eliteAuraInstances) {
+      eliteAuraInstances.count = auraCount;
+      eliteAuraInstances.instanceMatrix.needsUpdate = true;
+      if (eliteAuraInstances.instanceColor) {
+        eliteAuraInstances.instanceColor.needsUpdate = true;
       }
-      glowMesh.visible = count > 0;
+      eliteAuraInstances.visible = auraCount > 0;
     }
+
+    if (shadowInstances) {
+      shadowInstances.count = shadowCount;
+      shadowInstances.instanceMatrix.needsUpdate = drawShadows && shadowCount > 0;
+      shadowInstances.visible = drawShadows && shadowCount > 0;
+    }
+    _dbgErr = '';
+  } catch (e) {
+    _dbgErr = String((e as Error)?.stack || e).slice(0, 320);
   }
 
-  if (eliteAuraInstances) {
-    eliteAuraInstances.count = auraCount;
-    eliteAuraInstances.instanceMatrix.needsUpdate = true;
-    if (eliteAuraInstances.instanceColor) {
-      eliteAuraInstances.instanceColor.needsUpdate = true;
-    }
-    eliteAuraInstances.visible = auraCount > 0;
+  if (ENEMY_DBG) updateEnemyDebug(scene);
+}
+
+/** ?enemydebug overlay: surfaces the horde-render pipeline state on-screen. */
+function updateEnemyDebug(scene: THREE.Scene): void {
+  _dbgAcc += 1;
+  if (_dbgAcc < 20) return; // ~3 Hz at 60fps — cheap
+  _dbgAcc = 0;
+
+  let worldEnemies = 0;
+  let firstReal: THREE.Vector3 | null = null;
+  for (const e of world.with('isEnemy', 'position')) {
+    worldEnemies++;
+    if (!firstReal) firstReal = e.position;
   }
 
-  if (shadowInstances) {
-    shadowInstances.count = shadowCount;
-    shadowInstances.instanceMatrix.needsUpdate = drawShadows && shadowCount > 0;
-    shadowInstances.visible = drawShadows && shadowCount > 0;
+  // Aggregate the instanced solid meshes: total drawn count, visibility, and the
+  // first live instance's matrix translation (to detect "all stuck at origin").
+  let solidTotal = 0;
+  let anyVisible = false;
+  let firstInst: string = '—';
+  scene.traverse((o) => {
+    const im = o as THREE.InstancedMesh;
+    if (im.isInstancedMesh && (im.material as THREE.Material)?.type === 'MeshStandardMaterial') {
+      solidTotal += im.count;
+      if (im.visible && im.count > 0) anyVisible = true;
+      if (firstInst === '—' && im.count > 0) {
+        const a = im.instanceMatrix.array;
+        firstInst = `${a[12].toFixed(0)},${a[14].toFixed(0)}`;
+      }
+    }
+  });
+
+  if (!_dbgEl) {
+    _dbgEl = document.createElement('div');
+    _dbgEl.style.cssText =
+      'position:fixed;top:8px;right:8px;z-index:99999;background:rgba(0,0,0,.82);' +
+      'color:#0f0;font:11px/1.35 monospace;padding:6px 8px;border-radius:4px;' +
+      'pointer-events:none;white-space:pre;max-width:60vw;';
+    document.body.appendChild(_dbgEl);
   }
+  const real = firstReal ? `${firstReal.x.toFixed(0)},${firstReal.z.toFixed(0)}` : '—';
+  _dbgEl.textContent =
+    `backend   ${gpuBackend()}\n` +
+    `enemies   ${worldEnemies} (world)\n` +
+    `solidDraw ${solidTotal}  vis:${anyVisible}\n` +
+    `1st real  ${real}\n` +
+    `1st inst  ${firstInst}\n` +
+    `err ${_dbgErr ? _dbgErr.split('\n')[0] : 'none'}`;
 }
