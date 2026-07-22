@@ -24,6 +24,7 @@ import { resetFinaleBoss } from '../systems/FinaleBoss';
 import { resetAnomalySystem } from '../systems/AnomalySystem';
 import { resetShrineSystem } from '../systems/ShrineSystem';
 import { resetDestructibles } from '../systems/DestructibleSystem';
+import { resetPickups } from '../systems/PickupSystem';
 import { resetMapEvents } from '../systems/MapEventSystem';
 import { resetBreachSystem } from '../systems/BreachSystem';
 import { resetGameFlags } from '../systems/GameManager';
@@ -65,6 +66,7 @@ export function resetRun(): void {
   resetAnomalySystem();
   resetShrineSystem();
   resetDestructibles();
+  resetPickups();
   resetMapEvents();
   resetBreachSystem();
   resetFlowState();
