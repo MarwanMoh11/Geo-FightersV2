@@ -40,6 +40,10 @@ export interface Wave {
   pool: WavePoolEntry[];
   /** HP multiplier applied to everything spawned during this wave */
   hpMult: number;
+  /** Contact-damage multiplier (enemies hit harder each wave) */
+  dmgMult: number;
+  /** Move-speed multiplier (enemies get faster each wave) */
+  speedMult: number;
 }
 
 export interface SwarmEvent {
@@ -67,19 +71,26 @@ export interface EliteEvent {
 // VS-INSANITY pass x1.5 (owner request: "increase everything by 50%").
 // hpMult/interval/pool are UNCHANGED — this is a pure count/scale increase,
 // not a toughness or spawn-rate change.
+// VS-style scaling: HP doubles between minute 2→4 and again 5→7 and 7→9.
+// Contact damage and speed scale with HP so the horde hits harder AND faster
+// late-game — standing still at minute 5+ should be lethal without a build.
 export const STAGE_1_WAVES: Wave[] = [
   {
     minute: 0,
-    minAlive: 50,
-    interval: 0.5,
-    hpMult: 0.8,
+    minAlive: 40,
+    interval: 0.55,
+    hpMult: 0.5,
+    dmgMult: 0.5,
+    speedMult: 0.85,
     pool: [{ type: EnemyType.VIRUS, weight: 100 }],
   },
   {
     minute: 1,
-    minAlive: 120,
-    interval: 0.45,
-    hpMult: 0.85,
+    minAlive: 80,
+    interval: 0.50,
+    hpMult: 0.65,
+    dmgMult: 0.6,
+    speedMult: 0.9,
     pool: [
       { type: EnemyType.VIRUS, weight: 70 },
       { type: EnemyType.GLITCH, weight: 35 },
@@ -88,8 +99,10 @@ export const STAGE_1_WAVES: Wave[] = [
   {
     minute: 2,
     minAlive: 110,
-    interval: 0.4,
-    hpMult: 0.9,
+    interval: 0.45,
+    hpMult: 0.85,
+    dmgMult: 0.75,
+    speedMult: 0.95,
     pool: [
       { type: EnemyType.VIRUS, weight: 60 },
       { type: EnemyType.GLITCH, weight: 50 },
@@ -97,9 +110,11 @@ export const STAGE_1_WAVES: Wave[] = [
   },
   {
     minute: 3,
-    minAlive: 230,
-    interval: 0.38,
-    hpMult: 1.0,
+    minAlive: 200,
+    interval: 0.40,
+    hpMult: 1.2,
+    dmgMult: 1.0,
+    speedMult: 1.0,
     pool: [
       { type: EnemyType.VIRUS, weight: 50 },
       { type: EnemyType.GLITCH, weight: 55 },
@@ -108,9 +123,11 @@ export const STAGE_1_WAVES: Wave[] = [
   },
   {
     minute: 4,
-    minAlive: 310,
+    minAlive: 300,
     interval: 0.35,
-    hpMult: 1.1,
+    hpMult: 1.7,
+    dmgMult: 1.3,
+    speedMult: 1.05,
     pool: [
       { type: EnemyType.VIRUS, weight: 45 },
       { type: EnemyType.GLITCH, weight: 60 },
@@ -119,9 +136,11 @@ export const STAGE_1_WAVES: Wave[] = [
   },
   {
     minute: 5,
-    minAlive: 410,
-    interval: 0.32,
-    hpMult: 1.2,
+    minAlive: 400,
+    interval: 0.30,
+    hpMult: 2.5,
+    dmgMult: 1.7,
+    speedMult: 1.1,
     pool: [
       { type: EnemyType.VIRUS, weight: 40 },
       { type: EnemyType.GLITCH, weight: 65 },
@@ -131,8 +150,10 @@ export const STAGE_1_WAVES: Wave[] = [
   {
     minute: 6,
     minAlive: 500,
-    interval: 0.3,
-    hpMult: 1.35,
+    interval: 0.25,
+    hpMult: 3.5,
+    dmgMult: 2.2,
+    speedMult: 1.15,
     pool: [
       { type: EnemyType.VIRUS, weight: 35 },
       { type: EnemyType.GLITCH, weight: 70 },
@@ -141,9 +162,11 @@ export const STAGE_1_WAVES: Wave[] = [
   },
   {
     minute: 7,
-    minAlive: 600,
-    interval: 0.28,
-    hpMult: 1.5,
+    minAlive: 620,
+    interval: 0.22,
+    hpMult: 5.0,
+    dmgMult: 2.8,
+    speedMult: 1.2,
     pool: [
       { type: EnemyType.VIRUS, weight: 30 },
       { type: EnemyType.GLITCH, weight: 70 },
@@ -153,8 +176,10 @@ export const STAGE_1_WAVES: Wave[] = [
   {
     minute: 8,
     minAlive: 720,
-    interval: 0.25,
-    hpMult: 1.7,
+    interval: 0.18,
+    hpMult: 7.0,
+    dmgMult: 3.5,
+    speedMult: 1.25,
     pool: [
       { type: EnemyType.VIRUS, weight: 25 },
       { type: EnemyType.GLITCH, weight: 70 },
@@ -164,8 +189,10 @@ export const STAGE_1_WAVES: Wave[] = [
   {
     minute: 9,
     minAlive: 820,
-    interval: 0.22,
-    hpMult: 1.9,
+    interval: 0.14,
+    hpMult: 10.0,
+    dmgMult: 4.5,
+    speedMult: 1.3,
     pool: [
       { type: EnemyType.VIRUS, weight: 20 },
       { type: EnemyType.GLITCH, weight: 70 },
