@@ -556,7 +556,7 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
   const localPlayer = world.with('isLocalPlayer', 'position').first;
   const camPos = localPlayer?.position;
   const isMaxMode = !!(window as any).__MAX_MODE;
-  const RENDER_DIST_SQ = isMaxMode ? Infinity : 50 * 50;
+  const RENDER_DIST_SQ = isMaxMode ? Infinity : 80 * 80;
 
   _renderEnemies.length = 0;
   for (const e of world.with('isEnemy', 'position')) {
