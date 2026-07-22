@@ -915,23 +915,11 @@ export function initializePlayerForRun(scene: THREE.Scene) {
 /**
  * Spawn a physical cyber credit item
  */
-export function spawnCredit(_scene: THREE.Scene, x: number, z: number, value: number = 1) {
-  // Determine size based on value
-  const size = value >= 50 ? 0.9 : value >= 10 ? 0.65 : 0.45;
-
-  return world.add({
-    isCredit: true,
-    position: new THREE.Vector3(x, 0.3, z),
-    velocity: new THREE.Vector3(
-      (Math.random() - 0.5) * 4,
-      Math.random() * 5 + 3, // upward pop
-      (Math.random() - 0.5) * 4,
-    ),
-    creditValue: value,
-    size,
-    rotationX: Math.random() * Math.PI,
-    rotationY: Math.random() * Math.PI,
-  });
+export function spawnCredit(_scene: THREE.Scene, _x: number, _z: number, value: number = 1) {
+  // Credits now go straight to the wallet — no entities, no rendering, no
+  // physics, no magnetism. This removes ~200 entities from the ECS and saves
+  // roughly 0.1-0.3ms per frame at horde density (credit simulation + render).
+  uiState.creditsCollected += Math.max(1, Math.ceil(value));
 }
 
 // --- ENEMY VISUALS (Phase 1.8 bestiary) ---

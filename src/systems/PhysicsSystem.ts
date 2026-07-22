@@ -40,7 +40,7 @@ export function PhysicsSystem(dt: number) {
   // ChestSystem moves chests, FinaleBoss moves the boss. This system integrates
   // ONLY projectiles and particles (nothing else owns them), then clamps.
   for (const entity of world.with('position', 'velocity')) {
-    const ownedElsewhere = entity.isEnemy || entity.isXP || entity.isCredit || entity.isChest;
+    const ownedElsewhere = entity.isEnemy || entity.isXP || entity.isChest;
     if (entity.rigidBody) {
       const pos = entity.rigidBody.translation();
       entity.position.set(pos.x, 0.5, pos.z);
