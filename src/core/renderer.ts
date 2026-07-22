@@ -152,8 +152,25 @@ export async function initRenderer() {
       (composer !== null || postProcessing !== null) && getQualityProfile().tier === 'high';
   });
 
+  // Shadow map refresh is capped at 30Hz: the arena is static and the only
+  // real casters left are the player and boss (the horde uses instanced blob
+  // shadows). A 33ms shadow lag is imperceptible; halving the shadow pass is not.
+  renderer.shadowMap.autoUpdate = false;
+  let shadowRefreshAccum = 0;
+  const SHADOW_REFRESH_INTERVAL = 1 / 30;
+  let lastFrameTime = performance.now();
+
   /** Render one frame through the bloom pipeline when it's active. */
   const renderFrame = () => {
+    if (renderer.shadowMap.enabled) {
+      const now = performance.now();
+      shadowRefreshAccum += (now - lastFrameTime) / 1000;
+      lastFrameTime = now;
+      if (shadowRefreshAccum >= SHADOW_REFRESH_INTERVAL) {
+        shadowRefreshAccum = 0;
+        renderer.shadowMap.needsUpdate = true;
+      }
+    }
     if (bloomEnabled && postProcessing) postProcessing.render();
     else if (bloomEnabled && composer) composer.render();
     else renderer.render(scene, camera);
