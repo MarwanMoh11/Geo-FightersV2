@@ -232,17 +232,27 @@ function createECS() {
     }
   };
 
+  // id -> slot in `entities`, so remove() is O(1) swap-remove and get() is
+  // O(1) instead of indexOf+find scans (matters at horde entity counts where
+  // hundreds of deaths/pickups happen per second).
+  const idIndex = new Map<number, number>();
+
   return {
     add: (entity: Entity) => {
       entity.id = generateId();
+      idIndex.set(entity.id, entities.length);
       entities.push(entity);
       addToIndexes(entity);
       return entity;
     },
     remove: (entity: Entity) => {
-      const index = entities.indexOf(entity);
-      if (index > -1) {
-        entities.splice(index, 1);
+      const index = entity.id !== undefined ? idIndex.get(entity.id) : undefined;
+      if (index !== undefined) {
+        const last = entities[entities.length - 1];
+        entities[index] = last;
+        if (last.id !== undefined) idIndex.set(last.id, index);
+        entities.pop();
+        idIndex.delete(entity.id!);
       }
       removeFromIndexes(entity);
     },
@@ -281,7 +291,8 @@ function createECS() {
       };
     },
     get: (id: number) => {
-      return entities.find((e) => e.id === id);
+      const index = idIndex.get(id);
+      return index !== undefined ? entities[index] : undefined;
     },
     count: (comp: keyof Entity) => {
       const idx = indexes.get(comp);

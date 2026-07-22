@@ -5,6 +5,7 @@ import { getCharacter } from './CharacterRegistry';
 import { offerProtocolChoice, selectProtocol } from './ProtocolRegistry';
 import { getDailyConfig } from './DailyManager';
 import { WEAPONS, getWeaponStatsAtLevel } from './WeaponRegistry';
+import { applyMaxMode } from './maxMode';
 import { getTierForValue, bankXP, MAX_ACTIVE_XP } from './XPManager';
 import { createDynamicBody, isRapierInitialized } from './RapierWorld';
 import { uiState, announce } from './UIState.svelte';
@@ -14,9 +15,7 @@ import { getCurrentLevel as getLevelConfig } from './LevelData';
 import { getQualityProfile } from './quality';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 
-// Player/enemy collision radii
 const PLAYER_RADIUS = 0.8;
-const ENEMY_RADIUS = 0.6;
 
 // --- SHARED RESOURCES & GEOMETRY POOL ---
 const shadowGeo = new THREE.CircleGeometry(0.4, 16);
@@ -62,16 +61,16 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   // (harness: minHp 100 through a 215-enemy wave). VS fodder runs at roughly
   // measured band: 2.4/1.9 killed the kite bot in 6s, 1.7/1.1 never touched
   // it — 2.1/1.6 is the goldilocks bisection (see PHASE doc).
-  [EnemyType.GLITCH]: { hp: 10, speed: 1.6, size: 2.0, color: 0xffffff, xp: 5 },
-  [EnemyType.VIRUS]: { hp: 5, speed: 2.1, size: 1.5, color: 0xffffff, xp: 2 },
-  [EnemyType.FIREWALL]: { hp: 150, speed: 0.5, size: 3.5, color: 0xffffff, xp: 22 },
+  [EnemyType.GLITCH]: { hp: 6, speed: 1.8, size: 1.2, color: 0xffffff, xp: 3 },
+  [EnemyType.VIRUS]: { hp: 3, speed: 2.5, size: 0.9, color: 0xffffff, xp: 1 },
+  [EnemyType.FIREWALL]: { hp: 80, speed: 0.6, size: 2.2, color: 0xffffff, xp: 14 },
   // Elite enemies
-  [EnemyType.ENFORCER]: { hp: 200, speed: 0.6, size: 3.0, color: 0xffffff, xp: 40 },
-  [EnemyType.COLOSSUS]: { hp: 500, speed: 0.3, size: 5.0, color: 0xffffff, xp: 80 },
-  [EnemyType.WARDEN]: { hp: 120, speed: 1.5, size: 2.5, color: 0xffffff, xp: 35 },
+  [EnemyType.ENFORCER]: { hp: 120, speed: 0.7, size: 2.0, color: 0xffffff, xp: 25 },
+  [EnemyType.COLOSSUS]: { hp: 300, speed: 0.35, size: 3.5, color: 0xffffff, xp: 50 },
+  [EnemyType.WARDEN]: { hp: 70, speed: 1.7, size: 1.8, color: 0xffffff, xp: 20 },
   // Mini-bosses
-  [EnemyType.HYDRA]: { hp: 800, speed: 0.4, size: 6.0, color: 0xffffff, xp: 150 },
-  [EnemyType.OVERSEER]: { hp: 2000, speed: 0.25, size: 8.0, color: 0xffffff, xp: 300 },
+  [EnemyType.HYDRA]: { hp: 500, speed: 0.45, size: 4.0, color: 0xffffff, xp: 90 },
+  [EnemyType.OVERSEER]: { hp: 1200, speed: 0.28, size: 5.5, color: 0xffffff, xp: 180 },
 };
 export function spawnPlayer(
   scene: THREE.Scene,
@@ -897,6 +896,10 @@ export function initializePlayerForRun(scene: THREE.Scene) {
     },
   });
 
+  // ?max stress-test: replace the single starter weapon with every weapon at
+  // max level and make the player invincible.
+  applyMaxMode(scene);
+
   // Data protocol: daily runs force the seeded protocol; everything else gets
   // a pick-1-of-3 modal. In co-op EACH player now picks their own protocol —
   // the MP loop never pauses on modals, so the world keeps simulating, and the
@@ -1648,19 +1651,6 @@ export function getEnemyWireMaterial(type: EnemyType): THREE.MeshBasicMaterial {
   return mat;
 }
 
-function buildEnemyMesh(_type: EnemyType, size: number): THREE.Object3D {
-  if (cachedEnemyGeometries.size === 0) {
-    pregenerateAllEnemyGeometries();
-  }
-  // Instanced enemies never enter the scene graph — this container exists
-  // only so systems can read/write the transform. Building actual meshes
-  // here was pure per-spawn waste; the InstancedMesh layers draw everything.
-  const container = new THREE.Group();
-  container.name = 'mesh_container';
-  container.position.y = size * 0.35;
-  return container;
-}
-
 // Elite/miniboss arrivals get a spawn portal ring (trash already has the
 // scale-pop; portals for every spawn would churn meshes at horde rates).
 const ELITE_PORTAL_COLORS: Partial<Record<EnemyType, number>> = {
@@ -1706,60 +1696,30 @@ export function spawnEnemy(
   hpMult: number = 1,
 ) {
   const stats = ENEMY_STATS[type];
-  const group = new THREE.Group();
-  group.position.set(x, 0, z);
 
-  // Corruption hardens enemies (HP per level); co-op makes them tankier per
-  // extra living fighter (neutral 1.0 in solo). Time scaling now lives in the
-  // spawner's per-wave hpMult (endless growth included).
   const corr = uiState.corruption;
   const maxHp = Math.max(
     1,
     Math.round(stats.hp * hpMult * corruptionHp(corr) * partyHpMultiplier()),
   );
-  // Past the standard (5), corruption also quickens the horde so kiting stops
-  // being a free out at the brutal tiers.
   const moveSpeed = stats.speed * corruptionSpeed(corr);
 
-  // 1. Build and attach the custom 3D model
-  const enemyMesh = buildEnemyMesh(type, stats.size);
-  group.add(enemyMesh);
-
-  // Elite arrival portal (cosmetic, budgeted to elite spawn rates)
   spawnPortalFx(_scene, x, z, type, stats.size);
-
-  // 2. Attach the shadow mesh
-  const shadow = new THREE.Mesh(shadowGeo, shadowMat);
-  shadow.rotation.x = -Math.PI / 2;
-  shadow.scale.setScalar(stats.size / 2);
-  shadow.position.y = 0.02;
-  shadow.name = 'shadow';
-  group.add(shadow);
 
   const enemy = world.add({
     isEnemy: true,
     enemyType: type,
-    position: group.position,
+    position: new THREE.Vector3(x, 0, z),
     velocity: new THREE.Vector3(0, 0, 0),
     health: { current: maxHp, max: maxHp },
     moveSpeed,
-    transform: group,
     size: stats.size,
+    rotationY: 0,
     aimTarget: new THREE.Vector3(),
     xpValue: stats.xp,
     baseColor: stats.color,
-    spawnAnimTimer: 0.35, // scale-pop entrance (RenderSystem)
+    spawnAnimTimer: 0.35,
   });
-
-  // Create Rapier rigid body for enemy (only in single-player or on the Host)
-  const isHostOrSingle = !uiState.isMultiplayer || uiState.isHost;
-  if (isHostOrSingle && isRapierInitialized() && enemy.id !== undefined) {
-    // Use enemy size to determine radius (scaled down for gameplay)
-    const radius = Math.max(ENEMY_RADIUS, stats.size * 0.3);
-    const { rigidBody, collider } = createDynamicBody(x, z, radius, enemy.id);
-    enemy.rigidBody = rigidBody;
-    enemy.collider = collider;
-  }
   return enemy;
 }
 

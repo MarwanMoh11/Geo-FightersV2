@@ -57,11 +57,11 @@ const PROFILES: Record<QualityTier, QualityProfile> = {
   },
   high: {
     tier: 'high',
-    pixelRatioCap: 2.0,
+    pixelRatioCap: 1.5,
     baseRenderScale: 1.0,
     antialias: true,
     shadows: !isMobile,
-    shadowMapSize: 1024,
+    shadowMapSize: 512,
     particleScale: 1.0,
     neonLights: true,
     minimapInterval: 0.08,
@@ -93,6 +93,26 @@ export function isAutoQuality(): boolean {
 }
 
 export function getQualityProfile(): QualityProfile {
+  // `?max` — stress-test everything at the highest possible settings, ignoring
+  // the user's quality tier. Overrides pixel ratio, shadow resolution, particle
+  // count, adaptive scaling, and render distance/thresholds (RenderSystem reads
+  // window.__MAX_MODE to disable culling and force all detail layers).
+  if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('max')) {
+    (window as any).__MAX_MODE = true;
+    return {
+      tier: 'high',
+      pixelRatioCap: 2.0,
+      baseRenderScale: 1.0,
+      antialias: true,
+      shadows: true,
+      shadowMapSize: 2048,
+      particleScale: 2.0,
+      neonLights: true,
+      minimapInterval: 0.04,
+      dynamicResolution: false,
+    };
+  }
+
   const profile = PROFILES[resolveTier()];
   // AUTO always gets the adaptive scaler as a safety net
   if (isAutoQuality() && !profile.dynamicResolution) {

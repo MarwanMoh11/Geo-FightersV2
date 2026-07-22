@@ -10,7 +10,6 @@ import {
   getEffectiveArea,
 } from '../core/PlayerStats';
 import { spawnOrbitalProjectile } from './OrbitalSystem';
-import { createKinematicBody, isRapierInitialized } from '../core/RapierWorld';
 import { uiState } from '../core/UIState.svelte.ts';
 import { broadcastShoot } from '../core/network';
 import { WEAPONS, getWeaponStatsAtLevel } from '../core/WeaponRegistry';
@@ -32,12 +31,12 @@ function getMuzzleMaterial(color: number): THREE.MeshBasicMaterial {
   return mat;
 }
 
-const PROJECTILE_RADIUS = 0.3;
-
 // 3. Reusable Math Objects (No "new" keyword in loops!)
 const _shootDir = new THREE.Vector3();
 const _posVec = new THREE.Vector3();
 const _axisY = new THREE.Vector3(0, 1, 0);
+const _enemiesCache: any[] = [];
+const _weaponPlayers: any[] = [];
 
 export function WeaponSystem(dt: number, scene: THREE.Scene) {
   // 1. PROJECTILE VISUALS & ANIMATIONS
@@ -46,8 +45,11 @@ export function WeaponSystem(dt: number, scene: THREE.Scene) {
   }
 
   // 2. PLAYER WEAPONS
-  const players = Array.from(world.with('isPlayer', 'position', 'aimTarget', 'input'));
-  for (const player of players) {
+  _weaponPlayers.length = 0;
+  for (const p of world.with('isPlayer', 'position', 'aimTarget', 'input')) {
+    _weaponPlayers.push(p);
+  }
+  for (const player of _weaponPlayers) {
     const isLocal = player.isLocalPlayer;
     const isHost = uiState.isHost;
 
@@ -143,13 +145,15 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
 
   // Calculate Direction based on weapon category
   if (weaponStats.category === 'global') {
-    // Global weapons target the nearest enemy
-    const enemies = Array.from(world.with('isEnemy', 'position', 'health'));
+    // Global weapons target the nearest enemy (module array — no per-shot alloc)
+    _enemiesCache.length = 0;
+    for (const enemy of world.with('isEnemy', 'position', 'health')) {
+      if (enemy.health && enemy.health.current > 0) _enemiesCache.push(enemy);
+    }
     let nearestEnemy = null;
     let nearestDistSq = Infinity;
 
-    for (const enemy of enemies) {
-      if (!enemy.health || enemy.health.current <= 0) continue;
+    for (const enemy of _enemiesCache) {
       const dx = enemy.position.x - owner.position.x;
       const dz = enemy.position.z - owner.position.z;
       const distSq = dx * dx + dz * dz;
@@ -262,13 +266,15 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
     _posVec.copy(dir).multiplyScalar(0.6).add(owner.position);
     mesh.position.copy(_posVec);
 
-    mesh.castShadow = true;
+    mesh.castShadow = false; // hundreds of projectiles must not hit the shadow pass
     scene.add(mesh);
 
     // Velocity must be a new instance
     const velocity = dir.multiplyScalar(finalSpeed);
 
-    const projectile = world.add({
+    // No Rapier body: bullet→enemy hits are resolved by CollisionSystem's
+    // spatial-grid distance sweep. Sensor bodies were pure WASM churn.
+    world.add({
       isProjectile: true,
       weaponId: weaponEntity.weaponId,
       ownerConnId: owner.connectionId, // kill credit (co-op scoreboard)
@@ -288,20 +294,6 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
         confusionDuration: finalDamage === 0 && finalExplodeRadius > 0 ? 3.0 : 0,
       },
     });
-
-    // Add Rapier rigid body for collision (skip on client-side visual projectiles)
-    const isMultiplayerClient = uiState.isMultiplayer && !uiState.isHost;
-    if (isRapierInitialized() && projectile.id !== undefined && !isMultiplayerClient) {
-      const radius = finalWidth ? finalWidth * 0.6 : PROJECTILE_RADIUS;
-      const { rigidBody, collider } = createKinematicBody(
-        mesh.position.x,
-        mesh.position.z,
-        radius,
-        projectile.id,
-      );
-      projectile.rigidBody = rigidBody;
-      projectile.collider = collider;
-    }
   }
 }
 
@@ -378,7 +370,7 @@ export function fireWeaponRemote(
 
     _posVec.copy(pDir).multiplyScalar(0.6).add(owner.position);
     mesh.position.copy(_posVec);
-    mesh.castShadow = true;
+    mesh.castShadow = false;
     scene.add(mesh);
 
     const velocity = pDir.multiplyScalar(mockWeapon.weapon.bulletSpeed);
