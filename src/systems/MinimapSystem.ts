@@ -132,10 +132,16 @@ export function MinimapSystem(): void {
   }
 
   // Enemies. Regular ones only when on-screen; elites/boss also get an
-  // off-screen edge arrow so you can feel a threat closing in.
+  // off-screen edge arrow so you can feel a threat closing in. At horde
+  // counts, decimate fodder dots (elites always drawn) — 2500 canvas arcs
+  // per redraw would stall the frame.
+  const enemyTotal = world.count('isEnemy');
+  const fodderStep = enemyTotal > 400 ? Math.ceil(enemyTotal / 300) : 1;
+  let fodderIdx = 0;
   for (const enemy of world.with('isEnemy', 'position')) {
     const isBoss = !!enemy.isBoss;
     const isElite = isBoss || ELITE_TYPES.has(enemy.enemyType || '');
+    if (!isElite && fodderStep > 1 && fodderIdx++ % fodderStep !== 0) continue;
     const x = mapX(enemy.position.x);
     const y = mapZ(enemy.position.z);
 

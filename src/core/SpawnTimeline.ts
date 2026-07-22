@@ -70,80 +70,69 @@ export interface EliteEvent {
 export const STAGE_1_WAVES: Wave[] = [
   {
     minute: 0,
-    minAlive: 30,
-    interval: 0.6,
-    hpMult: 1.0,
+    minAlive: 50,
+    interval: 0.5,
+    hpMult: 0.8,
     pool: [{ type: EnemyType.VIRUS, weight: 100 }],
   },
   {
     minute: 1,
-    minAlive: 75,
-    interval: 0.55,
-    hpMult: 1.0,
+    minAlive: 120,
+    interval: 0.45,
+    hpMult: 0.85,
     pool: [
-      { type: EnemyType.VIRUS, weight: 75 },
-      { type: EnemyType.GLITCH, weight: 30 },
+      { type: EnemyType.VIRUS, weight: 70 },
+      { type: EnemyType.GLITCH, weight: 35 },
     ],
   },
   {
     minute: 2,
-    minAlive: 68,
-    interval: 0.5,
-    hpMult: 1.1,
+    minAlive: 110,
+    interval: 0.4,
+    hpMult: 0.9,
     pool: [
-      { type: EnemyType.VIRUS, weight: 65 },
-      { type: EnemyType.GLITCH, weight: 45 },
+      { type: EnemyType.VIRUS, weight: 60 },
+      { type: EnemyType.GLITCH, weight: 50 },
     ],
   },
   {
     minute: 3,
-    minAlive: 143,
-    interval: 0.5,
-    hpMult: 1.25,
-    pool: [
-      { type: EnemyType.VIRUS, weight: 55 },
-      { type: EnemyType.GLITCH, weight: 55 },
-      { type: EnemyType.FIREWALL, weight: 6 },
-    ],
-  },
-  {
-    minute: 4,
-    minAlive: 195,
-    interval: 0.45,
-    hpMult: 1.4,
+    minAlive: 230,
+    interval: 0.38,
+    hpMult: 1.0,
     pool: [
       { type: EnemyType.VIRUS, weight: 50 },
-      { type: EnemyType.GLITCH, weight: 60 },
+      { type: EnemyType.GLITCH, weight: 55 },
       { type: EnemyType.FIREWALL, weight: 8 },
     ],
   },
   {
-    minute: 5,
-    minAlive: 255,
-    interval: 0.45,
-    hpMult: 1.55,
+    minute: 4,
+    minAlive: 310,
+    interval: 0.35,
+    hpMult: 1.1,
     pool: [
       { type: EnemyType.VIRUS, weight: 45 },
-      { type: EnemyType.GLITCH, weight: 65 },
+      { type: EnemyType.GLITCH, weight: 60 },
       { type: EnemyType.FIREWALL, weight: 10 },
     ],
   },
   {
-    minute: 6,
-    minAlive: 315,
-    interval: 0.4,
-    hpMult: 1.75,
+    minute: 5,
+    minAlive: 410,
+    interval: 0.32,
+    hpMult: 1.2,
     pool: [
       { type: EnemyType.VIRUS, weight: 40 },
-      { type: EnemyType.GLITCH, weight: 70 },
+      { type: EnemyType.GLITCH, weight: 65 },
       { type: EnemyType.FIREWALL, weight: 12 },
     ],
   },
   {
-    minute: 7,
-    minAlive: 375,
-    interval: 0.4,
-    hpMult: 1.95,
+    minute: 6,
+    minAlive: 500,
+    interval: 0.3,
+    hpMult: 1.35,
     pool: [
       { type: EnemyType.VIRUS, weight: 35 },
       { type: EnemyType.GLITCH, weight: 70 },
@@ -151,10 +140,10 @@ export const STAGE_1_WAVES: Wave[] = [
     ],
   },
   {
-    minute: 8,
-    minAlive: 450,
-    interval: 0.35,
-    hpMult: 2.2,
+    minute: 7,
+    minAlive: 600,
+    interval: 0.28,
+    hpMult: 1.5,
     pool: [
       { type: EnemyType.VIRUS, weight: 30 },
       { type: EnemyType.GLITCH, weight: 70 },
@@ -162,24 +151,35 @@ export const STAGE_1_WAVES: Wave[] = [
     ],
   },
   {
-    minute: 9,
-    minAlive: 510,
-    interval: 0.35,
-    hpMult: 2.5,
+    minute: 8,
+    minAlive: 720,
+    interval: 0.25,
+    hpMult: 1.7,
     pool: [
       { type: EnemyType.VIRUS, weight: 25 },
       { type: EnemyType.GLITCH, weight: 70 },
       { type: EnemyType.FIREWALL, weight: 18 },
     ],
   },
+  {
+    minute: 9,
+    minAlive: 820,
+    interval: 0.22,
+    hpMult: 1.9,
+    pool: [
+      { type: EnemyType.VIRUS, weight: 20 },
+      { type: EnemyType.GLITCH, weight: 70 },
+      { type: EnemyType.FIREWALL, weight: 20 },
+    ],
+  },
 ];
 
 // Endless mode: the last wave keeps growing past 10:00
 export const ENDLESS_GROWTH = {
-  minAlivePerMinute: 45, // was 30
-  minAliveCap: 555, // was 370 — headroom under MAX_ENEMIES for swarms/elites
-  hpMultPerMinute: 0.4,
-  intervalFloor: 0.3,
+  minAlivePerMinute: 60,
+  minAliveCap: 950,
+  hpMultPerMinute: 0.35,
+  intervalFloor: 0.2,
 };
 
 // --- SCRIPTED SWARMS (every minute at :30, alternating trap shapes) ---
@@ -188,43 +188,58 @@ export const ENDLESS_GROWTH = {
 // Counts x1.5 (owner request). hpMult/speedMult untouched — swarms stay
 // exactly as brittle/fast as before, there are just 50% more bodies in them.
 export const STAGE_1_SWARMS: SwarmEvent[] = [
-  { at: 90, kind: 'ring', type: EnemyType.VIRUS, count: 66, hpMult: 0.6, speedMult: 1.35 },
-  { at: 150, kind: 'line', type: EnemyType.GLITCH, count: 50, hpMult: 0.6, speedMult: 1.2 },
-  { at: 210, kind: 'ring', type: EnemyType.VIRUS, count: 135, hpMult: 0.6, speedMult: 1.35 },
-  { at: 270, kind: 'line', type: EnemyType.GLITCH, count: 62, hpMult: 0.6, speedMult: 1.2 },
-  { at: 330, kind: 'ring', type: EnemyType.VIRUS, count: 113, hpMult: 0.6, speedMult: 1.35 },
-  { at: 390, kind: 'line', type: EnemyType.GLITCH, count: 72, hpMult: 0.6, speedMult: 1.2 },
-  { at: 450, kind: 'ring', type: EnemyType.VIRUS, count: 90, hpMult: 0.6, speedMult: 1.4 },
-  { at: 510, kind: 'line', type: EnemyType.GLITCH, count: 84, hpMult: 0.6, speedMult: 1.25 },
-  // Pre-finale panic ring
-  { at: 570, kind: 'ring', type: EnemyType.VIRUS, count: 165, hpMult: 0.6, speedMult: 1.45 },
+  { at: 60, kind: 'ring', type: EnemyType.VIRUS, count: 80, hpMult: 0.5, speedMult: 1.5 },
+  { at: 90, kind: 'line', type: EnemyType.GLITCH, count: 65, hpMult: 0.5, speedMult: 1.4 },
+  { at: 120, kind: 'ring', type: EnemyType.VIRUS, count: 120, hpMult: 0.5, speedMult: 1.5 },
+  { at: 150, kind: 'line', type: EnemyType.GLITCH, count: 90, hpMult: 0.5, speedMult: 1.4 },
+  { at: 180, kind: 'ring', type: EnemyType.VIRUS, count: 160, hpMult: 0.5, speedMult: 1.5 },
+  { at: 210, kind: 'line', type: EnemyType.GLITCH, count: 120, hpMult: 0.5, speedMult: 1.4 },
+  { at: 240, kind: 'ring', type: EnemyType.VIRUS, count: 200, hpMult: 0.5, speedMult: 1.5 },
+  { at: 270, kind: 'line', type: EnemyType.GLITCH, count: 150, hpMult: 0.5, speedMult: 1.4 },
+  { at: 300, kind: 'ring', type: EnemyType.VIRUS, count: 240, hpMult: 0.5, speedMult: 1.5 },
+  { at: 330, kind: 'line', type: EnemyType.GLITCH, count: 180, hpMult: 0.5, speedMult: 1.4 },
+  { at: 360, kind: 'ring', type: EnemyType.VIRUS, count: 280, hpMult: 0.5, speedMult: 1.5 },
+  { at: 390, kind: 'line', type: EnemyType.GLITCH, count: 210, hpMult: 0.5, speedMult: 1.4 },
+  { at: 420, kind: 'ring', type: EnemyType.VIRUS, count: 320, hpMult: 0.5, speedMult: 1.5 },
+  { at: 450, kind: 'line', type: EnemyType.GLITCH, count: 240, hpMult: 0.5, speedMult: 1.4 },
+  { at: 480, kind: 'ring', type: EnemyType.VIRUS, count: 360, hpMult: 0.5, speedMult: 1.5 },
+  { at: 510, kind: 'line', type: EnemyType.GLITCH, count: 270, hpMult: 0.5, speedMult: 1.4 },
+  { at: 540, kind: 'ring', type: EnemyType.VIRUS, count: 400, hpMult: 0.5, speedMult: 1.5 },
+  { at: 570, kind: 'line', type: EnemyType.GLITCH, count: 300, hpMult: 0.5, speedMult: 1.4 },
 ];
 
 // Endless: keep the ring traps coming every 60s after the authored list ends
 export const ENDLESS_SWARM = {
-  interval: 60,
-  base: { kind: 'ring' as const, type: EnemyType.VIRUS, hpMult: 0.6, speedMult: 1.45 },
-  count: 165, // was 110
-  countPerMinute: 7.5, // was 5
-  countCap: 225, // was 150
+  interval: 45,
+  base: { kind: 'ring' as const, type: EnemyType.VIRUS, hpMult: 0.5, speedMult: 1.5 },
+  count: 200,
+  countPerMinute: 12,
+  countCap: 450,
 };
 
 // --- ELITE SCHEDULE (chest bearers + minibosses) ---
 export const STAGE_1_ELITES: EliteEvent[] = [
   { at: 90, type: EnemyType.ENFORCER, count: 1 },
-  { at: 180, type: EnemyType.WARDEN, count: 1 },
+  { at: 120, type: EnemyType.WARDEN, count: 1 },
+  { at: 150, type: EnemyType.ENFORCER, count: 2 },
+  { at: 180, type: EnemyType.HYDRA, count: 1, announce: 'PROXY HYDRA ONLINE' },
+  { at: 210, type: EnemyType.COLOSSUS, count: 1 },
+  { at: 240, type: EnemyType.WARDEN, count: 2 },
   { at: 270, type: EnemyType.ENFORCER, count: 2 },
   { at: 300, type: EnemyType.HYDRA, count: 1, announce: 'PROXY HYDRA ONLINE' },
-  { at: 360, type: EnemyType.COLOSSUS, count: 1 },
-  { at: 450, type: EnemyType.WARDEN, count: 2 },
-  { at: 510, type: EnemyType.COLOSSUS, count: 1 },
-  { at: 512, type: EnemyType.ENFORCER, count: 1 },
-  { at: 540, type: EnemyType.HYDRA, count: 1, announce: 'PROXY HYDRA ONLINE' },
+  { at: 330, type: EnemyType.COLOSSUS, count: 2 },
+  { at: 360, type: EnemyType.WARDEN, count: 3 },
+  { at: 390, type: EnemyType.ENFORCER, count: 3 },
+  { at: 420, type: EnemyType.HYDRA, count: 2, announce: 'PROXY HYDRA ONLINE' },
+  { at: 450, type: EnemyType.COLOSSUS, count: 2 },
+  { at: 480, type: EnemyType.WARDEN, count: 3 },
+  { at: 510, type: EnemyType.ENFORCER, count: 4 },
+  { at: 540, type: EnemyType.HYDRA, count: 2, announce: 'PROXY HYDRA ONLINE' },
 ];
 
 // Endless: an elite pack every 45s, cycling types
 export const ENDLESS_ELITES = {
-  interval: 45,
+  interval: 25,
   rotation: [EnemyType.ENFORCER, EnemyType.WARDEN, EnemyType.COLOSSUS, EnemyType.HYDRA],
 };
 

@@ -31,106 +31,160 @@ import { haptics } from '../core/haptics';
 import { dlog } from '../core/debug';
 import { scaleParticleCount } from '../core/quality';
 import { sendDirectEvent } from '../core/network';
-import {
-  removeBody,
-  getEventQueue,
-  getEntityByColliderHandle,
-  isRapierInitialized,
-} from '../core/RapierWorld';
+import { removeBody } from '../core/RapierWorld';
 
 // --- REUSABLE VECTORS & ARRAYS (Zero GC pressure) ---
 const _pushDir = new THREE.Vector3();
 const _blastDir = new THREE.Vector3();
 const _tempVec = new THREE.Vector3();
-const _nearbyEnemies: any[] = [];
 
-export function CollisionSystem(scene: THREE.Scene) {
-  // --- RAPIER EVENT-DRIVEN COLLISION ---
-  if (!isRapierInitialized()) return;
+// --- FRAME CACHES (materialized once, shared by every sweep) ---
+const _enemies: any[] = [];
+const _players: any[] = [];
 
-  try {
-    const eventQueue = getEventQueue();
+// --- SPATIAL GRID over living enemies ---
+// Cell size 4u ≥ the largest interaction radius (boss hit-reach ~2.7u, contact
+// reach ~3.4u), so a 3×3 neighborhood query can never miss a pair. Cells are
+// pooled index arrays — rebuilt per frame with zero allocation.
+const GRID_CELL = 4.0;
+const GRID_OFFSET = 1024;
+const _grid = new Map<number, number[]>();
+const _cellPool: number[][] = [];
+let _cellPoolUsed = 0;
 
-    // 1. DRAIN COLLISION EVENTS (Solid vs Solid & Sensor vs Solid)
-    eventQueue.drainCollisionEvents((h1, h2, started) => {
-      if (!started) return;
-      processCollision(h1, h2, scene);
-    });
-  } catch {
-    // Fail silently if physics not yet initialized
-  }
-
-  // 1b. ENEMY ↔ PLAYER CONTACT SWEEP (Phase 1.98 VS contact model)
-  // Rapier only reports contact STARTS — an enemy that stays pressed against
-  // the player fires one event and then never again, so sustained contact
-  // dealt a trickle no matter the cooldown model. A direct distance sweep
-  // makes touch damage continuous and per-enemy: density IS the threat.
-  for (const player of world.with('isPlayer', 'position', 'health')) {
-    if (!player.health || player.health.current <= 0) continue;
-    if (player.invulnTimer && player.invulnTimer > 0) continue; // stagger window
-    for (const enemy of world.with('isEnemy', 'position', 'health')) {
-      const dx = enemy.position.x - player.position.x;
-      const dz = enemy.position.z - player.position.z;
-      // Bigger bodies have longer reach (boss/elite silhouettes)
-      const reach = 1.4 + (enemy.size ?? 1.5) * 0.25;
-      if (dx * dx + dz * dz < reach * reach) {
-        handleEnemyPlayerCollision(enemy, player, scene);
-        if (player.invulnTimer && player.invulnTimer > 0) break; // hit landed
-      }
-    }
-  }
-
-  // 2. LASH SPATIAL TEARS DAMAGE SWEEP
-  for (const tear of world.with('isLashTear', 'position', 'hitList')) {
-    const tearPos = tear.position;
-    for (const enemy of world.with('isEnemy', 'position', 'health')) {
-      if (!enemy.health || enemy.health.current <= 0) continue;
-      if (tear.hitList && tear.hitList.includes(enemy.id || 0)) continue;
-
-      const dx = enemy.position.x - tearPos.x;
-      const dz = enemy.position.z - tearPos.z;
-      const distSq = dx * dx + dz * dz;
-
-      if (distSq < 1.4 * 1.4) {
-        if (tear.hitList) tear.hitList.push(enemy.id || 0);
-
-        const pushDir = new THREE.Vector3(dx, 0, dz).normalize();
-        applyDamage(enemy, 90, pushDir, 6, scene);
-      }
-    }
-  }
+function gridKey(cx: number, cz: number): number {
+  return (cx + GRID_OFFSET) * 4096 + (cz + GRID_OFFSET);
 }
 
-function processCollision(h1: number, h2: number, scene: THREE.Scene) {
-  const e1 = world.get(getEntityByColliderHandle(h1) as any);
-  const e2 = world.get(getEntityByColliderHandle(h2) as any);
+function gridCellFor(key: number): number[] {
+  let cell = _grid.get(key);
+  if (!cell) {
+    cell = _cellPool[_cellPoolUsed] ?? (_cellPool[_cellPoolUsed] = []);
+    _cellPoolUsed++;
+    cell.length = 0;
+    _grid.set(key, cell);
+  }
+  return cell;
+}
 
-  if (!e1 || !e2) return;
+/** Bullet hit radius matches the old Rapier pair sum (bullet 0.3 + enemy ball). */
+function enemyHitRadius(enemy: any): number {
+  return 0.3 + Math.max(0.6, (enemy.size ?? 1.5) * 0.3);
+}
 
-  // Determine roles
-  const projectile =
-    e1.isProjectile && !e1.isEnemyProjectile
-      ? e1
-      : e2.isProjectile && !e2.isEnemyProjectile
-        ? e2
-        : null;
-  const enemyProjectile = e1.isEnemyProjectile ? e1 : e2.isEnemyProjectile ? e2 : null;
-  const enemy = e1.isEnemy ? e1 : e2.isEnemy ? e2 : null;
-  const player = e1.isPlayer ? e1 : e2.isPlayer ? e2 : null;
-
-  // A. BULLET VS ENEMY
-  if (projectile && enemy) {
-    handleProjectileEnemyCollision(projectile, enemy, scene);
+export function CollisionSystem(scene: THREE.Scene) {
+  // Materialize living enemies + players ONCE per frame. All sweeps below run
+  // over plain arrays and the shared grid — no per-bullet ECS re-iteration.
+  _enemies.length = 0;
+  for (const e of world.with('isEnemy', 'position', 'health')) {
+    if (e.health && e.health.current > 0) _enemies.push(e);
+  }
+  _players.length = 0;
+  for (const p of world.with('isPlayer', 'position', 'health')) {
+    if (p.health && p.health.current > 0) _players.push(p);
   }
 
-  // B. ENEMY VS PLAYER
-  if (enemy && player) {
-    handleEnemyPlayerCollision(enemy, player, scene);
+  _grid.clear();
+  _cellPoolUsed = 0;
+  for (let i = 0; i < _enemies.length; i++) {
+    const e = _enemies[i];
+    const cx = Math.floor(e.position.x / GRID_CELL);
+    const cz = Math.floor(e.position.z / GRID_CELL);
+    gridCellFor(gridKey(cx, cz)).push(i);
   }
 
-  // C. ENEMY PROJECTILE VS PLAYER
-  if (enemyProjectile && player) {
-    handleEnemyProjectilePlayerCollision(enemyProjectile, player, scene);
+  // 1. BULLET → ENEMY (grid query: 3×3 cells around the bullet)
+  for (const bullet of world.with('isProjectile', 'position', 'projectile', 'damage')) {
+    if (bullet.isEnemyProjectile || !bullet.projectile) continue;
+    const bcx = Math.floor(bullet.position.x / GRID_CELL);
+    const bcz = Math.floor(bullet.position.z / GRID_CELL);
+    let despawned = false;
+    for (let gx = bcx - 1; gx <= bcx + 1 && !despawned; gx++) {
+      for (let gz = bcz - 1; gz <= bcz + 1 && !despawned; gz++) {
+        const cell = _grid.get(gridKey(gx, gz));
+        if (!cell) continue;
+        for (let k = 0; k < cell.length; k++) {
+          const enemy = _enemies[cell[k]];
+          if (!enemy.health || enemy.health.current <= 0) continue;
+          const dx = enemy.position.x - bullet.position.x;
+          const dz = enemy.position.z - bullet.position.z;
+          const hr = enemyHitRadius(enemy);
+          if (dx * dx + dz * dz < hr * hr) {
+            handleProjectileEnemyCollision(bullet, enemy, scene);
+            // Handler despawns the bullet when pierce runs out or it explodes
+            if (bullet.projectile.explodeRadius > 0 || bullet.projectile.pierce <= 0) {
+              despawned = true;
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 1b. ENEMY PROJECTILE → PLAYER (few of each, plain sweep)
+  for (const bullet of world.with('isEnemyProjectile', 'position', 'velocity', 'damage')) {
+    for (const player of _players) {
+      const dx = player.position.x - bullet.position.x;
+      const dz = player.position.z - bullet.position.z;
+      if (dx * dx + dz * dz < 1.4 * 1.4) {
+        handleEnemyProjectilePlayerCollision(bullet, player, scene);
+        break;
+      }
+    }
+  }
+
+  // 2. ENEMY ↔ PLAYER CONTACT (grid query, continuous touch damage per enemy)
+  for (const player of _players) {
+    if (player.invulnTimer && player.invulnTimer > 0) continue;
+    const pcx = Math.floor(player.position.x / GRID_CELL);
+    const pcz = Math.floor(player.position.z / GRID_CELL);
+    let landed = false;
+    for (let gx = pcx - 1; gx <= pcx + 1 && !landed; gx++) {
+      for (let gz = pcz - 1; gz <= pcz + 1 && !landed; gz++) {
+        const cell = _grid.get(gridKey(gx, gz));
+        if (!cell) continue;
+        for (let k = 0; k < cell.length; k++) {
+          const enemy = _enemies[cell[k]];
+          if (!enemy.health || enemy.health.current <= 0) continue;
+          const dx = enemy.position.x - player.position.x;
+          const dz = enemy.position.z - player.position.z;
+          const reach = 1.4 + (enemy.size ?? 1.5) * 0.25;
+          if (dx * dx + dz * dz < reach * reach) {
+            handleEnemyPlayerCollision(enemy, player, scene);
+            if (player.invulnTimer && player.invulnTimer > 0) {
+              landed = true;
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 3. LASH SPATIAL TEARS (grid query)
+  for (const tear of world.with('isLashTear', 'position', 'hitList')) {
+    const tearPos = tear.position;
+    const tcx = Math.floor(tearPos.x / GRID_CELL);
+    const tcz = Math.floor(tearPos.z / GRID_CELL);
+    for (let gx = tcx - 1; gx <= tcx + 1; gx++) {
+      for (let gz = tcz - 1; gz <= tcz + 1; gz++) {
+        const cell = _grid.get(gridKey(gx, gz));
+        if (!cell) continue;
+        for (let k = 0; k < cell.length; k++) {
+          const enemy = _enemies[cell[k]];
+          if (!enemy.health || enemy.health.current <= 0) continue;
+          if (tear.hitList && tear.hitList.includes(enemy.id || 0)) continue;
+
+          const dx = enemy.position.x - tearPos.x;
+          const dz = enemy.position.z - tearPos.z;
+          if (dx * dx + dz * dz < 1.4 * 1.4) {
+            if (tear.hitList) tear.hitList.push(enemy.id || 0);
+            applyDamage(enemy, 90, _pushDir.set(dx, 0, dz).normalize(), 6, scene);
+          }
+        }
+      }
+    }
   }
 }
 
@@ -169,12 +223,8 @@ function handleProjectileEnemyCollision(bullet: any, enemy: any, scene: THREE.Sc
 
     const confusionDuration = bullet.projectile.confusionDuration || 0;
 
-    _nearbyEnemies.length = 0;
-    for (const target of world.with('isEnemy', 'position', 'health')) {
-      _nearbyEnemies.push(target);
-    }
-
-    for (const target of _nearbyEnemies) {
+    // AoE scans the frame's materialized enemy list — no ECS re-iteration
+    for (const target of _enemies) {
       if (target === enemy) continue;
       if (!target.health || target.health.current <= 0) continue;
 
@@ -399,7 +449,10 @@ function applyDamage(
   bulletColor?: number,
   killerConnId?: string,
 ) {
-  if (!enemy.health) return;
+  // Dead enemies take no further damage — the frame's materialized arrays can
+  // hold an entity for a few more sweeps after it died this frame, and without
+  // this guard a second hit would trigger death (XP/chest drops) twice.
+  if (!enemy.health || enemy.health.current <= 0) return;
 
   const player = world.with('isLocalPlayer', 'stats').first;
   const luckMult = player?.stats?.luck || 1.0;
@@ -627,6 +680,10 @@ export function handleEnemyDeath(
   despawn(enemy, scene);
 }
 
+// Hard ceiling on live particle entities — kill bursts at horde density would
+// otherwise flood the ECS with debris faster than LifecycleSystem drains it.
+const MAX_PARTICLE_ENTITIES = 1200;
+
 export function spawnImpactFX(
   pos: THREE.Vector3,
   _scene: THREE.Scene,
@@ -634,6 +691,7 @@ export function spawnImpactFX(
   color?: number,
   count: number = 5,
 ) {
+  if (world.count('isParticle') >= MAX_PARTICLE_ENTITIES) return;
   const finalColor = color ?? (weaponId ? WEAPONS[weaponId]?.color : 0xff0055) ?? 0xff0055;
 
   // Cosmetic debris count scales with the graphics quality tier
@@ -717,12 +775,13 @@ function spawnBlastFX(pos: THREE.Vector3, radius: number, scene: THREE.Scene, co
 function despawn(entity: any, scene: THREE.Scene) {
   if (entity.transform) scene.remove(entity.transform);
 
-  // Clean up Rapier rigid body
-  if (entity.rigidBody) {
-    removeBody(entity.rigidBody);
+  // Remove from the world BEFORE nulling the body, so the rigidBody index
+  // doesn't keep a stale reference to a despawned entity.
+  const rb = entity.rigidBody;
+  world.remove(entity);
+  if (rb) {
+    removeBody(rb);
     entity.rigidBody = undefined;
     entity.collider = undefined;
   }
-
-  world.remove(entity);
 }

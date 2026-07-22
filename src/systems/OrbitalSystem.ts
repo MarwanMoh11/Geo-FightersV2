@@ -1,7 +1,6 @@
 import { dlog } from '../core/debug';
 import { world } from '../core/world';
 import * as THREE from 'three';
-import { createKinematicBody, isRapierInitialized } from '../core/RapierWorld';
 import { createCustomProjectileMesh } from '../core/projectileVisuals';
 
 const ORBIT_RADIUS = 3.5;
@@ -100,11 +99,13 @@ export function spawnOrbitalProjectile(
     // Initial position at player
     mesh.position.copy(owner.position);
     mesh.position.y = 0.8;
-    mesh.castShadow = true;
+    mesh.castShadow = false;
 
     scene.add(mesh);
 
-    const projectile = world.add({
+    // No Rapier body: orbitals are isProjectile, so CollisionSystem's spatial
+    // grid sweep resolves their hits (pierce 999 keeps them alive).
+    world.add({
       isOrbital: true,
       isProjectile: true,
       weaponId: weaponId,
@@ -129,19 +130,6 @@ export function spawnOrbitalProjectile(
       lifeTimer: 0,
       maxLife: 9999,
     });
-
-    // Add Rapier rigid body for collision
-    if (isRapierInitialized() && projectile.id !== undefined) {
-      const radius = bulletWidth * 1.5; // Orbitals have a larger presence
-      const { rigidBody, collider } = createKinematicBody(
-        mesh.position.x,
-        mesh.position.z,
-        radius,
-        projectile.id,
-      );
-      projectile.rigidBody = rigidBody;
-      projectile.collider = collider;
-    }
   }
 }
 
