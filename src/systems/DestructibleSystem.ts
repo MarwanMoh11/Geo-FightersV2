@@ -5,17 +5,16 @@ import { spawnXP } from '../core/factories';
 import { playCollect } from '../core/audio';
 import { uiState } from '../core/UIState.svelte.ts';
 
-const MAX_CRATES = 80;
+const MAX_CRATES = 5;
 const BREAK_CHECK_RANGE = 70;
 const BREAK_HIT_RADIUS = 1.3;
-const RESPAWN_INTERVAL = 4.0; // seconds between respawns
+const RESPAWN_INTERVAL = 15.0; // one crate every 15 seconds
 const PICKUP_TYPES = ['medkit', 'magnet', 'bomb'] as const;
 
 let solidMesh: THREE.InstancedMesh | null = null;
 let glowMesh: THREE.InstancedMesh | null = null;
 let dirty = true;
 let respawnTimer = 0;
-let seeded = false;
 
 const _mat = new THREE.Matrix4();
 const _pos = new THREE.Vector3();
@@ -93,16 +92,14 @@ function breakCrate(crate: any, scene: THREE.Scene): void {
   dirty = true;
   playCollect(0.8);
 
-  if (Math.random() < 0.25) spawnXP(scene, x, z, 5);
-  if (Math.random() < 0.08) {
-    const type = PICKUP_TYPES[Math.floor(Math.random() * 3)];
-    world.add({
-      isPickup: true,
-      pickupType: type,
-      position: new THREE.Vector3(x, 0.4, z),
-      velocity: new THREE.Vector3(),
-    });
-  }
+  spawnXP(scene, x, z, 8);
+  const type = PICKUP_TYPES[Math.floor(Math.random() * 3)];
+  world.add({
+    isPickup: true,
+    pickupType: type,
+    position: new THREE.Vector3(x, 0.4, z),
+    velocity: new THREE.Vector3(),
+  });
 }
 
 export function DestructibleSystem(dt: number, scene: THREE.Scene): void {
@@ -112,24 +109,9 @@ export function DestructibleSystem(dt: number, scene: THREE.Scene): void {
   const player = world.with('isLocalPlayer', 'position').first;
   if (!player) return;
 
-  // Seed initial crates on first frame
-  if (!seeded) {
-    seeded = true;
-    const half = getCurrentLevel().mapWidth / 2 - 18;
-    for (let i = 0; i < MAX_CRATES; i++) {
-      for (let a = 0; a < 6; a++) {
-        const x = (Math.random() * 2 - 1) * half;
-        const z = (Math.random() * 2 - 1) * half;
-        if (isPointInObstacle(x, z, getCurrentLevel().obstacles[0])) continue;
-        spawnCrate(x, z);
-        break;
-      }
-    }
-  }
-
-  // Periodic refill
+  // Periodic refill — rare, one crate every RESPAWN_INTERVAL seconds
   const active = world.count('isDestructible');
-  if (active < MAX_CRATES - 5) {
+  if (active < MAX_CRATES) {
     respawnTimer += dt;
     if (respawnTimer >= RESPAWN_INTERVAL) {
       respawnTimer = 0;
@@ -139,7 +121,7 @@ export function DestructibleSystem(dt: number, scene: THREE.Scene): void {
         const z = (Math.random() * 2 - 1) * half;
         const dx = x - player.position.x;
         const dz = z - player.position.z;
-        if (dx * dx + dz * dz < 30 * 30) continue;
+        if (dx * dx + dz * dz < 25 * 25) continue; // not on top of the player
         if (isPointInObstacle(x, z, getCurrentLevel().obstacles[0])) continue;
         spawnCrate(x, z);
         break;
@@ -177,5 +159,4 @@ export function resetDestructibles(): void {
   glowMesh = null;
   dirty = true;
   respawnTimer = 0;
-  seeded = false;
 }
