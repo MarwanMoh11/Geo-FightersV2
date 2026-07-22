@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { world } from '../core/world';
 import { uiState } from '../core/UIState.svelte.ts';
+import { getViewExtents } from './CameraSystem';
+import { edgeSpawnPos } from './TimelineSpawner';
 
 const STEER_STRENGTH = 12.0;
 const STUN_FRICTION = 0.9;
@@ -22,6 +24,14 @@ export function EnemySystem(dt: number, _scene: THREE.Scene) {
     }
   }
   if (_players.length === 0) return;
+
+  // VS off-screen recycling: distance past which a lagging enemy is snapped back
+  // to the player's leading edge. Derived from the live view so it sits just
+  // beyond the visible corner (the reposition is never on-screen) yet inside the
+  // render cull — a player who outruns the trash never leaves the screen empty.
+  const _ve = getViewExtents();
+  const recycleDist = Math.hypot(_ve.halfX, _ve.halfZ) + 22;
+  const RECYCLE_DIST_SQ = recycleDist * recycleDist;
 
   _enemies.length = 0;
   let anyConfused = false;
@@ -68,6 +78,21 @@ export function EnemySystem(dt: number, _scene: THREE.Scene) {
           minPDistSq = distSq;
           closestPlayer = p;
         }
+      }
+
+      // Outran the horde? Snap this laggard back to your leading edge (off-screen).
+      if (minPDistSq > RECYCLE_DIST_SQ) {
+        const rp = edgeSpawnPos(
+          closestPlayer.position.x,
+          closestPlayer.position.z,
+          closestPlayer.velocity?.x ?? 0,
+          closestPlayer.velocity?.z ?? 0,
+        );
+        enemy.position.x = rp.x;
+        enemy.position.z = rp.z;
+        enemy.velocity.x = 0;
+        enemy.velocity.z = 0;
+        continue;
       }
 
       let targetX = closestPlayer.position.x;
