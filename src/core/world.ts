@@ -197,7 +197,6 @@ function createECS() {
     'isParticle',
     'isInstancedParticle',
     'isXP',
-    'isCredit',
     'isLashTear',
     'isAnomaly',
     'isWeapon',

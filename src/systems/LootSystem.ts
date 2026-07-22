@@ -10,10 +10,9 @@
 import { world } from '../core/world';
 import * as THREE from 'three';
 import { triggerLevelUp } from './UpgradeSystem';
-import { playCollect, playLevelUp, playCreditCollect } from '../core/audio';
-import { recordCredits } from '../core/ProgressManager';
-import { uiState, saveLocal } from '../core/UIState.svelte.ts';
-import { corruptionXp, corruptionCredits } from '../core/corruption';
+import { playCollect, playLevelUp } from '../core/audio';
+import { uiState } from '../core/UIState.svelte.ts';
+import { corruptionXp } from '../core/corruption';
 import {
   bankXP,
   XP_DESPAWN_RADIUS_SQ,
@@ -30,11 +29,6 @@ let xpInstancedMesh: THREE.InstancedMesh | null = null;
 const MAX_XP_INSTANCES = 500;
 const xpGeo = new THREE.BoxGeometry(1, 1, 1);
 const xpBaseMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-
-let creditInstancedMesh: THREE.InstancedMesh | null = null;
-const MAX_CREDIT_INSTANCES = 300;
-const creditGeo = new THREE.OctahedronGeometry(1);
-const creditBaseMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
 
 const COLLECT_RADIUS_SQ = 1.5 * 1.5;
 const MAGNET_FORCE = 32.0;
@@ -226,109 +220,6 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
     xp.rotationY = (xp.rotationY ?? 0) + 3 * dt;
     xp.rotationX = (xp.rotationX ?? 0) + 2 * dt;
   }
-
-  // 2. UPDATE CYBER CREDITS
-  for (const credit of world.with('isCredit', 'position', 'velocity', 'creditValue')) {
-    let closestPlayer: any = null;
-    let minDistanceSq = Infinity;
-
-    for (const player of _activePlayers) {
-      const dx = player.position.x - credit.position.x;
-      const dz = player.position.z - credit.position.z;
-      const distSq = dx * dx + dz * dz;
-      if (distSq < minDistanceSq) {
-        minDistanceSq = distSq;
-        closestPlayer = player;
-      }
-    }
-
-    if (!closestPlayer) continue;
-
-    const px = closestPlayer.position.x;
-    const pz = closestPlayer.position.z;
-    const dx = px - credit.position.x;
-    const dz = pz - credit.position.z;
-    const distSq = minDistanceSq;
-
-    // A. DESPAWN CHECK
-    if (distSq > XP_DESPAWN_RADIUS_SQ) {
-      despawn(credit, scene);
-      continue;
-    }
-
-    // B. COLLECTION
-    if (distSq < COLLECT_RADIUS_SQ) {
-      // Corruption pays out: +25% credits per level (rounded up); the
-      // SCAVENGER CHIP (Neon Slums exclusive) adds +25% and a 1 HP trickle.
-      const hasChip = closestPlayer.passiveSlots?.some(
-        (slot: { passiveId: string }) => slot.passiveId === 'scavenger_chip',
-      );
-      const val = Math.ceil(
-        (credit.creditValue || 1) * corruptionCredits(uiState.corruption) * (hasChip ? 1.25 : 1),
-      );
-      if (hasChip && closestPlayer.health) {
-        closestPlayer.health.current = Math.min(
-          closestPlayer.health.current + 1,
-          closestPlayer.health.max,
-        );
-      }
-      if (closestPlayer.isLocalPlayer) {
-        uiState.creditsCollected += val;
-        uiState.credits += val;
-        recordCredits(val);
-        saveLocal('geo_credits', JSON.stringify(uiState.credits));
-        playCreditCollect();
-      }
-      despawn(credit, scene);
-      continue;
-    }
-
-    // C. MAGNETISM
-    const magnetMult = closestPlayer.stats?.magnet || 1.0;
-    const effectiveMagnetRadiusSq = MAGNET_RADIUS_SQ * magnetMult * magnetMult;
-
-    if (distSq < effectiveMagnetRadiusSq) {
-      const invDist = 1.0 / Math.sqrt(distSq);
-      const nx = dx * invDist;
-      const nz = dz * invDist;
-
-      const closeness = 1 - distSq / effectiveMagnetRadiusSq;
-      const pull = closeness * closeness * (3 - 2 * closeness);
-      const force = MAGNET_FORCE * (0.25 + 0.75 * pull) * 1.3; // Credits fly slightly faster
-
-      credit.velocity.x += nx * force * dt;
-      credit.velocity.z += nz * force * dt;
-      credit.velocity.x *= 0.92;
-      credit.velocity.z *= 0.92;
-    } else {
-      credit.velocity.x *= FRICTION;
-      credit.velocity.z *= FRICTION;
-    }
-
-    // D. GRAVITY (Simple bounce)
-    if (credit.position.y > GROUND_Y) {
-      credit.velocity.y -= GRAVITY * dt;
-    } else {
-      credit.position.y = GROUND_Y;
-      if (credit.velocity.y < 0) {
-        credit.velocity.y *= -0.4;
-        if (Math.abs(credit.velocity.y) < 1) credit.velocity.y = 0;
-      }
-    }
-
-    // E. MOVE
-    credit.position.x += credit.velocity.x * dt;
-    credit.position.y += credit.velocity.y * dt;
-    credit.position.z += credit.velocity.z * dt;
-
-    // F. ROTATION
-    credit.rotationY = (credit.rotationY ?? 0) + 4 * dt;
-    credit.rotationX = (credit.rotationX ?? 0) + 3 * dt;
-  }
-
-  // Rendering of XP/credit instances is done by LootRenderSystem so it can run
-  // on clients too (which don't simulate loot but must still draw the synced
-  // gems). Host/solo calls it right after this simulation pass.
 }
 
 /**
@@ -347,9 +238,6 @@ export function LootRenderSystem(scene: THREE.Scene): void {
   // Scene change check: clear cached InstancedMesh if scene changes
   if (xpInstancedMesh && xpInstancedMesh.parent !== scene) {
     xpInstancedMesh = null;
-  }
-  if (creditInstancedMesh && creditInstancedMesh.parent !== scene) {
-    creditInstancedMesh = null;
   }
 
   // G. RENDER INSTANCED XP
@@ -397,43 +285,6 @@ export function LootRenderSystem(scene: THREE.Scene): void {
     if (xpInstancedMesh) {
       xpInstancedMesh.count = 0;
       xpInstancedMesh.visible = false;
-    }
-  }
-
-  // H. RENDER INSTANCED CREDITS
-  let creditCount = 0;
-  for (const entity of world.with('isCredit')) {
-    if (creditCount >= MAX_CREDIT_INSTANCES) break;
-    if (spinOnRender) {
-      entity.rotationY = (entity.rotationY ?? 0) + 4 * rdt;
-      entity.rotationX = (entity.rotationX ?? 0) + 3 * rdt;
-    }
-
-    if (!creditInstancedMesh) {
-      creditInstancedMesh = new THREE.InstancedMesh(creditGeo, creditBaseMat, MAX_CREDIT_INSTANCES);
-      creditInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      creditInstancedMesh.frustumCulled = false;
-      scene.add(creditInstancedMesh);
-    }
-
-    tempPosition.copy(entity.position);
-    tempScale.setScalar(entity.size ?? 0.45);
-    tempRotation.set(entity.rotationX ?? 0, entity.rotationY ?? 0, 0);
-    tempQuaternion.setFromEuler(tempRotation);
-    tempMatrix.compose(tempPosition, tempQuaternion, tempScale);
-
-    creditInstancedMesh.setMatrixAt(creditCount, tempMatrix);
-    creditCount++;
-  }
-
-  if (creditCount > 0 && creditInstancedMesh) {
-    creditInstancedMesh.count = creditCount;
-    creditInstancedMesh.instanceMatrix.needsUpdate = true;
-    creditInstancedMesh.visible = true;
-  } else {
-    if (creditInstancedMesh) {
-      creditInstancedMesh.count = 0;
-      creditInstancedMesh.visible = false;
     }
   }
 }
