@@ -13,6 +13,7 @@ import { triggerLevelUp } from './UpgradeSystem';
 import { playCollect, playLevelUp, playCreditCollect } from '../core/audio';
 import { recordCredits } from '../core/ProgressManager';
 import { uiState, saveLocal } from '../core/UIState.svelte.ts';
+import { corruptionXp, corruptionCredits } from '../core/corruption';
 import {
   bankXP,
   XP_DESPAWN_RADIUS_SQ,
@@ -130,8 +131,8 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
         xp.position.z <= surge.z2;
       if (inSurge && xp.xpValue) xp.xpValue *= 2;
       if (xp.xpValue && closestPlayer.xp !== undefined && closestPlayer.score !== undefined) {
-        // Corruption pays out: +20% XP per level.
-        closestPlayer.xp += Math.ceil(xp.xpValue * (1 + uiState.corruption * 0.2));
+        // Corruption pays out more XP the higher the threat level.
+        closestPlayer.xp += Math.ceil(xp.xpValue * corruptionXp(uiState.corruption));
 
         if (!uiState.overloadActive && closestPlayer.isLocalPlayer) {
           const maxXp = closestPlayer.xpMax || 100;
@@ -263,7 +264,7 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
         (slot: { passiveId: string }) => slot.passiveId === 'scavenger_chip',
       );
       const val = Math.ceil(
-        (credit.creditValue || 1) * (1 + uiState.corruption * 0.25) * (hasChip ? 1.25 : 1),
+        (credit.creditValue || 1) * corruptionCredits(uiState.corruption) * (hasChip ? 1.25 : 1),
       );
       if (hasChip && closestPlayer.health) {
         closestPlayer.health.current = Math.min(

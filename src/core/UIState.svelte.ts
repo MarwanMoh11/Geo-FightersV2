@@ -1,5 +1,6 @@
 import type { WeaponSlot, PassiveSlot } from './world';
 import type { UpgradeOption } from '../systems/UpgradeSystem';
+import { CORRUPTION_DEFAULT } from './corruption';
 
 const isClient = typeof window !== 'undefined';
 
@@ -222,7 +223,10 @@ export const uiState = $state({
   netRtt: -1,
 
   // Corruption dial (0-5 risk/reward, persisted)
-  corruption: getLocalVal('geo_corruption', 0),
+  // v2 key: the standard threat level is now 5 (was 0). Bumping the key retires
+  // every old saved "0" so existing players also start at the new standard;
+  // anyone who wants it easy dials down to 0.
+  corruption: getLocalVal('geo_corruption_v2', CORRUPTION_DEFAULT),
 
   // FLUX Chaos Surge: which effect the roulette rolled ('' = none active)
   fluxEffect: '' as '' | 'nuke' | 'frenzy' | 'heal' | 'gold',

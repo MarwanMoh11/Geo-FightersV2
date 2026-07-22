@@ -31,6 +31,7 @@ import { PIT_GATES, type ArenaGate } from '../core/LevelData';
 import { pulseGate } from './LevelSystem';
 import { uiState, announce } from '../core/UIState.svelte.ts';
 import { partySpawnMultiplier } from '../core/difficulty';
+import { corruptionDensity } from '../core/corruption';
 import * as THREE from 'three';
 
 // --- CONFIGURATION ---
@@ -123,7 +124,7 @@ export function TimelineSpawnerSystem(dt: number, scene: THREE.Scene): void {
   // Pressure knobs (VS: Curse raises spawn frequency + quantity; Hyper raises
   // the minimum amount). Corruption is the player's chosen bet; curse comes
   // from characters/passives; co-op scales with living fighters.
-  const corruptionMult = 1 + uiState.corruption * 0.2;
+  const corruptionMult = corruptionDensity(uiState.corruption);
   const curseMult = (player as { stats?: { curse?: number } }).stats?.curse ?? 1.0;
   const partyMult = partySpawnMultiplier();
   const pressure = corruptionMult * curseMult * partyMult;
