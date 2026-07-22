@@ -11,7 +11,7 @@ export const XP_TIERS = {
   TIER_4: { threshold: 100, color: 0xffcc00, size: 0.7, name: 'gold' }, // 100+ XP
 };
 
-export const MAX_ACTIVE_XP = 200;
+export const MAX_ACTIVE_XP = 600;
 export const XP_DESPAWN_RADIUS_SQ = 40 * 40;
 
 // Bank delivery - spawn large shard when buffer exceeds this
