@@ -366,6 +366,7 @@
   .item-info {
     min-width: 0;
     padding-right: 2.5rem;
+    padding-bottom: 2.2rem;
   }
 
   .item-name {
