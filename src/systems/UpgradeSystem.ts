@@ -515,14 +515,15 @@ function getWeaponLevelUpDesc(weaponId: string, currentLevel: number): string {
 
   const changes: string[] = [];
   if (next.damage > current.damage) {
-    changes.push(`+${next.damage - current.damage} DMG`);
+    const diff = Math.round(next.damage - current.damage);
+    changes.push(`+${diff} DMG`);
   }
   if (next.projectiles > current.projectiles) {
     changes.push(`+${next.projectiles - current.projectiles} Projectile`);
   }
   if (next.cooldown < current.cooldown) {
     const pct = Math.round((1 - next.cooldown / current.cooldown) * 100);
-    changes.push(`${pct}% faster`);
+    changes.push(`-${pct}% Cooldown`);
   }
 
   return changes.join(', ') || 'Improve stats';
