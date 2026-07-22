@@ -52,6 +52,16 @@ export function resetCamera(): void {
   _look.set(0, 0, 0);
 }
 
+// Live on-screen half-extents in world units (x = horizontal, z = depth into
+// the tilt), refreshed every frame from the real camera. Enemy spawning reads
+// these to drop the horde JUST outside the visible rectangle — Vampire-Survivors
+// edge spawns instead of the old fixed wall gates.
+let _viewHalfX = 30;
+let _viewHalfZ = 26;
+export function getViewExtents(): { halfX: number; halfZ: number } {
+  return { halfX: _viewHalfX, halfZ: _viewHalfZ };
+}
+
 export function CameraSystem(dt: number, camera: THREE.Camera) {
   const player = world.with('isLocalPlayer', 'transform').first;
   if (!player || !player.transform) return;
@@ -94,6 +104,11 @@ export function CameraSystem(dt: number, camera: THREE.Camera) {
     const half = getCurrentLevel().mapWidth / 2;
     const vExtent = cameraHeight * Math.tan(((persp.fov / 2) * Math.PI) / 180);
     const hExtent = vExtent * persp.aspect;
+    // Publish the visible half-extents for edge spawning. The +tilt term matches
+    // the clampZ bias below (the camera sits +z of focus, so more far-side ground
+    // is on screen); spawning must clear the FARTHEST visible edge.
+    _viewHalfX = hExtent;
+    _viewHalfZ = vExtent + cameraDistance * 0.45;
     const clampX = Math.max(0, half + CLAMP_MARGIN - hExtent);
     // The tilt (camera sits +z of focus) shows extra far-side ground; bias for it
     const clampZ = Math.max(0, half + CLAMP_MARGIN - vExtent - cameraDistance * 0.45);

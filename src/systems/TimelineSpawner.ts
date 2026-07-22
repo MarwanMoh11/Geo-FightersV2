@@ -27,8 +27,8 @@ import {
   ENDLESS_SWARM,
   ENDLESS_ELITES,
 } from '../core/SpawnTimeline';
-import { PIT_GATES, type ArenaGate } from '../core/LevelData';
-import { pulseGate } from './LevelSystem';
+import { getCurrentLevel } from '../core/LevelData';
+import { getViewExtents } from './CameraSystem';
 import { uiState, announce } from '../core/UIState.svelte.ts';
 import { partySpawnMultiplier } from '../core/difficulty';
 import { corruptionDensity } from '../core/corruption';
@@ -47,49 +47,55 @@ const STAGE_END = 600; // FinaleBoss owns 10:00
 
 const _spawnerPlayers: any[] = [];
 
-// --- THE PIT: GATE SPAWNING ---
-// Enemies enter through the arena's eight wall gates (Isaac doors, cyberpunk
-// skin) instead of materializing offscreen. Each spawn pulses its gate's
-// telegraph so density reads as an INVASION pouring in, not soup appearing.
+// --- VAMPIRE-SURVIVORS EDGE SPAWNING ---
+// Enemies materialize just OUTSIDE the visible screen, all around the player,
+// and immediately close in — the VS density feel. The camera publishes its live
+// on-screen half-extents; we drop the horde on the ellipse just past that edge
+// so it's always near you and on-screen within a step, never scattered across a
+// far corner of the arena where it reads as empty.
+const SPAWN_MARGIN = 4; // units just past the visible edge (off-screen, but close)
 
-/** A spawn position just inside a gate, jittered across its opening. */
-function gateSpawnPos(gate: ArenaGate): { x: number; z: number } {
-  const lateral = (Math.random() - 0.5) * (gate.width - 2);
-  const inward = 1.5 + Math.random() * 4;
-  // Lateral axis is perpendicular to the inward normal
-  return {
-    x: gate.x + gate.nx * inward + gate.nz * lateral,
-    z: gate.z + gate.nz * inward + gate.nx * lateral,
-  };
-}
-
-/** Spawn one enemy through a gate (with telegraph pulse). */
-function spawnThroughGate(
-  scene: THREE.Scene,
-  gateIdx: number,
-  type: EnemyType,
-  hpMult: number,
-): ReturnType<typeof spawnEnemy> {
-  const gate = PIT_GATES[gateIdx];
-  const pos = gateSpawnPos(gate);
-  pulseGate(gateIdx);
-  return spawnEnemy(scene, pos.x, pos.z, type, hpMult);
+function clampToArena(v: number, half: number): number {
+  const lim = half - 2; // keep off the walls
+  return v < -lim ? -lim : v > lim ? lim : v;
 }
 
 /**
- * Ambient fills bias toward gates the player ISN'T camping: gates far from
- * the player get double weight, so pressure surrounds instead of feeding
- * into the player's guns at one door.
+ * A point just outside the visible screen rectangle, around the player.
+ * When a heading is given (the player's velocity), ~55% of spawns bias into it
+ * (arc ±70°) so the screen you're running toward stays thick — you run INTO the
+ * horde — while the rest surround from all sides.
  */
-function pickAmbientGate(playerPos: THREE.Vector3): number {
-  const a = Math.floor(Math.random() * PIT_GATES.length);
-  const b = Math.floor(Math.random() * PIT_GATES.length);
-  const distSq = (g: ArenaGate) => {
-    const dx = g.x - playerPos.x;
-    const dz = g.z - playerPos.z;
-    return dx * dx + dz * dz;
+export function edgeSpawnPos(
+  px: number,
+  pz: number,
+  biasX = 0,
+  biasZ = 0,
+): { x: number; z: number } {
+  const { halfX, halfZ } = getViewExtents();
+  const rx = halfX + SPAWN_MARGIN;
+  const rz = halfZ + SPAWN_MARGIN;
+  let ang = Math.random() * Math.PI * 2;
+  if (Math.hypot(biasX, biasZ) > 0.05 && Math.random() < 0.55) {
+    ang = Math.atan2(biasZ, biasX) + (Math.random() - 0.5) * (Math.PI * 0.78);
+  }
+  const level = getCurrentLevel();
+  return {
+    x: clampToArena(px + Math.cos(ang) * rx, level.mapWidth / 2),
+    z: clampToArena(pz + Math.sin(ang) * rz, level.mapHeight / 2),
   };
-  return distSq(PIT_GATES[a]) >= distSq(PIT_GATES[b]) ? a : b;
+}
+
+/** Spawn one enemy just off-screen, biased into the player's heading. */
+function spawnAtEdge(
+  scene: THREE.Scene,
+  player: { position: THREE.Vector3; velocity?: THREE.Vector3 },
+  type: EnemyType,
+  hpMult: number,
+): ReturnType<typeof spawnEnemy> {
+  const v = player.velocity;
+  const p = edgeSpawnPos(player.position.x, player.position.z, v?.x ?? 0, v?.z ?? 0);
+  return spawnEnemy(scene, p.x, p.z, type, hpMult);
 }
 
 // --- STATE ---
@@ -169,8 +175,9 @@ export function TimelineSpawnerSystem(dt: number, scene: THREE.Scene): void {
   if (alive >= MAX_ENEMIES) return;
 
   if (alive < minAlive) {
-    // THE VS RULE: the quota is a floor. Fill the deficit now — poured
-    // through the gates, spread so no single door clogs into a wall of HP.
+    // THE VS RULE: the quota is a floor. Fill the deficit now — dropped just
+    // off-screen all around the player so the horde is instantly ON you, not
+    // trickling in from a far wall.
     const deficit = Math.min(minAlive - alive, MAX_FILL_PER_TICK, MAX_ENEMIES - alive);
     for (let i = 0; i < deficit; i++) {
       const type = isMaxMode
@@ -178,13 +185,13 @@ export function TimelineSpawnerSystem(dt: number, scene: THREE.Scene): void {
             Math.floor(Math.random() * 4)
           ] as EnemyType)
         : pickFromPool(wave.pool);
-      spawnThroughGate(scene, pickAmbientGate(player.position), type, hpMult);
+      spawnAtEdge(scene, player, type, hpMult);
     }
   } else {
     // At quota: one of each pool type per tick keeps pressure creeping up
     for (const entry of (wave ?? { pool: [{ type: EnemyType.VIRUS, weight: 100 }] }).pool) {
       if (world.count('isEnemy') >= MAX_ENEMIES) break;
-      spawnThroughGate(scene, pickAmbientGate(player.position), entry.type, hpMult);
+      spawnAtEdge(scene, player, entry.type, hpMult);
     }
   }
 }
@@ -224,15 +231,15 @@ function fireScriptedEvents(scene: THREE.Scene, playerPos: THREE.Vector3, waveHp
 }
 
 /**
- * THE PIT swarms:
- *   ring → ALL GATES BREACH — every door floods at once; the closing circle
- *          becomes an eight-front invasion (announced, gates flare).
- *   line → WALL BREACH — one wall's full length flushes a picket of enemies
- *          that sweeps across the arena.
+ * Screen-relative swarms (VS):
+ *   ring → THE HORDE CLOSES IN — a full circle of enemies drops evenly on the
+ *          screen edge and squeezes inward from every direction at once.
+ *   line → WALL OF STEEL — a solid picket spans one screen edge and marches
+ *          across the view.
  */
 function spawnSwarm(
   scene: THREE.Scene,
-  _playerPos: THREE.Vector3,
+  playerPos: THREE.Vector3,
   kind: 'ring' | 'line',
   type: EnemyType,
   count: number,
@@ -243,28 +250,35 @@ function spawnSwarm(
   const n = Math.min(count, Math.max(0, room));
   if (n <= 0) return;
 
+  const { halfX, halfZ } = getViewExtents();
+  const rx = halfX + SPAWN_MARGIN;
+  const rz = halfZ + SPAWN_MARGIN;
+  const level = getCurrentLevel();
+  const halfW = level.mapWidth / 2;
+  const halfH = level.mapHeight / 2;
+
   if (kind === 'ring') {
-    announce('BREACH — ALL GATES');
+    announce('THE HORDE CLOSES IN');
     for (let i = 0; i < n; i++) {
-      const e = spawnThroughGate(scene, i % PIT_GATES.length, type, hpMult);
+      const ang = (i / n) * Math.PI * 2;
+      const e = spawnEnemy(
+        scene,
+        clampToArena(playerPos.x + Math.cos(ang) * rx, halfW),
+        clampToArena(playerPos.z + Math.sin(ang) * rz, halfH),
+        type,
+        hpMult,
+      );
       e.moveSpeed = (e.moveSpeed ?? 1) * speedMult;
     }
   } else {
-    // One wall flushes: enemies spread along its whole inner face
-    const walls: ArenaGate['wall'][] = ['n', 's', 'e', 'w'];
-    const wall = walls[Math.floor(Math.random() * walls.length)];
-    const wallGates = PIT_GATES.filter((g) => g.wall === wall);
-    const ref = wallGates[0];
-    announce('WALL BREACH');
-    wallGates.forEach((g) => pulseGate(PIT_GATES.indexOf(g)));
+    // A picket spanning the top OR bottom screen edge, sweeping across the view.
+    const side = Math.random() < 0.5 ? -1 : 1;
     for (let i = 0; i < n; i++) {
-      // Spread across the wall length (±60 keeps clear of the corner vaults)
-      const lateral = -60 + (i / Math.max(1, n - 1)) * 120;
-      const inward = 1.5 + Math.random() * 3;
+      const t = n <= 1 ? 0.5 : i / (n - 1);
       const e = spawnEnemy(
         scene,
-        ref.nx !== 0 ? ref.x + ref.nx * inward : lateral,
-        ref.nz !== 0 ? ref.z + ref.nz * inward : lateral,
+        clampToArena(playerPos.x + (t - 0.5) * 2 * rx, halfW),
+        clampToArena(playerPos.z + side * rz, halfH),
         type,
         hpMult,
       );
@@ -273,7 +287,7 @@ function spawnSwarm(
   }
 }
 
-/** Elites stride in through a single gate — an announced arrival. */
+/** Elites stride in from just off-screen — an announced arrival at your edge. */
 function spawnElitePack(
   scene: THREE.Scene,
   playerPos: THREE.Vector3,
@@ -281,9 +295,9 @@ function spawnElitePack(
   count: number,
   hpMult: number,
 ): void {
-  const gateIdx = pickAmbientGate(playerPos);
   for (let i = 0; i < count; i++) {
-    spawnThroughGate(scene, gateIdx, type, hpMult);
+    const p = edgeSpawnPos(playerPos.x, playerPos.z);
+    spawnEnemy(scene, p.x, p.z, type, hpMult);
   }
 }
 
