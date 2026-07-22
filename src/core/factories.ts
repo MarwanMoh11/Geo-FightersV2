@@ -1685,9 +1685,8 @@ export function spawnEnemy(
   x: number,
   z: number,
   type: EnemyType = EnemyType.GLITCH,
-  // Phase 1.97: the spawner's wave HP curve (VS re-serves the same enemies
-  // bulkier each minute); swarm bodies pass <1 so ring traps stay brittle
   hpMult: number = 1,
+  speedMult: number = 1,
 ) {
   const stats = ENEMY_STATS[type];
 
@@ -1696,7 +1695,7 @@ export function spawnEnemy(
     1,
     Math.round(stats.hp * hpMult * corruptionHp(corr) * partyHpMultiplier()),
   );
-  const moveSpeed = stats.speed * corruptionSpeed(corr);
+  const moveSpeed = stats.speed * corruptionSpeed(corr) * speedMult;
 
   spawnPortalFx(_scene, x, z, type, stats.size);
 
@@ -1709,6 +1708,7 @@ export function spawnEnemy(
     moveSpeed,
     size: stats.size,
     rotationY: 0,
+    wavePower: hpMult,
     aimTarget: new THREE.Vector3(),
     xpValue: stats.xp,
     baseColor: stats.color,

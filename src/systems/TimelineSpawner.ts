@@ -92,10 +92,11 @@ function spawnAtEdge(
   player: { position: THREE.Vector3; velocity?: THREE.Vector3 },
   type: EnemyType,
   hpMult: number,
+  speedMult: number = 1,
 ): ReturnType<typeof spawnEnemy> {
   const v = player.velocity;
   const p = edgeSpawnPos(player.position.x, player.position.z, v?.x ?? 0, v?.z ?? 0);
-  return spawnEnemy(scene, p.x, p.z, type, hpMult);
+  return spawnEnemy(scene, p.x, p.z, type, hpMult, speedMult);
 }
 
 // --- STATE ---
@@ -178,6 +179,7 @@ export function TimelineSpawnerSystem(dt: number, scene: THREE.Scene): void {
     // THE VS RULE: the quota is a floor. Fill the deficit now — dropped just
     // off-screen all around the player so the horde is instantly ON you, not
     // trickling in from a far wall.
+    const spd = isMaxMode ? 1 : wave.speedMult;
     const deficit = Math.min(minAlive - alive, MAX_FILL_PER_TICK, MAX_ENEMIES - alive);
     for (let i = 0; i < deficit; i++) {
       const type = isMaxMode
@@ -185,13 +187,14 @@ export function TimelineSpawnerSystem(dt: number, scene: THREE.Scene): void {
             Math.floor(Math.random() * 4)
           ] as EnemyType)
         : pickFromPool(wave.pool);
-      spawnAtEdge(scene, player, type, hpMult);
+      spawnAtEdge(scene, player, type, hpMult, spd);
     }
   } else {
     // At quota: one of each pool type per tick keeps pressure creeping up
+    const spd = isMaxMode ? 1 : wave.speedMult;
     for (const entry of (wave ?? { pool: [{ type: EnemyType.VIRUS, weight: 100 }] }).pool) {
       if (world.count('isEnemy') >= MAX_ENEMIES) break;
-      spawnAtEdge(scene, player, entry.type, hpMult);
+      spawnAtEdge(scene, player, entry.type, hpMult, spd);
     }
   }
 }
