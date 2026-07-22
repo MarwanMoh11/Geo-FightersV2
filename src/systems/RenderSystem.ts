@@ -64,6 +64,12 @@ const SHADOW_DETAIL_MAX = 900;
  * types at load so the compile happens on the loading screen instead.
  */
 function ensureEnemyTypeMeshes(type: EnemyType, scene: THREE.Scene): void {
+  // If the geometry cache was never populated (e.g. mobile prewarm failed or
+  // was skipped), lazily regenerate it here so the game doesn't render empty.
+  if (cachedEnemyGeometries.size === 0) {
+    pregenerateAllEnemyGeometries();
+  }
+
   const geomData = cachedEnemyGeometries.get(type);
   if (!geomData) return;
 
