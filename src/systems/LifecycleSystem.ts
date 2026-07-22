@@ -20,13 +20,15 @@ export function LifecycleSystem(dt: number, scene: THREE.Scene) {
           }
         }
         // Free the Rapier body too — leaking one per expired bullet
-        // degrades the physics step over the course of a run
-        if (entity.rigidBody) {
-          removeBody(entity.rigidBody);
+        // degrades the physics step over the course of a run. Remove from the
+        // world first so the rigidBody index doesn't strand a stale entity.
+        const rb = entity.rigidBody;
+        world.remove(entity);
+        if (rb) {
+          removeBody(rb);
           entity.rigidBody = undefined;
           entity.collider = undefined;
         }
-        world.remove(entity);
       }
     }
   }

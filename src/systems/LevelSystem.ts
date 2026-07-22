@@ -400,7 +400,7 @@ function buildPitWalls(scene: THREE.Scene, level: LevelConfig): void {
     BufferGeometryUtils.mergeGeometries(pilasterParts),
     new THREE.MeshStandardMaterial({ color: C.metal, roughness: 0.5, metalness: 0.6 }),
   );
-  pilasters.castShadow = true;
+  pilasters.castShadow = false;
   scene.add(pilasters);
   obstacleMeshes.push(pilasters);
 
@@ -495,7 +495,7 @@ function buildPitGates(scene: THREE.Scene): void {
     BufferGeometryUtils.mergeGeometries(frameParts),
     new THREE.MeshStandardMaterial({ color: C.metal, roughness: 0.45, metalness: 0.7 }),
   );
-  frames.castShadow = true;
+  frames.castShadow = false;
   scene.add(frames);
   obstacleMeshes.push(frames);
 
@@ -596,7 +596,7 @@ function buildTheCore(scene: THREE.Scene): void {
     new THREE.MeshStandardMaterial({ color: C.metal, roughness: 0.4, metalness: 0.8 }),
   );
   plinth.position.y = 0.6;
-  plinth.castShadow = true;
+  plinth.castShadow = false;
   core.add(plinth);
 
   const column = new THREE.Mesh(
@@ -682,12 +682,12 @@ function addDoorway(
   for (const side of [-1, 1]) {
     const post = new THREE.Mesh(new THREE.BoxGeometry(0.7, doorH + 0.8, 0.8), fm);
     post.position.set(side * (doorW / 2 + 0.45), (doorH + 0.8) / 2, face + 0.3);
-    post.castShadow = true;
+    post.castShadow = false;
     g.add(post);
   }
   const lintel = new THREE.Mesh(new THREE.BoxGeometry(doorW + 1.9, 0.7, 1.0), fm);
   lintel.position.set(0, doorH + 0.85, face + 0.3);
-  lintel.castShadow = true;
+  lintel.castShadow = false;
   g.add(lintel);
 
   // Accent lamp above the door — the "OPEN" sign
@@ -740,19 +740,19 @@ function buildVaults(scene: THREE.Scene): void {
 
     const body = new THREE.Mesh(new THREE.BoxGeometry(16, 8, 14), bodyMat(C.wall));
     body.position.y = 4;
-    body.castShadow = true;
+    body.castShadow = false;
     body.receiveShadow = true;
     g.add(body);
     const upper = new THREE.Mesh(new THREE.BoxGeometry(12, 3, 10), bodyMat(C.wallDark));
     upper.position.set(0, 9.5, -1);
-    upper.castShadow = true;
+    upper.castShadow = false;
     g.add(upper);
 
     // Twin turret pods watching the approach
     for (const side of [-1, 1]) {
       const pod = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.7, 2.6, 10), metalMat());
       pod.position.set(side * 5.4, 9.2, 4.2);
-      pod.castShadow = true;
+      pod.castShadow = false;
       g.add(pod);
       const gun = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 2.6), metalMat());
       gun.position.set(side * 5.4, 9.4, 6);
@@ -773,7 +773,7 @@ function buildVaults(scene: THREE.Scene): void {
     ]) {
       const box = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.3, 1.7), bodyMat(0x3a4152));
       box.position.set(cx, cy, 6);
-      box.castShadow = true;
+      box.castShadow = false;
       g.add(box);
     }
 
@@ -798,7 +798,7 @@ function buildVaults(scene: THREE.Scene): void {
 
     const body = new THREE.Mesh(new THREE.BoxGeometry(16, 9, 12), bodyMat(C.wall));
     body.position.y = 4.5;
-    body.castShadow = true;
+    body.castShadow = false;
     body.receiveShadow = true;
     g.add(body);
 
@@ -807,12 +807,12 @@ function buildVaults(scene: THREE.Scene): void {
     for (const cx of [-5.9, -3.1, 3.1, 5.9]) {
       const col = new THREE.Mesh(new THREE.BoxGeometry(1.4, 9.8, 1.4), metalMat());
       col.position.set(cx, 4.9, 6.2);
-      col.castShadow = true;
+      col.castShadow = false;
       g.add(col);
     }
     const cornice = new THREE.Mesh(new THREE.BoxGeometry(17.4, 1.2, 14), bodyMat(C.wallDark));
     cornice.position.y = 9.9;
-    cornice.castShadow = true;
+    cornice.castShadow = false;
     g.add(cornice);
     const strip = new THREE.Mesh(
       new THREE.BoxGeometry(17.6, 0.36, 14.2),
@@ -843,14 +843,14 @@ function buildVaults(scene: THREE.Scene): void {
 
     const body = new THREE.Mesh(new THREE.BoxGeometry(14, 5.5, 14), bodyMat(C.wall));
     body.position.y = 2.75;
-    body.castShadow = true;
+    body.castShadow = false;
     body.receiveShadow = true;
     g.add(body);
 
     for (const cx of [-3.6, 3.6]) {
       const coil = new THREE.Mesh(new THREE.CylinderGeometry(2, 2.3, 4.6, 10), metalMat());
       coil.position.set(cx, 7.7, -2);
-      coil.castShadow = true;
+      coil.castShadow = false;
       g.add(coil);
       for (let ring = 0; ring < 3; ring++) {
         const disc = new THREE.Mesh(
@@ -899,7 +899,7 @@ function buildVaults(scene: THREE.Scene): void {
 
     const body = new THREE.Mesh(new THREE.BoxGeometry(13, 6, 13), bodyMat(C.wall));
     body.position.y = 3;
-    body.castShadow = true;
+    body.castShadow = false;
     body.receiveShadow = true;
     g.add(body);
 
@@ -916,7 +916,7 @@ function buildVaults(scene: THREE.Scene): void {
     const awning = new THREE.Mesh(new THREE.BoxGeometry(6.4, 0.28, 2.6), bodyMat(0x33203f));
     awning.position.set(0, 5.1, 7);
     awning.rotation.x = 0.3;
-    awning.castShadow = true;
+    awning.castShadow = false;
     g.add(awning);
 
     // Crooked neon sign beside the door
@@ -936,7 +936,7 @@ function buildVaults(scene: THREE.Scene): void {
     ]) {
       const crate = new THREE.Mesh(new THREE.BoxGeometry(s, s, s), bodyMat(0x3d4356));
       crate.position.set(cx, cy, 5.6);
-      crate.castShadow = true;
+      crate.castShadow = false;
       g.add(crate);
     }
 
@@ -957,7 +957,7 @@ function buildDepotKiosk(scene: THREE.Scene, x: number, z: number, rotY: number)
   // Machine body (authored 10 wide × 4 deep, door on +z)
   const body = new THREE.Mesh(new THREE.BoxGeometry(10, 5.2, 4), bodyMat(0x1c2330));
   body.position.y = 2.6;
-  body.castShadow = true;
+  body.castShadow = false;
   body.receiveShadow = true;
   g.add(body);
 
@@ -990,7 +990,7 @@ function buildDepotKiosk(scene: THREE.Scene, x: number, z: number, rotY: number)
   // hang from the machine top, so nothing solid sits in walkable space)
   const canopy = new THREE.Mesh(new THREE.BoxGeometry(11, 0.34, 6.4), bodyMat(C.wallDark));
   canopy.position.set(0, 5.6, 1.6);
-  canopy.castShadow = true;
+  canopy.castShadow = false;
   g.add(canopy);
   const canopyEdge = new THREE.Mesh(
     new THREE.BoxGeometry(11.1, 0.2, 0.3),
@@ -1045,7 +1045,7 @@ function buildDepotsAndContainers(scene: THREE.Scene): void {
         new THREE.MeshStandardMaterial({ color: 0x27435a, roughness: 0.6, metalness: 0.5 }),
       );
       body.position.y = 1.6;
-      body.castShadow = true;
+      body.castShadow = false;
       body.receiveShadow = true;
       g.add(body);
       const stripe = new THREE.Mesh(
@@ -1197,7 +1197,7 @@ function spawnObstacle(scene: THREE.Scene, obstacle: Obstacle): void {
   group.position.set(obstacle.x, 0, obstacle.z);
   const mainMesh = new THREE.Mesh(geometry, meshMaterial);
   mainMesh.position.y = height / 2;
-  mainMesh.castShadow = true;
+  mainMesh.castShadow = false;
   mainMesh.receiveShadow = true;
   mainMesh.name = obstacle.id;
   group.add(mainMesh);

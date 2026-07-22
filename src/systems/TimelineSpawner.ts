@@ -41,13 +41,11 @@ import * as THREE from 'three';
 // to spend on the horde. FPS-VERIFY THIS CAP LIVE before shipping — if a
 // low-end device dips at min 8-9, the fallback lever is lowering this and
 // raising wave hpMult in SpawnTimeline.ts instead.
-const MAX_ENEMIES = 600;
-// Deficit refills spread across ticks (was 28/tick ~57/s @ fastest wave;
-// scaled +50% to keep pace with the larger quotas). 45/tick was measured to
-// visibly hitch (each spawn builds a Group + Rapier body) — 42 stays under
-// that ceiling with headroom.
-const MAX_FILL_PER_TICK = 42;
+const MAX_ENEMIES = 2500;
+const MAX_FILL_PER_TICK = 120;
 const STAGE_END = 600; // FinaleBoss owns 10:00
+
+const _spawnerPlayers: any[] = [];
 
 // --- THE PIT: GATE SPAWNING ---
 // Enemies enter through the arena's eight wall gates (Isaac doors, cyberpunk
@@ -115,39 +113,52 @@ export function resetTimelineSpawner(): void {
 
 // --- MAIN SYSTEM ---
 export function TimelineSpawnerSystem(dt: number, scene: THREE.Scene): void {
-  const players = Array.from(world.with('isPlayer', 'position'));
-  if (players.length === 0) return;
-  const player = players[Math.floor(Math.random() * players.length)];
+  _spawnerPlayers.length = 0;
+  for (const p of world.with('isPlayer', 'position')) _spawnerPlayers.push(p);
+  if (_spawnerPlayers.length === 0) return;
+  const player = _spawnerPlayers[Math.floor(Math.random() * _spawnerPlayers.length)];
 
   gameTime += dt;
 
-  // Pressure knobs (VS: Curse raises spawn frequency + quantity; Hyper raises
-  // the minimum amount). Corruption is the player's chosen bet; curse comes
-  // from characters/passives; co-op scales with living fighters.
-  const corruptionMult = corruptionDensity(uiState.corruption);
-  const curseMult = (player as { stats?: { curse?: number } }).stats?.curse ?? 1.0;
-  const partyMult = partySpawnMultiplier();
-  const pressure = corruptionMult * curseMult * partyMult;
-
-  // Resolve the current wave (endless mode extends the last authored wave)
+  const isMaxMode = !!(window as any).__MAX_MODE;
+  let minAlive: number;
+  let interval: number;
+  let hpMult: number;
+  // Guard against TS "used before assigned" in the fill tick below (wave is
+  // only assigned in the non-max branch, but never accessed in the max branch).
   const wave = getWave(Math.min(gameTime, STAGE_END - 1));
-  let minAlive = wave.minAlive;
-  let interval = wave.interval;
-  let hpMult = wave.hpMult;
-  if (uiState.endlessMode && gameTime > STAGE_END) {
-    const extraMin = (gameTime - STAGE_END) / 60;
-    minAlive = Math.min(
-      ENDLESS_GROWTH.minAliveCap,
-      minAlive + extraMin * ENDLESS_GROWTH.minAlivePerMinute,
-    );
-    hpMult += extraMin * ENDLESS_GROWTH.hpMultPerMinute;
-    interval = Math.max(ENDLESS_GROWTH.intervalFloor, interval - extraMin * 0.02);
-  }
-  minAlive = Math.min(MAX_ENEMIES - 20, Math.round(minAlive * pressure));
-  interval = interval / Math.max(1, (pressure - 1) * 0.5 + 1);
+  if (isMaxMode) {
+    // ?max stress-test: saturate the arena at MAX_ENEMIES immediately.
+    minAlive = MAX_ENEMIES - 10;
+    interval = 0.05;
+    hpMult = 1.0;
+  } else {
+    const corruptionMult = corruptionDensity(uiState.corruption);
+    const curseMult = (player as { stats?: { curse?: number } }).stats?.curse ?? 1.0;
+    const partyMult = partySpawnMultiplier();
+    const pressure = corruptionMult * curseMult * partyMult;
 
-  // Scripted swarms + elites run on their own clocks
-  fireScriptedEvents(scene, player.position, hpMult);
+    const wave = getWave(Math.min(gameTime, STAGE_END - 1));
+    minAlive = wave.minAlive;
+    interval = wave.interval;
+    hpMult = wave.hpMult;
+    if (uiState.endlessMode && gameTime > STAGE_END) {
+      const extraMin = (gameTime - STAGE_END) / 60;
+      minAlive = Math.min(
+        ENDLESS_GROWTH.minAliveCap,
+        minAlive + extraMin * ENDLESS_GROWTH.minAlivePerMinute,
+      );
+      hpMult += extraMin * ENDLESS_GROWTH.hpMultPerMinute;
+      interval = Math.max(ENDLESS_GROWTH.intervalFloor, interval - extraMin * 0.02);
+    }
+    minAlive = Math.min(MAX_ENEMIES - 20, Math.round(minAlive * pressure));
+    interval = interval / Math.max(1, (pressure - 1) * 0.5 + 1);
+  }
+
+  if (!isMaxMode) {
+    // Scripted swarms + elites run on their own clocks (skipped in max mode)
+    fireScriptedEvents(scene, player.position, hpMult);
+  }
 
   // Wave tick
   tickTimer -= dt;
@@ -162,11 +173,16 @@ export function TimelineSpawnerSystem(dt: number, scene: THREE.Scene): void {
     // through the gates, spread so no single door clogs into a wall of HP.
     const deficit = Math.min(minAlive - alive, MAX_FILL_PER_TICK, MAX_ENEMIES - alive);
     for (let i = 0; i < deficit; i++) {
-      spawnThroughGate(scene, pickAmbientGate(player.position), pickFromPool(wave.pool), hpMult);
+      const type = isMaxMode
+        ? ([EnemyType.VIRUS, EnemyType.GLITCH, EnemyType.VIRUS, EnemyType.FIREWALL][
+            Math.floor(Math.random() * 4)
+          ] as EnemyType)
+        : pickFromPool(wave.pool);
+      spawnThroughGate(scene, pickAmbientGate(player.position), type, hpMult);
     }
   } else {
     // At quota: one of each pool type per tick keeps pressure creeping up
-    for (const entry of wave.pool) {
+    for (const entry of (wave ?? { pool: [{ type: EnemyType.VIRUS, weight: 100 }] }).pool) {
       if (world.count('isEnemy') >= MAX_ENEMIES) break;
       spawnThroughGate(scene, pickAmbientGate(player.position), entry.type, hpMult);
     }
@@ -223,7 +239,7 @@ function spawnSwarm(
   hpMult: number,
   speedMult: number,
 ): void {
-  const room = MAX_ENEMIES + 40 - world.count('isEnemy'); // swarms may briefly exceed the cap
+  const room = MAX_ENEMIES + 150 - world.count('isEnemy'); // swarms may briefly exceed the cap
   const n = Math.min(count, Math.max(0, room));
   if (n <= 0) return;
 

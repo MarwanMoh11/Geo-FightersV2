@@ -25,7 +25,7 @@ let shadowInstances: THREE.InstancedMesh | null = null;
 // Ground aura ring under elites/minibosses: one instanced mesh total,
 // tinted per type via instance color. Reads "dangerous" at a glance.
 let eliteAuraInstances: THREE.InstancedMesh | null = null;
-const MAX_ELITE_AURAS = 48;
+const MAX_ELITE_AURAS = 120;
 const ELITE_AURA_COLORS: Partial<Record<EnemyType, number>> = {
   [EnemyType.ENFORCER]: 0x00ffcc,
   [EnemyType.COLOSSUS]: 0xffaa00,
@@ -39,9 +39,17 @@ const ELITE_AURA_COLORS: Partial<Record<EnemyType, number>> = {
 // weights heavily toward one type can't silently stop rendering enemies
 // past this count while they're still alive and counted (see the count <
 // MAX_ENEMY_INSTANCES guard below).
-const MAX_ENEMY_INSTANCES = 750;
+const MAX_ENEMY_INSTANCES = 3000;
 
 const _white = new THREE.Color(0xffffff);
+
+// Per-frame enemy list (materialized once for the instanced loop)
+const _renderEnemies: any[] = [];
+
+// Dynamic detail thresholds: wire overlay and blob shadows are the first
+// things to go when the horde gets huge (matrix writes scale with count).
+const WIRE_DETAIL_MAX = 700;
+const SHADOW_DETAIL_MAX = 900;
 
 /**
  * Create the solid/glow/wire InstancedMeshes for one enemy type (once) and add
@@ -66,7 +74,10 @@ function ensureEnemyTypeMeshes(type: EnemyType, scene: THREE.Scene): void {
       MAX_ENEMY_INSTANCES,
     );
     solidMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    solidMesh.castShadow = true;
+    // No shadow-map casting for the horde: the instanced blob-shadow layer
+    // (shadowInstances) already grounds every enemy, and with frustumCulled
+    // off the shadow pass would vertex-process ALL instances every frame.
+    solidMesh.castShadow = false;
     solidMesh.receiveShadow = false;
     solidMesh.frustumCulled = false;
     solidMesh.count = 0; // nothing to draw until the render loop fills it
@@ -540,9 +551,31 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
   }
   let auraCount = 0;
 
-  for (const entity of world.with('isEnemy', 'position', 'transform')) {
-    if (entity.isBoss) continue; // Skip boss - handled in normal scene graph
+  // Materialize the horde once (culling off-screen enemies in normal mode,
+  // bypassed when ?max is active for stress-testing).
+  const localPlayer = world.with('isLocalPlayer', 'position').first;
+  const camPos = localPlayer?.position;
+  const isMaxMode = !!(window as any).__MAX_MODE;
+  const RENDER_DIST_SQ = isMaxMode ? Infinity : 50 * 50;
 
+  _renderEnemies.length = 0;
+  for (const e of world.with('isEnemy', 'position')) {
+    if (e.isBoss) continue;
+    if (camPos && !isMaxMode) {
+      const dx = e.position.x - camPos.x;
+      const dz = e.position.z - camPos.z;
+      if (dx * dx + dz * dz > RENDER_DIST_SQ) continue;
+    }
+    _renderEnemies.push(e);
+  }
+  const hordeCount = _renderEnemies.length;
+
+  // Dynamic detail scaling: wire overlay and blob shadows drop at high counts
+  // to save GPU time, but ?max mode keeps everything on for stress-testing.
+  const drawWire = isMaxMode || hordeCount <= WIRE_DETAIL_MAX;
+  const drawShadows = isMaxMode || hordeCount <= SHADOW_DETAIL_MAX;
+
+  for (const entity of _renderEnemies) {
     const type = entity.enemyType as EnemyType;
     const count = counts.get(type) ?? 0;
 
@@ -550,11 +583,15 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
       ensureEnemyTypeMeshes(type, scene);
       const solidMesh = enemySolidInstances.get(type);
       const glowMesh = enemyGlowInstances.get(type);
-      const wireMesh = enemyWireInstances.get(type);
+      const wireMesh = drawWire ? enemyWireInstances.get(type) : undefined;
 
-      // Compose instance matrix — all enemy body language happens here so the
-      // rendering stays fully instanced (extra sin() calls, zero extra draws).
-      const size = entity.size ?? entity.transform!.scale.x ?? 1.0;
+      // Tick the hit flash here — instanced enemies have no scene-graph
+      // traversal to do it, so without this they flash red forever.
+      if (entity.hitFlashTimer !== undefined && entity.hitFlashTimer > 0) {
+        entity.hitFlashTimer -= dt;
+      }
+
+      const size = entity.size ?? 1.0;
       // Golden-angle phase per entity breaks the hover lockstep that made the
       // whole horde bob as one rigid mass
       const phase = (entity.id ?? 0) * 2.399963;
@@ -628,7 +665,7 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
 
       _tempPos.y = size * 0.35 + hoverY;
       _tempScale.setScalar(size * scaleMult);
-      _tempRot.set(rotX, entity.transform!.rotation.y + yawExtra, rotZ);
+      _tempRot.set(rotX, (entity.rotationY ?? 0) + yawExtra, rotZ);
       _tempQuat.setFromEuler(_tempRot);
       _tempMat.compose(_tempPos, _tempQuat, _tempScale);
 
@@ -679,9 +716,8 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
       counts.set(type, count + 1);
     }
 
-    // Shadow Instancing
-    if (shadowInstances && shadowCount < MAX_ENEMY_INSTANCES * 4) {
-      const size = entity.size ?? entity.transform!.scale.x ?? 1.0;
+    if (drawShadows && shadowInstances && shadowCount < MAX_ENEMY_INSTANCES * 4) {
+      const size = entity.size ?? 1.0;
       _tempPos.copy(entity.position);
       _tempPos.y = 0.02;
 
@@ -711,12 +747,12 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
 
     const wireMesh = enemyWireInstances.get(type);
     if (wireMesh) {
-      wireMesh.count = count;
-      wireMesh.instanceMatrix.needsUpdate = true;
+      wireMesh.count = drawWire ? count : 0;
+      wireMesh.instanceMatrix.needsUpdate = drawWire;
       if (wireMesh.instanceColor) {
-        wireMesh.instanceColor.needsUpdate = true;
+        wireMesh.instanceColor.needsUpdate = drawWire;
       }
-      wireMesh.visible = count > 0;
+      wireMesh.visible = drawWire && count > 0;
     }
 
     const glowMesh = enemyGlowInstances.get(type);
@@ -741,7 +777,7 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
 
   if (shadowInstances) {
     shadowInstances.count = shadowCount;
-    shadowInstances.instanceMatrix.needsUpdate = true;
-    shadowInstances.visible = shadowCount > 0;
+    shadowInstances.instanceMatrix.needsUpdate = drawShadows && shadowCount > 0;
+    shadowInstances.visible = drawShadows && shadowCount > 0;
   }
 }
