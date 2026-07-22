@@ -65,16 +65,8 @@ function applyPickup(type: string, player: any, scene: THREE.Scene): void {
       playCollect(1.2);
       break;
     case 'magnet':
-      for (const xp of [...world.with('isXP', 'position', 'velocity')]) {
-        const dx = player.position.x - xp.position.x;
-        const dz = player.position.z - xp.position.z;
-        const dist = Math.sqrt(dx * dx + dz * dz);
-        if (dist > 0.001) {
-          xp.velocity.x += (dx / dist) * 18;
-          xp.velocity.z += (dz / dist) * 18;
-        }
-      }
-      announce(style.label);
+      uiState.magnaPulseTimer = 3.0;
+      announce('MAGNA-PULSE — XP VACUUM');
       break;
     case 'bomb': {
       const playerPos = player.position!;
