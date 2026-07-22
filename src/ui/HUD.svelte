@@ -66,10 +66,19 @@
     </div>
   {/if}
 
-  <!-- Big transient callout ("COMBO ×100", "VAULT DETECTED") -->
+  <!-- Big transient callout ("COMBO ×100", "ARMORY — VAULT CHEST RELEASED").
+       Long strings are split on the em-dash into a bold headline + a smaller
+       detail line, and both wrap within the viewport so nothing ever runs off
+       the sides on a narrow phone. -->
   {#if uiState.callout}
     {#key uiState.calloutSeq}
-      <div class="callout">{uiState.callout}</div>
+      {@const parts = uiState.callout.split(' — ')}
+      <div class="callout">
+        <span class="callout-title">{parts[0]}</span>
+        {#if parts.length > 1}
+          <span class="callout-sub">{parts.slice(1).join(' — ')}</span>
+        {/if}
+      </div>
     {/key}
   {/if}
 
@@ -672,18 +681,38 @@
   /* --- Big transient callout --- */
   .callout {
     position: absolute;
-    top: 28%;
+    top: 26%;
     left: 50%;
     transform: translateX(-50%);
+    width: max-content;
+    max-width: min(92vw, 32rem);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15em;
+    text-align: center;
+    pointer-events: none;
+    animation: callout-cycle 2.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .callout-title {
     font-family: var(--font-heading);
-    font-size: clamp(1.1rem, 4vw, 1.8rem);
+    font-size: clamp(1.05rem, 4.4vw, 1.8rem);
     font-weight: 800;
-    letter-spacing: 0.14em;
+    letter-spacing: 0.1em;
+    line-height: 1.05;
     color: var(--color-text-main);
     text-shadow: 0 0 20px rgba(0, 213, 255, 0.5);
-    pointer-events: none;
-    white-space: nowrap;
-    animation: callout-cycle 2.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+    text-wrap: balance;
+  }
+  .callout-sub {
+    font-family: var(--font-body);
+    font-size: clamp(0.62rem, 2.7vw, 0.9rem);
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    line-height: 1.15;
+    color: var(--color-primary);
+    text-shadow: 0 0 12px rgba(0, 213, 255, 0.4);
+    text-wrap: balance;
   }
   @keyframes callout-cycle {
     0% {
