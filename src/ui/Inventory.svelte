@@ -37,7 +37,9 @@
     {/each}
 
     {#if passives.length > 0 && weapons.length > 0}
-      <div class="divider"></div>
+      <!-- Force passives onto their own row(s) so the two groups never tangle
+           when the bar wraps on a narrow screen. -->
+      <div class="row-break"></div>
     {/if}
 
     {#each passives as slot}
@@ -67,7 +69,12 @@
     transform: translateX(-50%);
     z-index: 40;
     pointer-events: none;
-    max-width: calc(100vw - 24px);
+    /* max-content keeps each group (weapons / passives) on a single row until it
+       genuinely can't fit, then wraps; the max-width caps it to the screen and,
+       anchored at the bottom, extra rows grow UPWARD into the frame rather than
+       ever running off the sides. */
+    width: max-content;
+    max-width: min(96vw, 640px);
   }
 
   .hidden {
@@ -76,24 +83,19 @@
 
   .loadout {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 7px;
-    padding: 6px 8px;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 9px;
     border-radius: var(--r-lg);
-    overflow-x: auto;
-    overflow-y: visible;
-    scrollbar-width: none;
-  }
-  .loadout::-webkit-scrollbar {
-    display: none;
   }
 
-  .divider {
-    width: 1px;
-    align-self: stretch;
-    margin: 4px 1px;
-    background: rgba(255, 255, 255, 0.1);
-    flex-shrink: 0;
+  /* Full-width flex break: everything after it (passives) starts a fresh row. */
+  .row-break {
+    flex-basis: 100%;
+    height: 0;
+    margin: 1px 0;
   }
 
   /* Slot is the positioning context; only the art is clipped so the
@@ -179,5 +181,30 @@
   }
   .passive .lvl {
     background: var(--color-accent);
+  }
+
+  /* Phones: smaller slots so a full kit fits in 1–2 tidy rows without ever
+     needing to scroll or bleeding off the edges. */
+  @media (max-width: 640px) {
+    .loadout {
+      gap: 5px;
+      padding: 6px 7px;
+    }
+    .slot {
+      width: 34px;
+      height: 34px;
+    }
+    .art :global(svg) {
+      width: 20px;
+      height: 20px;
+    }
+    .icon-emoji {
+      font-size: 1.05rem;
+    }
+    .lvl {
+      min-width: 14px;
+      height: 14px;
+      font-size: 0.55rem;
+    }
   }
 </style>
