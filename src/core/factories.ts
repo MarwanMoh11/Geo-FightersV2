@@ -12,7 +12,7 @@ import { uiState, announce } from './UIState.svelte';
 import { corruptionHp, corruptionSpeed } from './corruption';
 import { partyHpMultiplier } from './difficulty';
 import { getCurrentLevel as getLevelConfig } from './LevelData';
-import { getQualityProfile } from './quality';
+import { getQualityProfile, isMobile } from './quality';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 
 const PLAYER_RADIUS = 0.8;
@@ -1608,15 +1608,21 @@ export function getEnemySolidMaterial(type: EnemyType): THREE.MeshStandardMateri
     };
     // With the env map lighting metals properly (medium+ tiers), armor can be
     // metallic again; without it (low tier) high metalness renders near-black.
-    const envLit = getQualityProfile().tier !== 'low';
+    const tier = getQualityProfile().tier;
+    const envLit = tier !== 'low';
+    // Bloom (HIGH tier + desktop only) is what turns the faint solid emissive
+    // into the neon look — it amplifies the emissive/glow into a bright halo.
+    // Mobile never gets bloom (capped at medium tier, and bloom is desktop-only),
+    // so with only a 0.15 wash the enemies render as near-black matte on the dark
+    // arena and read as INVISIBLE. Where there's no bloom, self-light the body so
+    // every enemy is clearly visible on its own.
+    const hasBloom = tier === 'high' && !isMobile;
     mat = new THREE.MeshStandardMaterial({
       vertexColors: true,
       roughness: 0.45,
       metalness: envLit ? 0.5 : 0.15,
       emissive: new THREE.Color(EMISSIVE[type] ?? 0x000000),
-      // The dedicated glow layer carries the highlights now; the solid layer
-      // keeps only a faint wash so silhouettes stay readable on low tier.
-      emissiveIntensity: 0.15,
+      emissiveIntensity: hasBloom ? 0.15 : 0.7,
     });
     enemySolidMaterials.set(type, mat);
   }
