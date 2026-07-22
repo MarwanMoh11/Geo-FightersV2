@@ -31,7 +31,7 @@ const xpGeo = new THREE.BoxGeometry(1, 1, 1);
 const xpBaseMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
 
 const COLLECT_RADIUS_SQ = 1.5 * 1.5;
-const MAGNET_FORCE = 32.0;
+const MAGNET_FORCE = 80.0;
 const FRICTION = 0.95;
 const GRAVITY = 20.0;
 const GROUND_Y = 0.3;
