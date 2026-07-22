@@ -126,20 +126,19 @@
                 <div class="level-step">LV {option.currentLevel} → {option.nextLevel}</div>
               {/if}
               <p class="item-desc">{option.description}</p>
+              {#if uiState.runBanishes > 0 && option.type !== 'health'}
+                <button
+                  class="banish-card-btn"
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    banishUpgradeOption(option.id);
+                  }}
+                  title="Banish this item from the run"
+                >
+                  🚫 Banish
+                </button>
+              {/if}
             </div>
-
-            {#if uiState.runBanishes > 0 && option.type !== 'health'}
-              <button
-                class="banish-card-btn"
-                onclick={(e) => {
-                  e.stopPropagation();
-                  banishUpgradeOption(option.id);
-                }}
-                title="Banish this item from the run"
-              >
-                🚫 Banish
-              </button>
-            {/if}
 
             <div class="selection-glow"></div>
           </div>
@@ -366,7 +365,6 @@
   .item-info {
     min-width: 0;
     padding-right: 2.5rem;
-    padding-bottom: 2.2rem;
   }
 
   .item-name {
@@ -432,9 +430,8 @@
   .banish-card-btn {
     all: unset;
     cursor: pointer;
-    position: absolute;
-    bottom: 0.8rem;
-    right: 0.8rem;
+    display: inline-block;
+    margin-top: 0.5rem;
     font-family: var(--font-mono);
     font-size: 0.58rem;
     font-weight: 700;
@@ -445,7 +442,6 @@
     padding: 0.25rem 0.6rem;
     text-transform: uppercase;
     transition: all var(--transition-fast);
-    z-index: 10;
   }
   .banish-card-btn:hover {
     background: var(--color-secondary);
