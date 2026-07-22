@@ -186,13 +186,13 @@
   }
 
   #chest-modal.rarity-rare {
-    --ceremony-color: #00d5ff;
-    --ceremony-glow: rgba(0, 213, 255, 0.4);
+    --ceremony-color: #b44dff;
+    --ceremony-glow: rgba(180, 77, 255, 0.4);
   }
 
   #chest-modal.rarity-epic {
-    --ceremony-color: #ff3d77;
-    --ceremony-glow: rgba(255, 61, 119, 0.4);
+    --ceremony-color: #ffcc00;
+    --ceremony-glow: rgba(255, 204, 0, 0.5);
   }
 
   #chest-modal.jackpot {
