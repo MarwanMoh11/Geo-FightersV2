@@ -51,8 +51,9 @@ export function PhysicsSystem(dt: number) {
       entity.position.z += entity.velocity.z * dt;
     }
 
-    // PROJECTILE WALL COLLISION (dies on obstacle contact)
-    if (entity.isProjectile) {
+    // PROJECTILE WALL COLLISION (orbital weapons are excluded — they orbit
+    // around the player and should not be killed by building proximity)
+    if (entity.isProjectile && !entity.isOrbital) {
       for (const obstacle of obstacles) {
         const collision = checkAABBCollision(
           entity.position.x,
