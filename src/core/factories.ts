@@ -8,6 +8,7 @@ import { WEAPONS, getWeaponStatsAtLevel } from './WeaponRegistry';
 import { getTierForValue, bankXP, MAX_ACTIVE_XP } from './XPManager';
 import { createDynamicBody, isRapierInitialized } from './RapierWorld';
 import { uiState, announce } from './UIState.svelte';
+import { corruptionHp, corruptionSpeed } from './corruption';
 import { partyHpMultiplier } from './difficulty';
 import { getCurrentLevel as getLevelConfig } from './LevelData';
 import { getQualityProfile } from './quality';
@@ -1708,11 +1709,17 @@ export function spawnEnemy(
   const group = new THREE.Group();
   group.position.set(x, 0, z);
 
-  // Corruption hardens enemies (+15% HP per level); co-op makes them tankier
-  // per extra living fighter (neutral 1.0 in solo). Time scaling now lives in
-  // the spawner's per-wave hpMult (endless growth included).
-  const corruptionHp = 1 + uiState.corruption * 0.15;
-  const maxHp = Math.max(1, Math.round(stats.hp * hpMult * corruptionHp * partyHpMultiplier()));
+  // Corruption hardens enemies (HP per level); co-op makes them tankier per
+  // extra living fighter (neutral 1.0 in solo). Time scaling now lives in the
+  // spawner's per-wave hpMult (endless growth included).
+  const corr = uiState.corruption;
+  const maxHp = Math.max(
+    1,
+    Math.round(stats.hp * hpMult * corruptionHp(corr) * partyHpMultiplier()),
+  );
+  // Past the standard (5), corruption also quickens the horde so kiting stops
+  // being a free out at the brutal tiers.
+  const moveSpeed = stats.speed * corruptionSpeed(corr);
 
   // 1. Build and attach the custom 3D model
   const enemyMesh = buildEnemyMesh(type, stats.size);
@@ -1735,7 +1742,7 @@ export function spawnEnemy(
     position: group.position,
     velocity: new THREE.Vector3(0, 0, 0),
     health: { current: maxHp, max: maxHp },
-    moveSpeed: stats.speed,
+    moveSpeed,
     transform: group,
     size: stats.size,
     aimTarget: new THREE.Vector3(),
