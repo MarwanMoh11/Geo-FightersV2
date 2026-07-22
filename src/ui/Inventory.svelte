@@ -81,20 +81,21 @@
     display: none !important;
   }
 
-  /* Minimal: no panel, no tiles — just the icons floating over the game. */
+  /* Minimal: subtle per-icon tiles, no heavy panel. Row-gap is near-zero so the
+     weapons row and the items row read as one tight block. */
   .loadout {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     justify-content: center;
-    gap: 4px;
+    gap: 1px 4px; /* row-gap column-gap */
   }
 
   /* Full-width flex break: everything after it (passives) starts a fresh row. */
   .row-break {
     flex-basis: 100%;
     height: 0;
-    margin: 1px 0;
+    margin: 0;
   }
 
   /* Slot is the positioning context; only the art is clipped so the
@@ -117,8 +118,8 @@
     }
   }
 
-  /* No tile fill, no ring — a drop-shadow keeps the bare icon readable over any
-     scene; overflow+radius still clip the cooldown sweep to the icon. */
+  /* Subtle tile: a soft type-tinted fill (not the old glass panel) that frames
+     the icon and keeps it readable; overflow+radius clip the cooldown sweep. */
   .art {
     position: absolute;
     inset: 0;
@@ -127,7 +128,14 @@
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.85));
+    background: rgba(255, 255, 255, 0.06);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  }
+  .weapon .art {
+    background: rgba(54, 230, 255, 0.1);
+  }
+  .passive .art {
+    background: rgba(56, 245, 168, 0.1);
   }
 
   .art :global(svg) {
@@ -182,7 +190,7 @@
      needing to scroll or bleeding off the edges. */
   @media (max-width: 640px) {
     .loadout {
-      gap: 3px;
+      gap: 1px 3px;
     }
     .slot {
       width: 30px;
