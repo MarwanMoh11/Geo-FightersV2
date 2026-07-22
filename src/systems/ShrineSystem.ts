@@ -251,39 +251,17 @@ export function ShrineSystem(dt: number, scene: THREE.Scene): void {
 
   const player = world.with('isLocalPlayer', 'position', 'health').first;
   if (!player) return;
-  const dead = player.health!.current <= 0;
+  // stash removed
 
   // Tick active buffs
   if (uiState.shrineFireTimer > 0) uiState.shrineFireTimer -= dt;
   if (uiState.shrineArmorTimer > 0) uiState.shrineArmorTimer -= dt;
   if (uiState.shrineSpeedTimer > 0) uiState.shrineSpeedTimer -= dt;
 
-  // Black-market stash: surfaces near the player, leaves if ignored
-  if (uiState.isMultiplayer) return;
-
-  if (!stashMesh) {
-    // First stash mid-run; after the chip is owned it keeps restocking as a payout
-    stashTimer -= dt;
-    if (stashTimer <= 0) {
-      const spot = pickStashSpot(player.position.x, player.position.z);
-      stashMesh = buildStash(scene, spot.x, spot.z);
-      stashLife = STASH_LIFETIME;
-      stashTimer = STASH_RETRY;
-      announce('BLACK-MARKET STASH — GRAB IT FAST');
-    }
-  } else {
-    stashLife -= dt;
-    // Last-seconds blink so the departure telegraphs
-    stashMesh.visible = stashLife > 5 || Math.sin(stashLife * 12) > -0.2;
-    if (stashLife <= 0) {
-      stashMesh.parent?.remove(stashMesh);
-      stashMesh = null;
-    } else if (!dead) {
-      const dx = player.position.x - stashMesh.position.x;
-      const dz = player.position.z - stashMesh.position.z;
-      if (dx * dx + dz * dz < STASH_RADIUS * STASH_RADIUS) {
-        openStash(scene, player);
-      }
-    }
-  }
+  // Black-market stash: removed — credits go directly to wallet
 }
+
+// Suppress unused-declaration warnings for removed stash code
+void (STASH_LIFETIME as unknown); void (STASH_RETRY as unknown); void (STASH_RADIUS as unknown);
+void (stashTimer as unknown); void (stashLife as unknown);
+void (pickStashSpot as unknown); void (buildStash as unknown); void (openStash as unknown);
