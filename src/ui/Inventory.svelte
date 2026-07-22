@@ -14,7 +14,7 @@
 </script>
 
 <div id="inventory-layer" class:hidden={uiState.gameState !== 'PLAYING'}>
-  <div class="loadout glass">
+  <div class="loadout">
     {#each weapons as slot, i}
       {@const icon = getWeaponIcon(slot.weaponId)}
       {@const name = getName(slot.weaponId, 'weapon')}
@@ -81,14 +81,13 @@
     display: none !important;
   }
 
+  /* Minimal: no panel, no tiles — just the icons floating over the game. */
   .loadout {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    padding: 7px 9px;
-    border-radius: var(--r-lg);
+    gap: 4px;
   }
 
   /* Full-width flex break: everything after it (passives) starts a fresh row. */
@@ -102,8 +101,8 @@
      level badge can sit on top without being cut off. */
   .slot {
     position: relative;
-    width: 40px;
-    height: 40px;
+    width: 34px;
+    height: 34px;
     flex-shrink: 0;
     animation: slot-pop var(--transition-springy) both;
   }
@@ -118,6 +117,8 @@
     }
   }
 
+  /* No tile fill, no ring — a drop-shadow keeps the bare icon readable over any
+     scene; overflow+radius still clip the cooldown sweep to the icon. */
   .art {
     position: absolute;
     inset: 0;
@@ -125,27 +126,21 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(255, 255, 255, 0.04);
     overflow: hidden;
-  }
-  .weapon .art {
-    box-shadow: inset 0 0 0 1px rgba(54, 230, 255, 0.4);
-  }
-  .passive .art {
-    box-shadow: inset 0 0 0 1px rgba(56, 245, 168, 0.4);
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.85));
   }
 
   .art :global(svg) {
-    width: 23px;
-    height: 23px;
+    width: 22px;
+    height: 22px;
   }
   .icon-img {
-    width: 76%;
-    height: 76%;
+    width: 82%;
+    height: 82%;
     object-fit: contain;
   }
   .icon-emoji {
-    font-size: 1.2rem;
+    font-size: 1.1rem;
   }
 
   .cooldown {
@@ -157,24 +152,24 @@
     pointer-events: none;
   }
 
+  /* Tiny level pill — the only mark left; kept legible but unobtrusive. */
   .lvl {
     position: absolute;
-    bottom: -4px;
-    right: -4px;
-    min-width: 16px;
-    height: 16px;
-    padding: 0 4px;
+    bottom: -2px;
+    right: -2px;
+    min-width: 13px;
+    height: 13px;
+    padding: 0 3px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.6rem;
-    font-weight: 700;
+    font-size: 0.52rem;
+    font-weight: 800;
     line-height: 1;
     color: #04060f;
     background: var(--color-text-main);
-    border: 1.5px solid var(--color-bg-dark);
     border-radius: var(--r-pill);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
   }
   .weapon .lvl {
     background: var(--color-primary);
@@ -183,28 +178,27 @@
     background: var(--color-accent);
   }
 
-  /* Phones: smaller slots so a full kit fits in 1–2 tidy rows without ever
+  /* Phones: smaller still so a full kit fits in 1–2 tidy rows without ever
      needing to scroll or bleeding off the edges. */
   @media (max-width: 640px) {
     .loadout {
-      gap: 5px;
-      padding: 6px 7px;
+      gap: 3px;
     }
     .slot {
-      width: 34px;
-      height: 34px;
+      width: 30px;
+      height: 30px;
     }
     .art :global(svg) {
-      width: 20px;
-      height: 20px;
+      width: 19px;
+      height: 19px;
     }
     .icon-emoji {
-      font-size: 1.05rem;
+      font-size: 0.95rem;
     }
     .lvl {
-      min-width: 14px;
-      height: 14px;
-      font-size: 0.55rem;
+      min-width: 12px;
+      height: 12px;
+      font-size: 0.48rem;
     }
   }
 </style>
