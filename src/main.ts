@@ -61,6 +61,7 @@ import { initDamageNumbers, DamageNumberSystem } from './systems/DamageNumberSys
 import { CoopSystem } from './systems/CoopSystem';
 import { ShrineSystem } from './systems/ShrineSystem';
 import { DestructibleSystem } from './systems/DestructibleSystem';
+import { PickupSystem } from './systems/PickupSystem';
 import { MapEventSystem } from './systems/MapEventSystem';
 import { BreachSystem } from './systems/BreachSystem';
 import { ClientCombatFxSystem } from './systems/ClientCombatFxSystem';
@@ -367,6 +368,7 @@ function startGameLoop(
     _t = benchmark.trace('AnomalySystem'); AnomalySystem(dt, scene); _t();
     _t = benchmark.trace('ShrineSystem'); ShrineSystem(dt, scene); _t();
     _t = benchmark.trace('DestructibleSystem'); DestructibleSystem(dt, scene); _t();
+    _t = benchmark.trace('PickupSystem'); PickupSystem(scene); _t();
     _t = benchmark.trace('MapEventSystem'); MapEventSystem(dt, scene); _t();
     _t = benchmark.trace('BreachSystem'); BreachSystem(dt, scene); _t();
     _t = benchmark.trace('updateGateFx'); updateGateFx(dt); _t();
