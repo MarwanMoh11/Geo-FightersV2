@@ -944,7 +944,7 @@ export function getWeaponStatsAtLevel(
 
   const damage = def.baseDamage + (def.levelBonuses.damage || 0) * levelsGained;
   const cooldownReduction = (def.levelBonuses.cooldown || 0) * levelsGained;
-  const cooldown = def.baseCooldown * (1 - cooldownReduction);
+  const cooldown = Math.round(def.baseCooldown * (1 - cooldownReduction) * 100) / 100;
 
   let projectiles = def.baseProjectiles;
   if (def.projectileMilestones) {
@@ -955,7 +955,7 @@ export function getWeaponStatsAtLevel(
 
   const pierce = def.basePierce + (def.levelBonuses.pierce || 0) * levelsGained;
   const areaBonus = (def.levelBonuses.area || 0) * levelsGained;
-  const area = def.baseArea * (1 + areaBonus);
+  const area = Math.round(def.baseArea * (1 + areaBonus) * 100) / 100;
 
   return { damage, cooldown, projectiles, pierce, area };
 }
