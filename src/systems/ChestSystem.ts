@@ -98,11 +98,18 @@ export function registerGuaranteedChestDrop(): void {
 
 // --- SHARED RESOURCES ---
 const chestGeometry = new THREE.BoxGeometry(0.8, 0.6, 0.5);
-// Brighter rarity colors that read instantly against the dark ground
+// Rarity colors: brown = common (1 drop), purple = rare (3 drops),
+// gold emissive = epic/jackpot (5 drops, special chest model).
 const chestMaterials = {
-  common: new THREE.MeshBasicMaterial({ color: 0xc9974b }), // Gold-brown
-  rare: new THREE.MeshBasicMaterial({ color: 0x3fa7ff }), // Electric blue
-  epic: new THREE.MeshBasicMaterial({ color: 0xc44dff }), // Vivid purple
+  common: new THREE.MeshBasicMaterial({ color: 0x8B5E3C }), // Brown crate
+  rare: new THREE.MeshBasicMaterial({ color: 0xb44dff }), // Purple loot box
+  epic: new THREE.MeshStandardMaterial({
+    color: 0xffcc00,
+    roughness: 0.2,
+    metalness: 0.9,
+    emissive: 0xffaa00,
+    emissiveIntensity: 0.6,
+  }),
 };
 
 // --- REUSABLE VECTORS ---
@@ -119,10 +126,36 @@ export function spawnChest(
   z: number,
   rarity: 'common' | 'rare' | 'epic' = 'common',
 ) {
+  const isEpic = rarity === 'epic';
   const mesh = new THREE.Mesh(chestGeometry, chestMaterials[rarity]);
+  if (isEpic) mesh.scale.setScalar(1.25);
   mesh.position.set(x, 0.4, z);
   mesh.castShadow = true;
   scene.add(mesh);
+
+  // Jackpot glow ring under epic chests — reads as "something big" at a glance
+  if (isEpic) {
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.6, 0.7, 32),
+      new THREE.MeshBasicMaterial({
+        color: 0xffcc00,
+        transparent: true,
+        opacity: 0.55,
+        side: THREE.DoubleSide,
+      }),
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(x, 0.05, z);
+    scene.add(ring);
+    world.add({
+      isParticle: true,
+      position: new THREE.Vector3(x, 0.05, z),
+      velocity: new THREE.Vector3(),
+      transform: ring,
+      lifeTimer: 0,
+      maxLife: 2.0,
+    });
+  }
 
   return world.add({
     isChest: true,
@@ -271,19 +304,11 @@ export function openChestLocally(
     }
   }
 
-  // 2. CHEST CEREMONY: jackpot roll of 1/3/5 instant upgrades (VS-style —
-  // the chest picks for you, the modal reveals them one by one).
-  const luck = player.stats?.luck || 1;
-  const jackpotBoost = (luck - 1) * 0.1; // luck nudges the good rolls
-  const roll = Math.random();
+  // 2. CHEST CEREMONY: deterministic drops by rarity — common=1, rare=3,
+  // epi​c=5. No RNG; the chest color tells you exactly what you're getting.
   let count = 1;
-  if (rarity === 'epic') {
-    count = roll < 0.25 + jackpotBoost ? 5 : 3;
-  } else if (rarity === 'rare') {
-    count = roll < 0.08 + jackpotBoost ? 5 : roll < 0.4 + jackpotBoost ? 3 : 1;
-  } else {
-    count = roll < 0.03 + jackpotBoost ? 5 : roll < 0.18 + jackpotBoost ? 3 : 1;
-  }
+  if (rarity === 'epic') count = 5;
+  else if (rarity === 'rare') count = 3;
 
   const rewards = applyRandomChestRewards(count);
   if (rewards.length > 0) {
