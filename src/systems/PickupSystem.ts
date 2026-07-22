@@ -65,7 +65,7 @@ function applyPickup(type: string, player: any, scene: THREE.Scene): void {
       playCollect(1.2);
       break;
     case 'magnet':
-      uiState.magnaPulseTimer = 3.0;
+      uiState.magnaPulseTimer = 10.0;
       announce('MAGNA-PULSE — XP VACUUM');
       break;
     case 'bomb': {
