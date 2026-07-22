@@ -14,6 +14,14 @@
   import { haptics } from '../core/haptics';
   import { CHARACTERS, getCharacter } from '../core/CharacterRegistry';
   import {
+    CORRUPTION_MAX,
+    corruptionTierName,
+    corruptionHp,
+    corruptionDamage,
+    corruptionSpeed,
+    corruptionXp,
+  } from '../core/corruption';
+  import {
     isCharacterUnlocked,
     getUnlockCondition,
     getLifetimeStats,
@@ -157,12 +165,12 @@
     setGameState('PLAYING');
   }
 
-  // --- Corruption dial (0-5 risk/reward, persisted) ---
+  // --- Corruption dial (0-10 risk/reward, 5 = standard, persisted) ---
   function setCorruption(delta: number) {
     playMenuClick();
     haptics.select();
-    uiState.corruption = Math.max(0, Math.min(5, uiState.corruption + delta));
-    saveLocal('geo_corruption', JSON.stringify(uiState.corruption));
+    uiState.corruption = Math.max(0, Math.min(CORRUPTION_MAX, uiState.corruption + delta));
+    saveLocal('geo_corruption_v2', JSON.stringify(uiState.corruption));
   }
 
   // --- Daily run ---
@@ -510,16 +518,28 @@
         <p class="panel-subtitle">Choose your starting configuration</p>
       </header>
 
-      <!-- Corruption dial: opt-in risk for opt-in reward -->
+      <!-- Corruption dial: 0-10, 5 = standard. Opt-in risk for opt-in reward. -->
       <div class="corruption-row">
         <div class="corruption-info">
-          <span class="corruption-label">☠️ CORRUPTION {uiState.corruption}</span>
+          <span class="corruption-label">
+            ☠️ CORRUPTION {uiState.corruption}
+            <span
+              class="corruption-tier"
+              class:standard={uiState.corruption === 5}
+              class:brutal={uiState.corruption > 5}
+              class:relaxed={uiState.corruption < 5}
+            >
+              {corruptionTierName(uiState.corruption)}
+            </span>
+          </span>
           <span class="corruption-desc">
             {#if uiState.corruption === 0}
-              Standard threat level
+              The gentlest run — easy mode
             {:else}
-              +{uiState.corruption * 25}% swarm · +{uiState.corruption * 15}% enemy HP · +{uiState.corruption *
-                20}% XP · +{uiState.corruption * 25}% credits
+              +{Math.round((corruptionHp(uiState.corruption) - 1) * 100)}% enemy HP{#if uiState.corruption > 5}
+                · +{Math.round((corruptionDamage(uiState.corruption) - 1) * 100)}% damage · +{Math.round(
+                  (corruptionSpeed(uiState.corruption) - 1) * 100,
+                )}% speed{/if} · +{Math.round((corruptionXp(uiState.corruption) - 1) * 100)}% XP
             {/if}
           </span>
         </div>
@@ -532,7 +552,7 @@
           <button
             class="corr-btn"
             onclick={() => setCorruption(1)}
-            disabled={uiState.corruption >= 5}>+</button
+            disabled={uiState.corruption >= CORRUPTION_MAX}>+</button
           >
         </div>
       </div>
@@ -1452,6 +1472,31 @@
     font-size: 0.68rem;
     font-weight: 800;
     letter-spacing: 0.1em;
+    color: #ff3d77;
+  }
+
+  .corruption-tier {
+    margin-left: 0.35rem;
+    padding: 0.05rem 0.35rem;
+    border-radius: var(--r-pill);
+    font-size: 0.5rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    vertical-align: middle;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--color-text-dim);
+  }
+  /* Below standard reads calm; standard is the confident default; brutal burns. */
+  .corruption-tier.relaxed {
+    background: rgba(56, 245, 168, 0.14);
+    color: #38f5a8;
+  }
+  .corruption-tier.standard {
+    background: rgba(54, 230, 255, 0.16);
+    color: #36e6ff;
+  }
+  .corruption-tier.brutal {
+    background: rgba(255, 61, 119, 0.18);
     color: #ff3d77;
   }
 
