@@ -1,18 +1,43 @@
 import * as THREE from 'three';
 import { world } from '../core/world';
 import { uiState } from '../core/UIState.svelte.ts';
-import { getViewExtents } from './CameraSystem';
-import { edgeSpawnPos } from './TimelineSpawner';
 
 const STEER_STRENGTH = 12.0;
 const STUN_FRICTION = 0.9;
 const CONFUSED_ATTACK_RANGE_SQ = 2.0 * 2.0;
 
+// --- SEPARATION (spatial hash, position relaxation — stable, no vibration) ---
+const SEPARATION_RADIUS = 0.5;
+const SEPARATION_RADIUS_SQ = SEPARATION_RADIUS * SEPARATION_RADIUS;
+const GRID_CELL = 0.5;
+const GRID_OFFSET = 1024;
+const MAX_SEPARATION_CHECKS = 6;
+
 const _players: any[] = [];
 const _enemies: any[] = [];
-// Confusion targets: built once per frame, only when at least one enemy is
-// confused — turns the per-confused-enemy full scan into a shared array walk.
 const _confTargets: any[] = [];
+
+const _grid = new Map<number, number[]>();
+const _cellPool: number[][] = [];
+let _cellPoolUsed = 0;
+
+function gridKey(cx: number, cz: number): number {
+  return (cx + GRID_OFFSET) * 4096 + (cz + GRID_OFFSET);
+}
+
+function gridCellFor(key: number): number[] {
+  let cell = _grid.get(key);
+  if (!cell) {
+    cell = _cellPool[_cellPoolUsed] ?? (_cellPool[_cellPoolUsed] = []);
+    _cellPoolUsed++;
+    cell.length = 0;
+    _grid.set(key, cell);
+  }
+  return cell;
+}
+
+const NEIGHBOR_DX = [0, 1, 1, 0, -1];
+const NEIGHBOR_DZ = [0, 0, 1, 1, 1];
 
 export function EnemySystem(dt: number, _scene: THREE.Scene) {
   const relaySlow = uiState.relaySlowTimer > 0 ? 0.5 : 1;
@@ -24,14 +49,6 @@ export function EnemySystem(dt: number, _scene: THREE.Scene) {
     }
   }
   if (_players.length === 0) return;
-
-  // VS off-screen recycling: distance past which a lagging enemy is snapped back
-  // to the player's leading edge. Derived from the live view so it sits just
-  // beyond the visible corner (the reposition is never on-screen) yet inside the
-  // render cull — a player who outruns the trash never leaves the screen empty.
-  const _ve = getViewExtents();
-  const recycleDist = Math.hypot(_ve.halfX, _ve.halfZ) + 22;
-  const RECYCLE_DIST_SQ = recycleDist * recycleDist;
 
   _enemies.length = 0;
   let anyConfused = false;
@@ -52,6 +69,17 @@ export function EnemySystem(dt: number, _scene: THREE.Scene) {
     }
   }
 
+  // Rebuild the spatial hash (boss excluded from separation)
+  _grid.clear();
+  _cellPoolUsed = 0;
+  for (let i = 0; i < enemyCount; i++) {
+    const e = _enemies[i];
+    if (e.isBoss) continue;
+    const cx = Math.floor(e.position.x / GRID_CELL);
+    const cz = Math.floor(e.position.z / GRID_CELL);
+    gridCellFor(gridKey(cx, cz)).push(i);
+  }
+
   for (let i = 0; i < enemyCount; i++) {
     const enemy = _enemies[i];
     if (enemy.isBoss) continue;
@@ -63,6 +91,7 @@ export function EnemySystem(dt: number, _scene: THREE.Scene) {
       enemy.contactCooldown -= dt;
     }
 
+    // STUN CHECK
     if (enemy.stunTimer && enemy.stunTimer > 0) {
       enemy.stunTimer -= dt;
       enemy.velocity.x *= STUN_FRICTION;
@@ -80,31 +109,16 @@ export function EnemySystem(dt: number, _scene: THREE.Scene) {
         }
       }
 
-      // Outran the horde? Snap this laggard back to your leading edge (off-screen).
-      if (minPDistSq > RECYCLE_DIST_SQ) {
-        const rp = edgeSpawnPos(
-          closestPlayer.position.x,
-          closestPlayer.position.z,
-          closestPlayer.velocity?.x ?? 0,
-          closestPlayer.velocity?.z ?? 0,
-        );
-        enemy.position.x = rp.x;
-        enemy.position.z = rp.z;
-        enemy.velocity.x = 0;
-        enemy.velocity.z = 0;
-        continue;
-      }
-
       let targetX = closestPlayer.position.x;
       let targetZ = closestPlayer.position.z;
 
+      // CONFUSED: Target nearest non-confused enemy instead of player
       if (enemy.confusedTimer && enemy.confusedTimer > 0) {
         let nearestDistSq = Infinity;
         let nearestEnemy = null;
 
         for (let j = 0; j < _confTargets.length; j++) {
           const other = _confTargets[j];
-
           const dx = other.position.x - enemy.position.x;
           const dz = other.position.z - enemy.position.z;
           const distSq = dx * dx + dz * dz;
@@ -130,6 +144,7 @@ export function EnemySystem(dt: number, _scene: THREE.Scene) {
         }
       }
 
+      // 1. MOVE TOWARD TARGET (No pathfinding, no AI)
       const dx = targetX - enemy.position.x;
       const dz = targetZ - enemy.position.z;
       const invLen = 1.0 / Math.sqrt(dx * dx + dz * dz + 0.001);
@@ -138,14 +153,60 @@ export function EnemySystem(dt: number, _scene: THREE.Scene) {
       const targetVx = dx * invLen * speed;
       const targetVz = dz * invLen * speed;
 
+      // 2. STEERING (Soft turn toward target velocity)
       const steerFactor = STEER_STRENGTH * dt;
       enemy.velocity.x += (targetVx - enemy.velocity.x) * steerFactor;
       enemy.velocity.z += (targetVz - enemy.velocity.z) * steerFactor;
     }
 
+    // 3. SEPARATION — spatial hash, position relaxation (bounces off each other)
+    // Velocity impulses here fight the chase steering and oscillate violently;
+    // relaxing a capped fraction of overlap cannot overshoot, so the horde packs
+    // into a tight VS-style blob without phasing through.
+    let checksRemaining = MAX_SEPARATION_CHECKS;
+    const cellX = Math.floor(enemy.position.x / GRID_CELL);
+    const cellZ = Math.floor(enemy.position.z / GRID_CELL);
+
+    for (let n = 0; n < 5 && checksRemaining > 0; n++) {
+      const cell = _grid.get(gridKey(cellX + NEIGHBOR_DX[n], cellZ + NEIGHBOR_DZ[n]));
+      if (!cell) continue;
+
+      for (let k = 0; k < cell.length && checksRemaining > 0; k++) {
+        const j = cell[k];
+        if (n === 0 && j <= i) continue; // own cell: visit each pair once
+        const other = _enemies[j];
+
+        const dx = enemy.position.x - other.position.x;
+        const dz = enemy.position.z - other.position.z;
+        const distSq = dx * dx + dz * dz;
+
+        if (distSq < SEPARATION_RADIUS_SQ && distSq > 0.0001) {
+          checksRemaining--;
+
+          const dist = Math.sqrt(distSq);
+          const overlap = SEPARATION_RADIUS - dist;
+          // Push a full 60% of the overlap — strong enough that enemies clearly
+          // bounce apart instead of sliding through each other, but still
+          // position-based (no velocity spike → no vibration).
+          const f = Math.min(0.6, 8 * dt);
+          const push = Math.min(overlap * f, 0.2);
+          const invDist = 1.0 / dist;
+          const px = dx * invDist * push;
+          const pz = dz * invDist * push;
+
+          enemy.position.x += px;
+          enemy.position.z += pz;
+          other.position.x -= px;
+          other.position.z -= pz;
+        }
+      }
+    }
+
+    // 4. MOVE
     enemy.position.x += enemy.velocity.x * dt;
     enemy.position.z += enemy.velocity.z * dt;
 
+    // 5. SYNC VISUAL DIRECTION
     if (enemy.velocity.lengthSq() > 0.01) {
       enemy.rotationY = Math.atan2(enemy.velocity.x, enemy.velocity.z);
     }
