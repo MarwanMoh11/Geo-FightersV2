@@ -28,6 +28,8 @@ export type Entity = {
   kills?: number; // per-player kill count (co-op scoreboard)
   reviveProgress?: number; // 0-1 while a teammate is reviving this dead player
   ownerConnId?: string; // projectiles: connectionId of the player who fired (kill credit)
+  // Wave-scaled contact-damage multiplier (set at spawn, decays the game clock)
+  wavePower?: number;
   // Network smoothing targets (clients lerp remote entities toward these)
   netX?: number;
   netZ?: number;
