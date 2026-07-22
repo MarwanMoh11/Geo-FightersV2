@@ -33,7 +33,14 @@ export async function initRenderer() {
   let renderer: any;
   const quality = getQualityProfile();
 
-  if (isWebGPUAvailable()) {
+  // Mobile is pinned to the mature WebGL2 renderer. iOS Safari's WebGPU (new in
+  // 2024) silently fails to draw InstancedMesh + MeshStandardMaterial with
+  // per-instance color — which is exactly how the whole enemy horde is rendered,
+  // so on an iPhone the enemies were submitted (correct positions, visible) but
+  // never appeared, while non-instanced / basic-material objects rendered fine.
+  // WebGL2 renders them correctly and is universally supported on mobile/webviews
+  // (the CrazyGames target). Desktop keeps WebGPU.
+  if (isWebGPUAvailable() && !isMobile) {
     try {
       console.log(
         `[Renderer] WebGPU is available. Quality: ${quality.tier}. Attempting to initialize...`,
