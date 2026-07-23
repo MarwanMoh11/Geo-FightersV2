@@ -73,6 +73,26 @@ import { MapEventSystem } from './systems/MapEventSystem';
 import { BreachSystem } from './systems/BreachSystem';
 import { ClientCombatFxSystem } from './systems/ClientCombatFxSystem';
 
+// --- GAME-LOOP ERROR RESILIENCE ---
+// The rAF loop reschedules itself at the top of animate(), so a thrown error
+// doesn't kill the loop — but it DOES skip renderFrame() (last line of the
+// body), which freezes the canvas while the reactive Svelte HUD keeps updating
+// from network sync (reads as: world frozen, XP/HP/level still ticking).
+// Wrapping the systems in try/catch lets renderFrame run and surfaces the
+// throwing system via a throttled console error (avoid 60/s spam).
+let _lastLoopErrorTs = 0;
+let _lastLoopErrorMsg = '';
+function logLoopError(e: unknown): void {
+  const now = performance.now();
+  const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+  // Always log the first occurrence of a distinct error; thereafter throttle.
+  if (msg !== _lastLoopErrorMsg || now - _lastLoopErrorTs > 1000) {
+    _lastLoopErrorMsg = msg;
+    _lastLoopErrorTs = now;
+    console.error('[gameloop] system threw (frame skipped, render still runs)', e);
+  }
+}
+
 // --- AUDIO UNLOCK & MUSIC START ---
 const unlockAudio = () => {
   const ctx = getCtx();
@@ -364,6 +384,10 @@ function startGameLoop(
     const isHost = uiState.isHost;
 
     // 1. Logic
+    // Systems are wrapped: a single throwing system must not skip renderFrame
+    // (see logLoopError). The UI/Camera/Render phase below stays outside the
+    // try so the screen always advances even if a gameplay system errors.
+    try {
     let _t: () => void;
     _t = benchmark.trace('MusicDirector');
     MusicDirector(dt);
@@ -507,6 +531,9 @@ function startGameLoop(
     _t = benchmark.trace('UISystem');
     UISystem();
     _t();
+    } catch (e) {
+      logLoopError(e);
+    }
     if (DEBUG) DebugSystem(scene); // Debug panel (Shift+Alt+D, requires ?debug)
 
     benchmark.endFrame();
