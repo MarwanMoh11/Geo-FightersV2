@@ -1926,6 +1926,7 @@ export function spawnEnemyProjectile(
     maxLife: 2.5,
     transform: mesh,
     damage,
+    color,
     projectile: {
       pierce: 1,
       explodeRadius: 0,
