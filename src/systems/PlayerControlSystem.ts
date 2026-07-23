@@ -7,6 +7,12 @@ const KNOCKBACK_DECAY = 7.0; // higher = recovers control faster
 
 const _inputVector = new THREE.Vector3();
 
+/**
+ * Per-frame player movement tick: read the input component, apply speed buffs
+ * and debuffs, and layer decaying knockback on top of player-controlled velocity.
+ *
+ * @param {number} dt - delta time since last frame in seconds
+ */
 export function PlayerControlSystem(dt: number) {
   for (const entity of world.with('isPlayer', 'velocity', 'input', 'stats')) {
     // FIX: Guard clause

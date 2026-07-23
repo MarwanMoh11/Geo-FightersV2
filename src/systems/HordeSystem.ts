@@ -69,6 +69,14 @@ let lastPressureZone: 'low' | 'optimal' | 'high' = 'optimal';
 const recentNearMisses = new Set<number>();
 
 // --- MAIN SYSTEM ---
+/**
+ * Per-frame horde spawn tick: scale spawn rates with time and flow state,
+ * trigger wave bursts, and keep enemy count within limits.
+ *
+ * @param {number} dt - delta time since last frame in seconds
+ * @param {THREE.Scene} scene - the Three.js scene to spawn enemies into
+ * @returns {void}
+ */
 export function HordeSystem(dt: number, scene: THREE.Scene): void {
   // 1. Find Player
   const player = world.with('isPlayer', 'position', 'health').first;

@@ -7,6 +7,12 @@ const PLAYER_RADIUS = 0.8;
 const ENEMY_RADIUS = 0.5;
 const PROJECTILE_RADIUS = 0.3;
 
+/**
+ * Per-frame physics tick: step Rapier for player bodies, integrate projectile
+ * movement, resolve obstacle and map-boundary collisions, and sync transforms.
+ *
+ * @param {number} dt - delta time since last frame in seconds
+ */
 export function PhysicsSystem(dt: number) {
   const obstacles = getBlockingObstacles();
   const level = getCurrentLevel();

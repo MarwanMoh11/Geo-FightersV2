@@ -77,6 +77,9 @@ export function resetUpgradeState(): void {
 // the world keeps simulating during a breach and the modal would pause it
 // (and bury the mini-game). BreachSystem flushes this on jack-out.
 let levelUpsDeferredByBreach = 0;
+/**
+ * Flush any level-ups that were deferred while the player was jacked into a breach.
+ */
 export function flushDeferredLevelUps(): void {
   while (levelUpsDeferredByBreach > 0) {
     levelUpsDeferredByBreach--;
@@ -106,6 +109,10 @@ export function upgradeRandomOwnedWeapon(): string | null {
 }
 
 // --- PUBLIC API ---
+/**
+ * Trigger a level-up for the local player, opening the upgrade modal if choices
+ * are available or auto-picking if only health is left.
+ */
 export function triggerLevelUp() {
   const player = world.with('isLocalPlayer', 'weaponSlots', 'passiveSlots', 'stats').first;
   if (!player) return;
@@ -332,6 +339,12 @@ export function applyRandomChestRewards(
   return granted;
 }
 
+/**
+ * Apply the chosen upgrade option and, if queued level-ups remain, open the
+ * next modal; otherwise unpause the game.
+ *
+ * @param {UpgradeOption} option - the upgrade option the player selected
+ */
 export function selectUpgrade(option: UpgradeOption) {
   const player = world.with('isLocalPlayer', 'weaponSlots', 'passiveSlots', 'stats').first;
   if (!player) return;
@@ -529,6 +542,9 @@ function getWeaponLevelUpDesc(weaponId: string, currentLevel: number): string {
   return changes.join(', ') || 'Improve stats';
 }
 
+/**
+ * Spend one reroll to replace the current upgrade choices with freshly rolled ones.
+ */
 export function rerollUpgradeChoices() {
   if (uiState.runRerolls <= 0) return;
   uiState.runRerolls--;
@@ -542,6 +558,11 @@ export function rerollUpgradeChoices() {
   haptics.select();
 }
 
+/**
+ * Permanently remove one upgrade option from the run's pool, then reroll choices.
+ *
+ * @param {string} optionId - the id of the upgrade option to banish
+ */
 export function banishUpgradeOption(optionId: string) {
   if (uiState.runBanishes <= 0) return;
   uiState.runBanishes--;

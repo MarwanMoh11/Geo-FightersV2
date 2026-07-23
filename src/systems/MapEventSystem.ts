@@ -267,6 +267,9 @@ if (typeof window !== 'undefined' && new URLSearchParams(window.location.search)
 }
 
 /** Full reset for a no-reload restart. */
+/**
+ * Reset all map event state for a no-reload restart.
+ */
 export function resetMapEvents(): void {
   timer = FIRST_SUPPLY_AT;
   rotationIdx = 0;
@@ -287,6 +290,15 @@ export function resetMapEvents(): void {
   beacons.length = 0;
 }
 
+/**
+ * Per-frame map event tick: run the event scheduler (supply drops, maglev
+ * trains, neon surges), tick active event state, and fire the opening
+ * choreography beats.
+ *
+ * @param {number} dt - delta time since last frame in seconds
+ * @param {THREE.Scene} scene - the Three.js scene for event VFX
+ * @returns {void}
+ */
 export function MapEventSystem(dt: number, scene: THREE.Scene): void {
   if (!isHostOrSolo()) return;
   const player = world.with('isLocalPlayer', 'position').first;

@@ -58,10 +58,22 @@ export function resetCamera(): void {
 // edge spawns instead of the old fixed wall gates.
 let _viewHalfX = 30;
 let _viewHalfZ = 26;
+/**
+ * Return the current on-screen half-extents in world units for edge spawning.
+ *
+ * @returns {{ halfX: number; halfZ: number }} horizontal and depth half-extents
+ */
 export function getViewExtents(): { halfX: number; halfZ: number } {
   return { halfX: _viewHalfX, halfZ: _viewHalfZ };
 }
 
+/**
+ * Per-frame camera tick: follow the local player with velocity lookahead,
+ * arena clamping, and desktop/mobile rig differentiation.
+ *
+ * @param {number} dt - delta time since last frame in seconds
+ * @param {THREE.Camera} camera - the camera to reposition
+ */
 export function CameraSystem(dt: number, camera: THREE.Camera) {
   const player = world.with('isLocalPlayer', 'transform').first;
   if (!player || !player.transform) return;

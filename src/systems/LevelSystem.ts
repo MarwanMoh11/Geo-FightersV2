@@ -576,6 +576,11 @@ function buildMaglevLane(scene: THREE.Scene, level: LevelConfig): void {
 }
 
 // MAGLEV RUN event hook: the lane flares white-hot during the telegraph
+/**
+ * Toggle the maglev lane glow on or off for the MAGLEV RUN event telegraph.
+ *
+ * @param {boolean} on - true to flare the lane white-hot, false to restore idle
+ */
 export function setRailGlow(on: boolean): void {
   if (laneDashMat) laneDashMat.color.setHex(on ? 0xaef8ff : C.laneEdge);
   if (laneBedMat) {

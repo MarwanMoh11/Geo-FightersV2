@@ -65,3 +65,11 @@ All enemies are "instanced-only" — no per-enemy scene graph nodes, Rapier bodi
 - **Shadow map at 30Hz** (renderer.ts): `autoUpdate=false`, throttled refresh. Enemy solid mesh has `castShadow=false` (blob shadows handle it)
 - **Rapier is initialized at runtime** — `isRapierInitialized()` can return false early in the startup sequence. Guard every Rapier call
 - **Network sync overwrites entity.id**: `spawnEnemy` assigns an auto-id, then `network.ts` overwrites it with the host's id — breaks `world.get()` and `world.remove()` (which now uses id→slot map instead of reference identity)
+
+## Model routing
+
+- Delegate to **grunt** for bulk mechanical edits (renames, boilerplate, docstrings, find-and-replace).
+- Delegate to **algo** for numeric/algorithmic work (complexity, data structures, geometry/physics math).
+- Delegate to **visual** when an image/screenshot is in play (UI debugging, CSS/layout diffs).
+- Delegate to **hard** only after a cheaper agent has genuinely failed on subtle logic/races/architecture.
+- Hard rule: stay on the current model for long stretches. Switching models cold-starts the prompt cache and re-bills the entire context at full input rate. Delegate in bounded chunks (one cohesive task per hand-off), never per-turn.

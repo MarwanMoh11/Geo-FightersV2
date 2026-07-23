@@ -27,6 +27,9 @@ let layer: HTMLDivElement | null = null;
 const pool: DamageLabel[] = [];
 const _projected = new THREE.Vector3();
 
+/**
+ * Create the damage number DOM layer and pre-allocate the label pool.
+ */
 export function initDamageNumbers() {
   if (layer) return;
   layer = document.createElement('div');
@@ -42,6 +45,14 @@ export function initDamageNumbers() {
   }
 }
 
+/**
+ * Spawn a floating damage number at a world position.
+ *
+ * @param {THREE.Vector3} position - world position to display the number at
+ * @param {number} amount - damage value to display
+ * @param {DamageVariant} [variant='enemy'] - visual variant (enemy, player, or aoe)
+ * @param {boolean} [isCrit=false] - whether to show the CRIT label
+ */
 export function spawnDamageNumber(
   position: THREE.Vector3,
   amount: number,
@@ -83,6 +94,13 @@ export function clearDamageNumbers() {
   }
 }
 
+/**
+ * Per-frame damage number tick: project each active label from world space to
+ * screen space and animate its rise, scale, and fade.
+ *
+ * @param {number} dt - delta time since last frame in seconds
+ * @param {THREE.Camera} camera - the camera used for world-to-screen projection
+ */
 export function DamageNumberSystem(dt: number, camera: THREE.Camera) {
   if (!layer) return;
 

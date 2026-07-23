@@ -121,6 +121,14 @@ function radialBlast(
   }
 }
 
+/**
+ * Per-frame overload tick: handle rising/falling edges for each character's
+ * ultimate, run continuous effects (rail bubble, lash tears, nova gravity,
+ * byte vacuum, ghost phase), and manage the overload timer.
+ *
+ * @param {number} dt - delta time since last frame in seconds
+ * @param {THREE.Scene} scene - the Three.js scene for VFX and projectiles
+ */
 export function OverloadSystem(dt: number, scene: THREE.Scene) {
   const player = world.with('isLocalPlayer', 'position', 'id').first;
   if (!player) return;

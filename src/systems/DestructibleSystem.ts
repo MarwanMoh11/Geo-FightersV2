@@ -102,6 +102,13 @@ function breakCrate(crate: any, scene: THREE.Scene): void {
   });
 }
 
+/**
+ * Per-frame destructible crate tick: refill crates over time, detect projectile
+ * hits, and rebuild instanced meshes when the set changes.
+ *
+ * @param {number} dt - delta time since last frame in seconds
+ * @param {THREE.Scene} scene - the Three.js scene for instanced crate meshes
+ */
 export function DestructibleSystem(dt: number, scene: THREE.Scene): void {
   if (!isHostOrSolo()) return;
   if (!solidMesh) initMeshes(scene);
@@ -154,6 +161,9 @@ export function DestructibleSystem(dt: number, scene: THREE.Scene): void {
   }
 }
 
+/**
+ * Reset all destructible state (meshes, timers) for a fresh run.
+ */
 export function resetDestructibles(): void {
   solidMesh = null;
   glowMesh = null;

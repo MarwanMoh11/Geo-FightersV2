@@ -243,6 +243,14 @@ export function resetShrineSystem(): void {
   uiState.shrineSpeedTimer = 0;
 }
 
+/**
+ * Per-frame shrine tick: initialize shrine structures on first run, and tick
+ * active buff timers. Stash logic has been removed (credits go to wallet).
+ *
+ * @param {number} dt - delta time since last frame in seconds
+ * @param {THREE.Scene} scene - the Three.js scene for shrine structure initialization
+ * @returns {void}
+ */
 export function ShrineSystem(dt: number, scene: THREE.Scene): void {
   if (!initialized) {
     initialized = true;

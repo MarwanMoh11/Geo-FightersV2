@@ -26,6 +26,12 @@ const REVIVE_IFRAMES = 2.0;
 
 const _players: any[] = [];
 
+/**
+ * Per-frame co-op tick: track ghost states, decay revive progress when no
+ * reviver is nearby, and complete revives when the channel finishes.
+ *
+ * @param {number} dt - delta time since last frame in seconds
+ */
 export function CoopSystem(dt: number) {
   // Solo runs have no one to revive you — co-op only.
   if (!uiState.isMultiplayer || !uiState.isHost) return;

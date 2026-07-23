@@ -9,11 +9,20 @@
 
 import { dlog } from '../core/debug';
 
+/**
+ * Initialize the enemy compute system (placeholder for future GPU compute).
+ */
 export function initEnemyComputeSystem() {
   // GPU buffer initialization will go here once Three.js WebGPU compute API is stable
   dlog('[EnemyComputeSystem] Initialized (placeholder, GPU-ready)');
 }
 
+/**
+ * Per-frame enemy compute tick (currently a no-op; EnemySystem handles CPU separation).
+ *
+ * @param {number} _dt - delta time since last frame in seconds
+ * @param {unknown} _renderer - the renderer instance (unused)
+ */
 export function EnemyComputeSystem(_dt: number, _renderer: unknown) {
   // Intentionally a no-op for now: EnemySystem owns separation on the CPU.
   // Running a CPU copy here as well applied separation forces TWICE per frame,

@@ -39,6 +39,13 @@ function gridCellFor(key: number): number[] {
 const NEIGHBOR_DX = [0, 1, 1, 0, -1];
 const NEIGHBOR_DZ = [0, 0, 1, 1, 1];
 
+/**
+ * Per-frame enemy AI tick: steer toward the nearest player, handle stun and
+ * confusion, apply spatial-hash separation, and integrate position.
+ *
+ * @param {number} dt - delta time since last frame in seconds
+ * @param {THREE.Scene} _scene - the Three.js scene (unused directly)
+ */
 export function EnemySystem(dt: number, _scene: THREE.Scene) {
   const relaySlow = uiState.relaySlowTimer > 0 ? 0.5 : 1;
 

@@ -100,6 +100,10 @@ export function declineSecondChance(): void {
   triggerGameOver();
 }
 
+/**
+ * Trigger the game-over sequence: record stats, submit to leaderboard,
+ * play death effects, and transition to the GAME_OVER state.
+ */
 export function triggerGameOver() {
   if (isGameOver || isVictory) return; // Prevent double trigger
   isGameOver = true;
@@ -126,6 +130,9 @@ export function triggerGameOver() {
   setGameState('GAME_OVER');
 }
 
+/**
+ * Trigger the victory sequence: offer endless mode choice or end the run as a win.
+ */
 export function triggerVictory() {
   if (isGameOver || isVictory) return;
 
