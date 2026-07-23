@@ -20,6 +20,10 @@ import { uiState } from '../core/UIState.svelte.ts';
 // const mobilePauseBtn = document.getElementById('mobile-pause-btn');
 
 // --- INITIALIZATION ---
+/**
+ * Initialize the main menu system: load settings, wire up event listeners,
+ * and attach state-change handlers.
+ */
 export function initMainMenuSystem(): void {
   // Load settings and apply to UI
   const settings = loadSettings();
@@ -116,6 +120,12 @@ function applySettingsToGame(settings: GameSettings): void {
 let frameCount = 0;
 let lastFpsUpdate = 0;
 
+/**
+ * Update the FPS counter with the latest frame timestamp.
+ *
+ * @param {number} currentTime - current performance.now() timestamp in ms
+ * @returns {void}
+ */
 export function updateFPS(currentTime: number): void {
   frameCount++;
 

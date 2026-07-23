@@ -22,6 +22,12 @@ const PICKUP_STYLES: Record<string, PickupStyle> = {
 
 const pickupMeshes = new Map<number, THREE.Group>();
 
+/**
+ * Per-frame pickup tick: animate floor pickups and collect them when a player
+ * moves within range.
+ *
+ * @param {THREE.Scene} scene - the Three.js scene (used for bomb pickup VFX)
+ */
 export function PickupSystem(scene: THREE.Scene): void {
   const now = performance.now() / 1000;
 

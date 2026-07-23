@@ -192,6 +192,13 @@ const _tempQuat = new THREE.Quaternion();
 const _tempMat = new THREE.Matrix4();
 const _tempColor = new THREE.Color();
 
+/**
+ * Per-frame render pass: syncs transforms, animates sub-meshes, and draws
+ * the instanced enemy horde in one batched draw call per enemy type.
+ *
+ * @param {number} dt - delta time since last frame in seconds
+ * @param {THREE.Scene} scene - the Three.js scene to render into
+ */
 export function RenderSystem(dt: number, scene: THREE.Scene) {
   time += dt;
 

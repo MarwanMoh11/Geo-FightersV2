@@ -38,6 +38,11 @@ const PICKUP_ICONS: Record<string, { icon: string; color: string }> = {
 };
 
 /** Every live POI on the map right now (shared with the minimap). */
+/**
+ * Collect every live point of interest on the map for the minimap and wayfinding arrows.
+ *
+ * @returns {Poi[]} list of current POIs across the arena
+ */
 export function collectPois(): Poi[] {
   const pois: Poi[] = [];
 
@@ -89,6 +94,14 @@ export function collectPois(): Poi[] {
 const _proj = new THREE.Vector3();
 let accumulator = 0;
 
+/**
+ * Per-frame wayfinding tick (throttled to 10 Hz): project off-screen POIs into
+ * HUD edge-arrows and publish them to uiState.
+ *
+ * @param {number} dt - delta time since last frame in seconds
+ * @param {THREE.Camera} camera - the camera used for world-to-screen projection
+ * @returns {void}
+ */
 export function WayfindingSystem(dt: number, camera: THREE.Camera): void {
   accumulator += dt;
   if (accumulator < 0.1) return; // 10 Hz is plenty for guidance arrows

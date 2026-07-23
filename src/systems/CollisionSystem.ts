@@ -72,6 +72,12 @@ function enemyHitRadius(enemy: any): number {
   return 0.3 + Math.max(0.6, (enemy.size ?? 1.5) * 0.3);
 }
 
+/**
+ * Per-frame collision sweep: bullet-enemy hits via spatial grid, enemy-player
+ * contact damage, enemy projectile-player hits, and lash tear damage.
+ *
+ * @param {THREE.Scene} scene - the Three.js scene for death and impact VFX
+ */
 export function CollisionSystem(scene: THREE.Scene) {
   // Materialize living enemies + players ONCE per frame. All sweeps below run
   // over plain arrays and the shared grid — no per-bullet ECS re-iteration.
@@ -498,6 +504,9 @@ const COMBO_WINDOW_MS = 2000;
 const COMBO_MILESTONES = [25, 50, 100, 250, 500, 1000];
 let comboExpiresAt = 0;
 
+/**
+ * Expire the kill-combo chain when its timed window lapses.
+ */
 export function tickCombo(): void {
   if (uiState.combo > 0 && performance.now() > comboExpiresAt) {
     uiState.combo = 0;
@@ -539,6 +548,16 @@ function creditKill(killerConnId?: string) {
   }
 }
 
+/**
+ * Process an enemy death: credit the kill, spawn XP/credits/chests, play death
+ * VFX, and remove the entity from the world.
+ *
+ * @param {any} enemy - the enemy entity that was killed
+ * @param {THREE.Scene} scene - the Three.js scene for death VFX
+ * @param {string} [weaponId] - id of the weapon that dealt the killing blow
+ * @param {number} [bulletColor] - color of the projectile for VFX
+ * @param {string} [killerConnId] - connection id of the killing player (co-op credit)
+ */
 export function handleEnemyDeath(
   enemy: any,
   scene: THREE.Scene,
@@ -686,6 +705,16 @@ export function handleEnemyDeath(
 // otherwise flood the ECS with debris faster than LifecycleSystem drains it.
 const MAX_PARTICLE_ENTITIES = 1200;
 
+/**
+ * Spawn a burst of impact debris particles at a position (used by bullet hits
+ * and enemy deaths).
+ *
+ * @param {THREE.Vector3} pos - world position of the impact
+ * @param {THREE.Scene} _scene - the Three.js scene (unused, particles are instanced)
+ * @param {string} [weaponId] - weapon id to determine particle shape/scale
+ * @param {number} [color] - particle color override
+ * @param {number} [count=5] - number of particles before quality scaling
+ */
 export function spawnImpactFX(
   pos: THREE.Vector3,
   _scene: THREE.Scene,

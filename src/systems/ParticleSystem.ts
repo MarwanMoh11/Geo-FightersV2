@@ -18,6 +18,13 @@ const tempQuaternion = new THREE.Quaternion();
 const tempMatrix = new THREE.Matrix4();
 const tempColor = new THREE.Color();
 
+/**
+ * Per-frame particle tick: update lifetimes, gravity, spin, and scale for all
+ * active particles, then render instanced debris via InstancedMesh.
+ *
+ * @param {number} dt - delta time since last frame in seconds
+ * @param {THREE.Scene} [scene] - the Three.js scene for instanced particle rendering
+ */
 export function ParticleSystem(dt: number, scene?: THREE.Scene) {
   // 1. Update active particles' physics, scale, and rotations
   for (const entity of world.with('isParticle', 'lifeTimer', 'maxLife')) {

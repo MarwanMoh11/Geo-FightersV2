@@ -9,11 +9,20 @@
 
 import { dlog } from '../core/debug';
 
+/**
+ * Initialize the particle compute system (placeholder for future GPU compute).
+ */
 export function initParticleComputeSystem() {
   // GPU buffer initialization will go here once Three.js WebGPU compute API is stable
   dlog('[ParticleComputeSystem] Initialized (placeholder, GPU-ready)');
 }
 
+/**
+ * Per-frame particle compute tick (currently a no-op; ParticleSystem handles CPU updates).
+ *
+ * @param {number} _dt - delta time since last frame in seconds
+ * @param {unknown} _renderer - the renderer instance (unused)
+ */
 export function ParticleComputeSystem(_dt: number, _renderer: unknown) {
   // Intentionally a no-op for now: ParticleSystem owns the CPU update.
   // Running a CPU copy here as well double-applied scale/rotation each frame.

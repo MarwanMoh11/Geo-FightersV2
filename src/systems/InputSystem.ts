@@ -9,6 +9,9 @@ const OVERLOAD_DURATION: Record<string, number> = {
 };
 const DEFAULT_OVERLOAD_DURATION = 7.0;
 
+/**
+ * Activate the overload ultimate if the charge bar is full and the game is playing.
+ */
 export function triggerOverload() {
   if (uiState.overloadCharge >= 100 && !uiState.overloadActive && uiState.gameState === 'PLAYING') {
     uiState.overloadActive = true;
@@ -84,6 +87,14 @@ if (typeof window !== 'undefined') {
 // range (and precise slow movement) is preserved above the deadzone. Unlike
 // low-passing the input, a deadzone adds no latency.
 const STICK_DEADZONE = 0.12;
+/**
+ * Update the virtual joystick position from a mobile touch input, applying a
+ * radial deadzone to prevent jitter drift.
+ *
+ * @param {number} x - horizontal axis value (-1 to 1)
+ * @param {number} y - vertical axis value (-1 to 1)
+ * @param {boolean} isShooting - whether the fire button is held
+ */
 export function updateVirtualJoystick(x: number, y: number, isShooting = false) {
   const mag = Math.sqrt(x * x + y * y);
   if (mag <= STICK_DEADZONE) {
@@ -99,6 +110,9 @@ export function updateVirtualJoystick(x: number, y: number, isShooting = false) 
   inputState.isShooting = isShooting;
 }
 
+/**
+ * Reset the virtual joystick to center with no shooting input.
+ */
 export function resetVirtualJoystick() {
   inputState.x = 0;
   inputState.y = 0;
@@ -106,6 +120,10 @@ export function resetVirtualJoystick() {
 }
 
 // --- MAIN SYSTEM LOOP ---
+/**
+ * Per-frame input tick: read keyboard and virtual joystick state and write
+ * the normalized movement vector into each local player's input component.
+ */
 export function InputSystem() {
   const isLocalPausedOrUpgrading = uiState.gameState === 'PAUSED' || uiState.showUpgrade;
 

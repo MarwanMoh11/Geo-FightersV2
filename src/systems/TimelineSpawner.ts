@@ -108,6 +108,9 @@ let nextEndlessSwarmAt = STAGE_END + 30;
 let nextEndlessEliteAt = STAGE_END + 15;
 let endlessEliteRotation = 0;
 
+/**
+ * Reset all spawner state for a fresh run.
+ */
 export function resetTimelineSpawner(): void {
   gameTime = 0;
   tickTimer = 0;
@@ -119,6 +122,14 @@ export function resetTimelineSpawner(): void {
 }
 
 // --- MAIN SYSTEM ---
+/**
+ * Main spawner tick: fills the horde to the current wave's quota, fires scripted
+ * swarms and elite schedules, and scales difficulty over time.
+ *
+ * @param {number} dt - delta time since last frame in seconds
+ * @param {THREE.Scene} scene - the Three.js scene to spawn enemies into
+ * @returns {void}
+ */
 export function TimelineSpawnerSystem(dt: number, scene: THREE.Scene): void {
   _spawnerPlayers.length = 0;
   for (const p of world.with('isPlayer', 'position')) _spawnerPlayers.push(p);
@@ -138,7 +149,7 @@ export function TimelineSpawnerSystem(dt: number, scene: THREE.Scene): void {
     // ?max stress-test: saturate the arena at MAX_ENEMIES immediately.
     minAlive = MAX_ENEMIES - 10;
     interval = 0.05;
-    hpMult = 1.0;
+    hpMult = 15.0;
   } else {
     const corruptionMult = corruptionDensity(uiState.corruption);
     const curseMult = (player as { stats?: { curse?: number } }).stats?.curse ?? 1.0;
@@ -305,6 +316,11 @@ function spawnElitePack(
 }
 
 // --- DEBUG ---
+/**
+ * Return the current spawner debug info for the ?debug console.
+ *
+ * @returns {{ gameTime: number; minAlive: number; alive: number }} spawner state snapshot
+ */
 export function getSpawnerDebugInfo(): { gameTime: number; minAlive: number; alive: number } {
   const wave = getWave(Math.min(gameTime, STAGE_END - 1));
   return { gameTime, minAlive: wave.minAlive, alive: world.count('isEnemy') };
