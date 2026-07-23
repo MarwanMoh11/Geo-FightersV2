@@ -65,6 +65,19 @@ export type Entity = {
   // incoming damage scales with how many bodies are touching the player
   contactCooldown?: number;
 
+  abilityKind?: string;
+  abilityTimer?: number;
+  dashState?: 'idle' | 'windup' | 'dash' | 'recover';
+  phased?: boolean;
+  shieldArc?: number;
+  shieldTimer?: number;
+  telegraph?: number;
+  winding?: boolean;
+  shieldHp?: number;
+  absorbHp?: number;
+  noSplit?: boolean;
+  lobbing?: number;
+
   // Orbital weapon data
   orbitalData?: {
     ownerId: number;
@@ -210,6 +223,7 @@ function createECS() {
     'isBossShockwave',
     'lifeTimer',
     'transform',
+    'abilityKind',
   ];
 
   const indexes = new Map<keyof Entity, Set<Entity>>();

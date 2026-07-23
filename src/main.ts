@@ -8,11 +8,17 @@ import {
   NetSmoothingSystem,
 } from './core/network';
 
-import { spawnPlayer, initializePlayerForRun, applyCharacterModel } from './core/factories';
+import {
+  spawnPlayer,
+  spawnEnemy,
+  EnemyType,
+  initializePlayerForRun,
+  applyCharacterModel,
+} from './core/factories';
 import { getCtx, startMusic, muteForBackground, unmuteFromBackground } from './core/audio';
 import { isPlaying, onStateChange, setGameState } from './core/GameState';
 import { uiState } from './core/UIState.svelte.ts';
-import { DEBUG, dlog } from './core/debug';
+import { DEBUG, TEST_MODE, dlog } from './core/debug';
 import { initPWA } from './core/pwa';
 import { getFpsLimit } from './core/SettingsManager';
 import { portalLoadingFinished, isPortalEmbed } from './core/portal';
@@ -33,6 +39,7 @@ import { AimSystem } from './systems/AimSystem';
 import { WeaponSystem } from './systems/WeaponSystem';
 import { LifecycleSystem } from './systems/LifecycleSystem';
 import { EnemySystem } from './systems/EnemySystem';
+import { EnemyAbilitySystem } from './systems/EnemyAbilitySystem';
 import { CollisionSystem } from './systems/CollisionSystem';
 import { TimelineSpawnerSystem } from './systems/TimelineSpawner';
 import { ParticleSystem } from './systems/ParticleSystem';
@@ -213,6 +220,34 @@ function startGameLoop(
     });
   }
 
+  if (TEST_MODE) {
+    const TEST_ENEMY_KEYS: Record<string, EnemyType> = {
+      '1': EnemyType.GLITCH,
+      '2': EnemyType.VIRUS,
+      '3': EnemyType.FIREWALL,
+      '4': EnemyType.SPITTER,
+      '5': EnemyType.STALKER,
+      '6': EnemyType.ENFORCER,
+      '7': EnemyType.COLOSSUS,
+      '8': EnemyType.WARDEN,
+      '9': EnemyType.WEAVER,
+      '0': EnemyType.HYDRA,
+      '-': EnemyType.OVERSEER,
+    };
+    document.addEventListener('keydown', (e) => {
+      const type = TEST_ENEMY_KEYS[e.key];
+      if (type) {
+        const player = world.with('isPlayer', 'position').first;
+        if (player) {
+          const x = player.position.x + (Math.random() - 0.5) * 4;
+          const z = player.position.z + (Math.random() - 0.5) * 4;
+          spawnEnemy(scene, x, z, type as EnemyType);
+          dlog('[TEST] Spawned', type, 'at', x.toFixed(1), z.toFixed(1));
+        }
+      }
+    });
+  }
+
   // Auto-pause when the tab/window loses focus (required by web game portals).
   // Multiplayer sessions are exempt: the host must keep simulating for the
   // other players, and clients would desync if they froze.
@@ -346,6 +381,9 @@ function startGameLoop(
     if (!isMultiplayer || isHost) {
       _t = benchmark.trace('EnemySystem');
       EnemySystem(dt, scene);
+      _t();
+      _t = benchmark.trace('EnemyAbilitySystem');
+      EnemyAbilitySystem(dt, scene);
       _t();
       _t = benchmark.trace('TimelineSpawnerSystem');
       TimelineSpawnerSystem(dt, scene);

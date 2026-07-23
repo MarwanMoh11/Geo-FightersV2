@@ -14,22 +14,16 @@
 
 import * as THREE from 'three';
 import { world, type Entity } from '../core/world';
-import { spawnEnemy, EnemyType, spawnCredit } from '../core/factories';
+import { spawnEnemy, EnemyType, spawnCredit, spawnEnemyProjectile } from '../core/factories';
 import { getGameTime, LEVEL_DURATION, BOSS_SPAWN_TIME } from './ChestSystem';
 import { triggerVictory } from './GameManager';
 import { addTrauma } from './CameraSystem';
 import { playExplosion, playHurt } from '../core/audio';
 import { dlog } from '../core/debug';
-import {
-  createDynamicBody,
-  createKinematicBody,
-  isRapierInitialized,
-  removeBody,
-} from '../core/RapierWorld';
+import { createDynamicBody, isRapierInitialized, removeBody } from '../core/RapierWorld';
 import { spawnDamageNumber } from './DamageNumberSystem';
 import { uiState } from '../core/UIState.svelte';
 import { haptics } from '../core/haptics';
-import { createCustomProjectileMesh } from '../core/projectileVisuals';
 import { broadcastGameEvent, sendDirectEvent } from '../core/network';
 
 // --- BOSS STATE ---
@@ -603,58 +597,18 @@ const shockwaveGeo = new THREE.RingGeometry(0.1, 0.2, 32);
 export function fireGlitchRing(scene: THREE.Scene, pos: THREE.Vector3) {
   const count = 12;
   const speed = 12.0;
-  const bulletColor = 0xff3333; // bright red
-  const bulletLifetime = 2.5;
+  const bulletColor = 0xff3333;
 
   for (let i = 0; i < count; i++) {
     const angle = (i / count) * Math.PI * 2;
     const dir = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
 
-    // Create custom projectile mesh for 'smart_rail_needles' (the SHARD style visual)
-    const mesh = createCustomProjectileMesh(
-      'smart_rail_needles',
-      bulletColor,
-      0.15, // width
-      0.8, // length
-      dir,
-    );
+    const x = pos.x + dir.x * 1.5;
+    const z = pos.z + dir.z * 1.5;
+    const vx = dir.x * speed;
+    const vz = dir.z * speed;
 
-    // Initial position slightly offset from boss center to avoid instant collision
-    mesh.position.copy(pos).add(dir.clone().multiplyScalar(1.5));
-    mesh.position.y = 0.5;
-    scene.add(mesh);
-
-    const velocity = dir.clone().multiplyScalar(speed);
-
-    const proj = world.add({
-      isProjectile: true,
-      isEnemyProjectile: true,
-      weaponId: 'smart_rail_needles',
-      position: mesh.position,
-      velocity: velocity,
-      lifeTimer: 0,
-      maxLife: bulletLifetime,
-      transform: mesh,
-      damage: 12, // boss projectile damage
-      projectile: {
-        pierce: 1,
-        explodeRadius: 0,
-        knockback: 6,
-        hitList: [],
-      },
-    });
-
-    const isHostOrSingle = !uiState.isMultiplayer || uiState.isHost;
-    if (isHostOrSingle && isRapierInitialized() && proj.id !== undefined) {
-      const { rigidBody, collider } = createKinematicBody(
-        mesh.position.x,
-        mesh.position.z,
-        0.2, // collider radius
-        proj.id,
-      );
-      proj.rigidBody = rigidBody;
-      proj.collider = collider;
-    }
+    spawnEnemyProjectile(scene, x, z, vx, vz, 12, bulletColor);
   }
 }
 

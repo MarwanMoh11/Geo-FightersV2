@@ -6,6 +6,9 @@
 export const DEBUG =
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debug');
 
+export const TEST_MODE =
+  typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('test');
+
 /** Log only when debug mode is active. */
 export function dlog(...args: unknown[]) {
   if (DEBUG) console.log(...args);

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { world } from './world';
+import { world, type Entity } from './world';
 import { getDefaultStats } from './PlayerStats';
 import { getCharacter } from './CharacterRegistry';
 import { offerProtocolChoice, selectProtocol } from './ProtocolRegistry';
@@ -7,12 +7,14 @@ import { getDailyConfig } from './DailyManager';
 import { WEAPONS, getWeaponStatsAtLevel } from './WeaponRegistry';
 import { applyMaxMode } from './maxMode';
 import { getTierForValue, bankXP, MAX_ACTIVE_XP } from './XPManager';
-import { createDynamicBody, isRapierInitialized } from './RapierWorld';
+import { createDynamicBody, createKinematicBody, isRapierInitialized } from './RapierWorld';
 import { uiState, announce } from './UIState.svelte';
+import { createCustomProjectileMesh } from './projectileVisuals';
 import { corruptionHp, corruptionSpeed } from './corruption';
 import { partyHpMultiplier } from './difficulty';
 import { getCurrentLevel as getLevelConfig } from './LevelData';
 import { getQualityProfile, isMobile } from './quality';
+import { TEST_MODE } from './debug';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 
 const PLAYER_RADIUS = 0.8;
@@ -38,10 +40,13 @@ export const EnemyType = {
   GLITCH: 'glitch',
   VIRUS: 'virus',
   FIREWALL: 'firewall',
+  SPITTER: 'spitter',
+  STALKER: 'stalker',
   // Elite enemies (drop chests)
   ENFORCER: 'enforcer', // Firewall Enforcer - blocks projectiles
   COLOSSUS: 'colossus', // Packet Flood Colossus - spawns trash
   WARDEN: 'warden', // Latency Warden - phase shifts
+  WEAVER: 'weaver',
   // Mini-bosses (drop multiple chests)
   HYDRA: 'hydra', // Proxy Hydra - multi-node
   OVERSEER: 'overseer', // Black ICE Overseer - major boss
@@ -64,10 +69,13 @@ const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   [EnemyType.GLITCH]: { hp: 6, speed: 1.8, size: 1.2, color: 0xffffff, xp: 3 },
   [EnemyType.VIRUS]: { hp: 3, speed: 2.5, size: 0.9, color: 0xffffff, xp: 1 },
   [EnemyType.FIREWALL]: { hp: 80, speed: 0.6, size: 2.2, color: 0xffffff, xp: 14 },
+  [EnemyType.SPITTER]: { hp: 10, speed: 1.4, size: 0.9, color: 0xffffff, xp: 4 },
+  [EnemyType.STALKER]: { hp: 14, speed: 1.5, size: 1.0, color: 0xffffff, xp: 5 },
   // Elite enemies
   [EnemyType.ENFORCER]: { hp: 120, speed: 0.7, size: 2.0, color: 0xffffff, xp: 25 },
   [EnemyType.COLOSSUS]: { hp: 300, speed: 0.35, size: 3.5, color: 0xffffff, xp: 50 },
   [EnemyType.WARDEN]: { hp: 70, speed: 1.7, size: 1.8, color: 0xffffff, xp: 20 },
+  [EnemyType.WEAVER]: { hp: 180, speed: 0.6, size: 2.2, color: 0xffffff, xp: 40 },
   // Mini-bosses
   [EnemyType.HYDRA]: { hp: 500, speed: 0.45, size: 4.0, color: 0xffffff, xp: 90 },
   [EnemyType.OVERSEER]: { hp: 1200, speed: 0.28, size: 5.5, color: 0xffffff, xp: 180 },
@@ -900,6 +908,23 @@ export function initializePlayerForRun(scene: THREE.Scene) {
   // max level and make the player invincible.
   applyMaxMode(scene);
 
+  // ?test mode: free spawning sandbox with invulnerability and gimped weapon
+  if (TEST_MODE) {
+    if (player.health) {
+      player.health.max = 999999;
+      player.health.current = 999999;
+    }
+    player.invulnTimer = 9999;
+    player.xp = 999999;
+    player.xpMax = 999999;
+    uiState.xp = 999999;
+    uiState.xpMax = 999999;
+    uiState.health = { current: 999999, max: 999999 };
+    for (const w of world.with('isWeapon', 'weapon')) {
+      if (w.ownerId === player.id && w.weapon) w.weapon.damage = 1;
+    }
+  }
+
   // Data protocol: daily runs force the seeded protocol; everything else gets
   // a pick-1-of-3 modal. In co-op EACH player now picks their own protocol —
   // the MP loop never pauses on modals, so the world keeps simulating, and the
@@ -1575,6 +1600,197 @@ export function pregenerateAllEnemyGeometries(): void {
       glow: BufferGeometryUtils.mergeGeometries(glow),
     });
   }
+
+  // 9. SPITTER — squat barbed lobber: spiky dark body with hot magenta core,
+  //    forward-projecting cone barbs that read the lob direction.
+  {
+    const solid: Parts = [];
+    const glow: Parts = [];
+    solid.push(
+      createGradientGeometry(
+        icosahedronGeometry,
+        0x2a0022,
+        0xcc1188,
+        getModelMatrix(V3(0, 0, 0), new THREE.Vector3(0.26, 0.2, 0.26)),
+      ),
+    );
+    solid.push(
+      createGradientGeometry(
+        boxGeometry,
+        0x1a001a,
+        0xaa1177,
+        getModelMatrix(V3(0, -0.08, 0), new THREE.Vector3(0.3, 0.06, 0.3)),
+      ),
+    );
+    const barbs: [number, number, number][] = [
+      [0, 0.06, 0.28],
+      [-0.18, 0, 0.18],
+      [0.18, 0, 0.18],
+      [0, -0.06, 0.22],
+    ];
+    for (const [px, py, pz] of barbs) {
+      solid.push(
+        createColoredGeometry(
+          coneZGeometry,
+          0x661144,
+          getModelMatrix(V3(px, py, pz), new THREE.Vector3(0.05, 0.05, 0.11)),
+        ),
+      );
+    }
+    solid.push(
+      createColoredGeometry(
+        octahedronGeometry,
+        0x551144,
+        getModelMatrix(V3(0, 0, -0.18), new THREE.Vector3(0.07, 0.07, 0.07)),
+      ),
+    );
+    glow.push(
+      createColoredGeometry(sphereGeometry, 0xff44aa, getModelMatrix(V3(0, 0, 0), S3(0.1))),
+    );
+    const glowBarbs: [number, number, number][] = [
+      [0, 0.06, 0.32],
+      [0, -0.06, 0.26],
+    ];
+    for (const [px, py, pz] of glowBarbs) {
+      glow.push(
+        createColoredGeometry(
+          octahedronGeometry,
+          0xff77cc,
+          getModelMatrix(V3(px, py, pz), new THREE.Vector3(0.028, 0.028, 0.07)),
+        ),
+      );
+    }
+    cachedEnemyGeometries.set(EnemyType.SPITTER, {
+      solid: BufferGeometryUtils.mergeGeometries(solid),
+      glow: BufferGeometryUtils.mergeGeometries(glow),
+    });
+  }
+
+  // 10. STALKER — needle predator: stretched diamond body with rear fins and
+  //    a forward "eye" tip that reads the dash direction.
+  {
+    const solid: Parts = [];
+    const glow: Parts = [];
+    solid.push(
+      createGradientGeometry(
+        octahedronGeometry,
+        0x001a22,
+        0x11ccaa,
+        getModelMatrix(V3(0, 0, 0), new THREE.Vector3(0.15, 0.15, 0.35)),
+      ),
+    );
+    solid.push(
+      createColoredGeometry(
+        boxGeometry,
+        0x004444,
+        getModelMatrix(V3(0, 0.11, -0.18), new THREE.Vector3(0.22, 0.022, 0.08)),
+      ),
+    );
+    solid.push(
+      createColoredGeometry(
+        boxGeometry,
+        0x004444,
+        getModelMatrix(V3(0, -0.11, -0.18), new THREE.Vector3(0.22, 0.022, 0.08)),
+      ),
+    );
+    solid.push(
+      createColoredGeometry(
+        coneZGeometry,
+        0x115566,
+        getModelMatrix(V3(0, 0, 0.32), new THREE.Vector3(0.04, 0.04, 0.08)),
+      ),
+    );
+    glow.push(
+      createColoredGeometry(
+        boxGeometry,
+        0x33ffdd,
+        getModelMatrix(V3(0, 0, 0.05), new THREE.Vector3(0.022, 0.022, 0.44)),
+      ),
+    );
+    glow.push(
+      createColoredGeometry(sphereGeometry, 0x88ffee, getModelMatrix(V3(0, 0, 0.32), S3(0.06))),
+    );
+    for (const [px, py] of [
+      [-0.1, 0.1],
+      [0.1, 0.1],
+      [-0.1, -0.1],
+      [0.1, -0.1],
+    ]) {
+      glow.push(
+        createColoredGeometry(
+          octahedronGeometry,
+          0x33ffdd,
+          getModelMatrix(V3(px, py, -0.24), S3(0.026)),
+        ),
+      );
+    }
+    cachedEnemyGeometries.set(EnemyType.STALKER, {
+      solid: BufferGeometryUtils.mergeGeometries(solid),
+      glow: BufferGeometryUtils.mergeGeometries(glow),
+    });
+  }
+
+  // 11. WEAVER — haloed support elite: emitter orb ringed by a signature
+  //    halo, with orbiting nubs that hint at the protective aura.
+  {
+    const solid: Parts = [];
+    const glow: Parts = [];
+    solid.push(
+      createGradientGeometry(
+        icosahedronGeometry,
+        0x113322,
+        0x66ffaa,
+        getModelMatrix(V3(0, 0, 0), S3(0.36)),
+      ),
+    );
+    solid.push(
+      createColoredGeometry(sphereGeometry, 0x114433, getModelMatrix(V3(0, 0, 0), S3(0.28))),
+    );
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2;
+      solid.push(
+        createColoredGeometry(
+          octahedronGeometry,
+          0x338866,
+          getModelMatrix(V3(Math.cos(a) * 0.36, 0, Math.sin(a) * 0.36), S3(0.07)),
+        ),
+      );
+    }
+    solid.push(
+      createColoredGeometry(octahedronGeometry, 0x224433, getModelMatrix(V3(0, 0.32, 0), S3(0.08))),
+    );
+    solid.push(
+      createColoredGeometry(
+        octahedronGeometry,
+        0x224433,
+        getModelMatrix(V3(0, -0.32, 0), S3(0.08)),
+      ),
+    );
+    glow.push(
+      createColoredGeometry(
+        torusGeometry,
+        0x88ffcc,
+        getModelMatrix(V3(0, 0, 0), S3(0.5), new THREE.Euler(Math.PI / 2, 0, 0)),
+      ),
+    );
+    glow.push(
+      createColoredGeometry(sphereGeometry, 0xccffee, getModelMatrix(V3(0, 0, 0), S3(0.18))),
+    );
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+      glow.push(
+        createColoredGeometry(
+          octahedronGeometry,
+          0xaaffdd,
+          getModelMatrix(V3(Math.cos(a) * 0.4, 0, Math.sin(a) * 0.4), S3(0.05)),
+        ),
+      );
+    }
+    cachedEnemyGeometries.set(EnemyType.WEAVER, {
+      solid: BufferGeometryUtils.mergeGeometries(solid),
+      glow: BufferGeometryUtils.mergeGeometries(glow),
+    });
+  }
 }
 
 const enemySolidMaterials = new Map<string, THREE.MeshStandardMaterial>();
@@ -1588,9 +1804,12 @@ export function getEnemySolidMaterial(type: EnemyType): THREE.MeshStandardMateri
       [EnemyType.GLITCH]: 0x00ff88,
       [EnemyType.VIRUS]: 0xff0055,
       [EnemyType.FIREWALL]: 0xff5500,
+      [EnemyType.SPITTER]: 0xff44aa,
+      [EnemyType.STALKER]: 0x33ffdd,
       [EnemyType.ENFORCER]: 0x00ffcc,
       [EnemyType.COLOSSUS]: 0xffaa00,
       [EnemyType.WARDEN]: 0xd900ff,
+      [EnemyType.WEAVER]: 0x66ffaa,
       [EnemyType.HYDRA]: 0xff2244,
       [EnemyType.OVERSEER]: 0xaa44ff,
     };
@@ -1651,6 +1870,7 @@ const ELITE_PORTAL_COLORS: Partial<Record<EnemyType, number>> = {
   [EnemyType.ENFORCER]: 0x00ffcc,
   [EnemyType.COLOSSUS]: 0xffaa00,
   [EnemyType.WARDEN]: 0xff00cc,
+  [EnemyType.WEAVER]: 0x66ffaa,
   [EnemyType.HYDRA]: 0xff2244,
   [EnemyType.OVERSEER]: 0xaa44ff,
 };
@@ -1680,6 +1900,64 @@ function spawnPortalFx(scene: THREE.Scene, x: number, z: number, type: EnemyType
   });
 }
 
+export function spawnEnemyProjectile(
+  scene: THREE.Scene,
+  x: number,
+  z: number,
+  vx: number,
+  vz: number,
+  damage: number,
+  color: number,
+): Entity | undefined {
+  const len = Math.hypot(vx, vz);
+  const dir = len > 1e-6 ? new THREE.Vector3(vx / len, 0, vz / len) : new THREE.Vector3(0, 0, 1);
+
+  const mesh = createCustomProjectileMesh('smart_rail_needles', color, 0.15, 0.8, dir);
+  mesh.position.set(x, 0.5, z);
+  scene.add(mesh);
+
+  const proj = world.add({
+    isProjectile: true,
+    isEnemyProjectile: true,
+    weaponId: 'smart_rail_needles',
+    position: mesh.position,
+    velocity: new THREE.Vector3(vx, 0, vz),
+    lifeTimer: 0,
+    maxLife: 2.5,
+    transform: mesh,
+    damage,
+    projectile: {
+      pierce: 1,
+      explodeRadius: 0,
+      knockback: 6,
+      hitList: [],
+    },
+  });
+
+  if (
+    (!uiState.isMultiplayer || uiState.isHost) &&
+    isRapierInitialized() &&
+    proj.id !== undefined
+  ) {
+    const { rigidBody, collider } = createKinematicBody(x, z, 0.2, proj.id);
+    proj.rigidBody = rigidBody;
+    proj.collider = collider;
+  }
+
+  return proj;
+}
+
+const ENEMY_ABILITIES: Partial<Record<EnemyType, { kind: string; arc?: number }>> = {
+  [EnemyType.HYDRA]: { kind: 'ranged' },
+  [EnemyType.OVERSEER]: { kind: 'ranged' },
+  [EnemyType.WARDEN]: { kind: 'phase' },
+  [EnemyType.COLOSSUS]: { kind: 'trash' },
+  [EnemyType.ENFORCER]: { kind: 'shield', arc: Math.PI * 0.6 },
+  [EnemyType.SPITTER]: { kind: 'ranged' },
+  [EnemyType.STALKER]: { kind: 'dash' },
+  [EnemyType.WEAVER]: { kind: 'shield' },
+};
+
 export function spawnEnemy(
   _scene: THREE.Scene,
   x: number,
@@ -1699,6 +1977,8 @@ export function spawnEnemy(
 
   spawnPortalFx(_scene, x, z, type, stats.size);
 
+  const ability = ENEMY_ABILITIES[type];
+
   const enemy = world.add({
     isEnemy: true,
     enemyType: type,
@@ -1713,6 +1993,15 @@ export function spawnEnemy(
     xpValue: stats.xp,
     baseColor: stats.color,
     spawnAnimTimer: 0.35,
+    ...(ability
+      ? {
+          abilityKind: ability.kind,
+          abilityTimer: 0,
+          shieldArc: ability.arc,
+          dashState: 'idle' as const,
+          phased: false,
+        }
+      : {}),
   });
   return enemy;
 }
