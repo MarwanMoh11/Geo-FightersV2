@@ -8,6 +8,12 @@ let spawnTimer = 0;
 const SPAWN_RATE = 0.5; // Spawn 2 enemies per second (Was 1.0)
 const SPAWN_DISTANCE = 20; // Radius around player
 
+/**
+ * Periodically spawns enemies at a fixed radius around the player.
+ *
+ * @param {number} dt - delta time since last frame in seconds
+ * @param {THREE.Scene} scene - the Three.js scene to add spawned enemies to
+ */
 export function SpawnerSystem(dt: number, scene: THREE.Scene) {
   spawnTimer -= dt;
 

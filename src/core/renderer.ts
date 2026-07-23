@@ -5,6 +5,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { getQualityProfile, initDynamicResolution, applyPixelRatio, isMobile } from './quality';
 import { onSettingsChange } from './SettingsManager';
+import { isPortalEmbed } from './portal';
 
 // Feature detection: Check if WebGPU is available
 function isWebGPUAvailable(): boolean {
@@ -39,8 +40,10 @@ export async function initRenderer() {
   // so on an iPhone the enemies were submitted (correct positions, visible) but
   // never appeared, while non-instanced / basic-material objects rendered fine.
   // WebGL2 renders them correctly and is universally supported on mobile/webviews
-  // (the CrazyGames target). Desktop keeps WebGPU.
-  if (isWebGPUAvailable() && !isMobile) {
+  // (the CrazyGames target). Desktop keeps WebGPU — except in portal embeds,
+  // where WebGPU init can throw uncaught promise rejections (GPUShaderStage
+  // undefined in some iframe environments) that escape the try/catch below.
+  if (isWebGPUAvailable() && !isMobile && !isPortalEmbed()) {
     try {
       console.log(
         `[Renderer] WebGPU is available. Quality: ${quality.tier}. Attempting to initialize...`,

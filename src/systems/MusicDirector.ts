@@ -39,6 +39,12 @@ function chooseCue(): { cue: CueName; intensity: number } {
   return { cue: 'menu', intensity: 0.2 };
 }
 
+/**
+ * Poll the game state and select the appropriate music cue and intensity.
+ *
+ * @param {number} dt - delta time since last frame in seconds
+ * @returns {void}
+ */
 export function MusicDirector(dt: number): void {
   lastPoll += dt;
   if (lastPoll < POLL_INTERVAL) return;

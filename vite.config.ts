@@ -21,6 +21,17 @@ export default defineConfig({
       output: {
         manualChunks(id: string) {
           if (id.includes('@dimforge')) return 'rapier';
+          // Keep WebGPU modules in their own chunk so they are only downloaded
+          // + evaluated when dynamic import('three/webgpu') is actually reached.
+          // Bundling them into the three chunk makes WebGPU init code run at
+          // load time — crashes portal iframes (GPUShaderStage undefined).
+          if (
+            id.includes('three.webgpu') ||
+            id.includes('three.tsl') ||
+            id.includes('three.webgpu.nodes') ||
+            id.includes('examples/jsm/tsl')
+          )
+            return 'webgpu';
           if (id.includes('node_modules/three')) return 'three';
           if (id.includes('socket.io')) return 'net';
         },

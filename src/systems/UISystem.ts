@@ -10,6 +10,10 @@ import { isGameOver as _isGameOverGlobal } from './GameManager';
 let _lastWeaponSig = '';
 let _lastPassiveSig = '';
 
+/**
+ * Per-frame UI sync: read the local player's stats and inventory, then push
+ * them into the reactive uiState so the Svelte HUD stays current.
+ */
 export function UISystem() {
   // 1. Find Player Data
   const player = world.with(

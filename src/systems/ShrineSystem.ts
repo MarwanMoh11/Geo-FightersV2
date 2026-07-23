@@ -243,6 +243,14 @@ export function resetShrineSystem(): void {
   uiState.shrineSpeedTimer = 0;
 }
 
+/**
+ * Per-frame shrine tick: initialize shrine structures on first run, and tick
+ * active buff timers. Stash logic has been removed (credits go to wallet).
+ *
+ * @param {number} dt - delta time since last frame in seconds
+ * @param {THREE.Scene} scene - the Three.js scene for shrine structure initialization
+ * @returns {void}
+ */
 export function ShrineSystem(dt: number, scene: THREE.Scene): void {
   if (!initialized) {
     initialized = true;
@@ -262,6 +270,11 @@ export function ShrineSystem(dt: number, scene: THREE.Scene): void {
 }
 
 // Suppress unused-declaration warnings for removed stash code
-void (STASH_LIFETIME as unknown); void (STASH_RETRY as unknown); void (STASH_RADIUS as unknown);
-void (stashTimer as unknown); void (stashLife as unknown);
-void (pickStashSpot as unknown); void (buildStash as unknown); void (openStash as unknown);
+void (STASH_LIFETIME as unknown);
+void (STASH_RETRY as unknown);
+void (STASH_RADIUS as unknown);
+void (stashTimer as unknown);
+void (stashLife as unknown);
+void (pickStashSpot as unknown);
+void (buildStash as unknown);
+void (openStash as unknown);

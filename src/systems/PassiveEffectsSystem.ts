@@ -11,6 +11,12 @@
 import { world } from '../core/world';
 import { uiState } from '../core/UIState.svelte.ts';
 
+/**
+ * Per-frame passive effects tick: apply HP recovery to all living players based
+ * on their recovery stat. Runs on the host/solo only.
+ *
+ * @param {number} dt - delta time since last frame in seconds
+ */
 export function PassiveEffectsSystem(dt: number) {
   if (uiState.isMultiplayer && !uiState.isHost) return;
 

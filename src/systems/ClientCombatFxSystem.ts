@@ -36,6 +36,14 @@ function key(cx: number, cz: number): number {
   return (cx + GRID_OFFSET) * 4096 + (cz + GRID_OFFSET);
 }
 
+/**
+ * Client-side cosmetic combat feedback: spawn impact sparks, flash enemies,
+ * and consume projectiles on hit so bullets visually connect. Runs only on
+ * co-op clients — the host owns authoritative damage.
+ *
+ * @param {number} _dt - delta time since last frame in seconds
+ * @param {THREE.Scene} scene - the Three.js scene for impact VFX
+ */
 export function ClientCombatFxSystem(_dt: number, scene: THREE.Scene): void {
   if (!uiState.isMultiplayer || uiState.isHost) return;
 
@@ -125,6 +133,10 @@ export function ClientCombatFxSystem(_dt: number, scene: THREE.Scene): void {
  * local player (i.e. we just collected it). Called from the host-state sync.
  */
 const _collectStreak = { n: 0, last: -Infinity };
+/**
+ * Play the XP pickup blip when the host removes an XP gem that was next to the
+ * local player. Rapid pickups climb in pitch for dopamine feedback.
+ */
 export function playLocalXpPickup(): void {
   const now = performance.now() / 1000;
   _collectStreak.n = now - _collectStreak.last < 1 ? _collectStreak.n + 1 : 0;
@@ -135,6 +147,13 @@ export function playLocalXpPickup(): void {
 // Death FX for an enemy the host just removed near us (a kill, not a far
 // despawn). Explosion sound is throttled so a big clear doesn't blow the mix.
 let lastDeathSound = 0;
+/**
+ * Spawn death VFX for an enemy the host just killed near the local player.
+ *
+ * @param {THREE.Vector3} pos - world position of the killed enemy
+ * @param {number} color - enemy color for the particle burst
+ * @param {THREE.Scene} scene - the Three.js scene for death VFX
+ */
 export function spawnClientDeathFx(pos: THREE.Vector3, color: number, scene: THREE.Scene): void {
   spawnImpactFX(pos, scene, undefined, color, 6);
   const now = performance.now() / 1000;

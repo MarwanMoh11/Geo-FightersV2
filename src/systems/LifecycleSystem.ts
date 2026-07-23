@@ -2,6 +2,13 @@ import { world } from '../core/world';
 import * as THREE from 'three';
 import { removeBody } from '../core/RapierWorld';
 
+/**
+ * Per-frame lifecycle tick: advance life timers on all entities and remove
+ * expired ones from the scene and world.
+ *
+ * @param {number} dt - delta time since last frame in seconds
+ * @param {THREE.Scene} scene - the Three.js scene to remove expired meshes from
+ */
 export function LifecycleSystem(dt: number, scene: THREE.Scene) {
   // Entities with lifeTimer (like bullets)
   for (const entity of world.with('lifeTimer', 'maxLife')) {

@@ -229,6 +229,12 @@ function addDebugWeapon(weaponId: string) {
 // --- SYSTEM EXPORT ---
 
 // We need to capture the scene from main loop
+/**
+ * Per-frame debug system tick: captures the scene reference and switches to
+ * the debug level when the debug combo is active.
+ *
+ * @param {THREE.Scene} scene - the Three.js scene for debug rendering
+ */
 export function DebugSystem(scene: THREE.Scene) {
   _scene = scene;
 

@@ -3,7 +3,6 @@ interface BenchmarkApi {
   endFrame(): void;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-function
 const noop = () => {};
 
 const DUMB: BenchmarkApi = {

@@ -170,8 +170,8 @@
 
 <style>
   #chest-modal {
-    --ceremony-color: #9db4cc;
-    --ceremony-glow: rgba(157, 180, 204, 0.35);
+    --ceremony-color: #c8904a;
+    --ceremony-glow: rgba(200, 144, 74, 0.35);
     position: fixed;
     inset: 0;
     z-index: 2100;
@@ -183,6 +183,11 @@
     padding: 1.5rem;
     pointer-events: auto;
     overflow: hidden;
+  }
+
+  #chest-modal.rarity-uncommon {
+    --ceremony-color: #44aaff;
+    --ceremony-glow: rgba(68, 170, 255, 0.35);
   }
 
   #chest-modal.rarity-rare {
