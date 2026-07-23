@@ -378,10 +378,11 @@ function startGameLoop(
     PlayerControlSystem(dt);
     _t();
 
+    _t = benchmark.trace('EnemySystem');
+    EnemySystem(dt, scene);
+    _t();
+
     if (!isMultiplayer || isHost) {
-      _t = benchmark.trace('EnemySystem');
-      EnemySystem(dt, scene);
-      _t();
       _t = benchmark.trace('EnemyAbilitySystem');
       EnemyAbilitySystem(dt, scene);
       _t();

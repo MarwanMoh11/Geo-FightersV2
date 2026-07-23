@@ -7,6 +7,10 @@ const STEER_STRENGTH = 12.0;
 const STUN_FRICTION = 0.9;
 const CONFUSED_ATTACK_RANGE_SQ = 2.0 * 2.0;
 
+// --- JOINER PREDICTION ---
+const PRED_RECONCILE_RATE = 10;
+const PRED_TELEPORT_THRESHOLD_SQ = 15 * 15;
+
 // --- SEPARATION (spatial hash, position relaxation — stable, no vibration) ---
 const SEPARATION_RADIUS = 0.5;
 const SEPARATION_RADIUS_SQ = SEPARATION_RADIUS * SEPARATION_RADIUS;
@@ -91,6 +95,39 @@ export function EnemySystem(dt: number, _scene: THREE.Scene) {
   for (let i = 0; i < enemyCount; i++) {
     const enemy = _enemies[i];
     if (enemy.isBoss) continue;
+
+    // --- JOINER PREDICTION: gentle reconcile toward host netX/netZ, telegraph countdown, fxKick ---
+    if (uiState.isMultiplayer && !uiState.isHost) {
+      if (enemy.telegraph !== undefined && enemy.telegraph > 0) {
+        enemy.telegraph = Math.max(0, enemy.telegraph - dt);
+      }
+
+      if (enemy.netX !== undefined && enemy.netZ !== undefined) {
+        const rx = enemy.netX - enemy.position.x;
+        const rz = enemy.netZ - enemy.position.z;
+        const desyncSq = rx * rx + rz * rz;
+        if (desyncSq > PRED_TELEPORT_THRESHOLD_SQ) {
+          enemy.position.x = enemy.netX;
+          enemy.position.z = enemy.netZ;
+        } else {
+          const t = Math.min(1, dt * PRED_RECONCILE_RATE);
+          enemy.position.x += rx * t;
+          enemy.position.z += rz * t;
+        }
+      }
+
+      if (enemy.fxKickX || enemy.fxKickZ) {
+        enemy.position.x += (enemy.fxKickX ?? 0) * dt;
+        enemy.position.z += (enemy.fxKickZ ?? 0) * dt;
+        const decay = Math.exp(-6 * dt);
+        enemy.fxKickX = (enemy.fxKickX ?? 0) * decay;
+        enemy.fxKickZ = (enemy.fxKickZ ?? 0) * decay;
+        if (Math.abs(enemy.fxKickX) < 0.05 && Math.abs(enemy.fxKickZ) < 0.05) {
+          enemy.fxKickX = 0;
+          enemy.fxKickZ = 0;
+        }
+      }
+    }
 
     if (enemy.confusedTimer && enemy.confusedTimer > 0) {
       enemy.confusedTimer -= dt;

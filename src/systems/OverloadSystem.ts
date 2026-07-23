@@ -329,13 +329,6 @@ export function OverloadSystem(dt: number, scene: THREE.Scene) {
             gem.velocity.x = dx * inv * suck;
             gem.velocity.z = dz * inv * suck;
           }
-          for (const c of world.with('isCredit', 'position', 'velocity')) {
-            const dx = player.position.x - c.position.x;
-            const dz = player.position.z - c.position.z;
-            const inv = 1 / (Math.hypot(dx, dz) || 1);
-            c.velocity.x = dx * inv * suck;
-            c.velocity.z = dz * inv * suck;
-          }
           break;
         }
         case 'ghost': {
