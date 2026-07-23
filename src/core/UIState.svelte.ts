@@ -246,7 +246,7 @@ export const uiState = $state({
   // Chest ceremony
   showChestCeremony: false,
   chestRewards: [] as { name: string; icon: string; detail: string }[],
-  chestRarity: 'common' as 'common' | 'rare' | 'epic',
+  chestRarity: 'common' as 'common' | 'uncommon' | 'rare' | 'epic',
 
   // Endless mode (after victory)
   showVictoryChoice: false,

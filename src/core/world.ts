@@ -55,7 +55,7 @@ export type Entity = {
   isChest?: boolean;
   isOrbital?: boolean;
   ownerId?: number;
-  chestRarity?: 'common' | 'rare' | 'epic';
+  chestRarity?: 'common' | 'uncommon' | 'rare' | 'epic';
   enemyType?: string; // 'virus' | 'glitch' | 'firewall'
   isBoss?: boolean;
   spawnTimer?: number;

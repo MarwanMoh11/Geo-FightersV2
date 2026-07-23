@@ -199,8 +199,8 @@ function startGameLoop(
         if (player) {
           const x = player.position.x + (Math.random() - 0.5) * 4;
           const z = player.position.z + (Math.random() - 0.5) * 4;
-          const rarities: ('common' | 'rare' | 'epic')[] = ['common', 'rare', 'epic'];
-          const rarity = rarities[Math.floor(Math.random() * 3)];
+          const rarities: ('common' | 'uncommon' | 'rare' | 'epic')[] = ['common', 'uncommon', 'rare', 'epic'];
+          const rarity = rarities[Math.floor(Math.random() * 4)];
           spawnChest(scene, x, z, rarity);
           dlog('[DEBUG] Spawned', rarity, 'chest at', x.toFixed(1), z.toFixed(1));
         }
