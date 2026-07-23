@@ -2,9 +2,6 @@
   import { uiState } from '../core/UIState.svelte.ts';
   import { setGameState } from '../core/GameState';
   import { fly } from 'svelte/transition';
-  // PoiArrows retired in THE PIT — everything is on/near screen in a
-  // 140-unit arena; off-screen arrows were pure clutter. (Component kept in
-  // the repo for future large stages.)
   import BreachPrompt from './BreachPrompt.svelte';
 
   const isTouchDevice =

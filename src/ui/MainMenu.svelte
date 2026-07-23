@@ -320,9 +320,8 @@
           <button class="btn compact" onclick={() => (uiState.showGrimoire = true)}>
             <span class="label">Evolutions</span>
           </button>
-          <button class="btn compact soon" disabled title="Co-op is coming soon">
+          <button class="btn compact" onclick={() => { playMenuClick(); showMpOptions = true; }}>
             <span class="label">Co-op</span>
-            <span class="soon-badge">SOON</span>
           </button>
         </div>
 
