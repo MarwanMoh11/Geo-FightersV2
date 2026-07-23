@@ -38,11 +38,7 @@ export function PickupSystem(scene: THREE.Scene): void {
       mesh = buildPickupMesh(scene, pickup.pickupType ?? 'medkit');
       pickupMeshes.set(id, mesh);
     }
-    mesh.position.set(
-      pickup.position.x,
-      0.9 + Math.sin(now * 3 + id) * 0.15,
-      pickup.position.z,
-    );
+    mesh.position.set(pickup.position.x, 0.9 + Math.sin(now * 3 + id) * 0.15, pickup.position.z);
     mesh.rotation.y = now * 1.5;
 
     for (const p of world.with('isPlayer', 'position', 'health')) {

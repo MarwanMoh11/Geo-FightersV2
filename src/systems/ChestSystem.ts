@@ -70,11 +70,11 @@ export function rollChestRarity(luck: number = 1): 'common' | 'uncommon' | 'rare
   if (t < 180) {
     epicChance = 0.02;
     rareChance = 0.18;
-    uncommonChance = 0.30;
+    uncommonChance = 0.3;
   } else if (t < 360) {
     epicChance = 0.08;
     rareChance = 0.32;
-    uncommonChance = 0.30;
+    uncommonChance = 0.3;
   } else {
     epicChance = 0.18;
     rareChance = 0.42;
@@ -113,7 +113,7 @@ const chestGeometry = new THREE.BoxGeometry(0.8, 0.6, 0.5);
 // Rarity colors: brown = common (1 drop), blue = uncommon (2 drops),
 // purple = rare (3 drops), gold emissive = epic (5 drops, jackpot).
 const chestMaterials = {
-  common: new THREE.MeshBasicMaterial({ color: 0x8B5E3C }), // Brown crate
+  common: new THREE.MeshBasicMaterial({ color: 0x8b5e3c }), // Brown crate
   uncommon: new THREE.MeshBasicMaterial({ color: 0x44aaff }), // Blue loot box
   rare: new THREE.MeshBasicMaterial({ color: 0xb44dff }), // Purple loot box
   epic: new THREE.MeshStandardMaterial({

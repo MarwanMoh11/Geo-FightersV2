@@ -87,7 +87,7 @@ export const STAGE_1_WAVES: Wave[] = [
   {
     minute: 1,
     minAlive: 80,
-    interval: 0.50,
+    interval: 0.5,
     hpMult: 0.65,
     dmgMult: 0.6,
     speedMult: 0.9,
@@ -111,7 +111,7 @@ export const STAGE_1_WAVES: Wave[] = [
   {
     minute: 3,
     minAlive: 200,
-    interval: 0.40,
+    interval: 0.4,
     hpMult: 1.2,
     dmgMult: 1.0,
     speedMult: 1.0,
@@ -137,7 +137,7 @@ export const STAGE_1_WAVES: Wave[] = [
   {
     minute: 5,
     minAlive: 400,
-    interval: 0.30,
+    interval: 0.3,
     hpMult: 2.5,
     dmgMult: 1.7,
     speedMult: 1.1,
