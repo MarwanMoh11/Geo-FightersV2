@@ -11,6 +11,8 @@
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 body,
@@ -22,6 +24,8 @@ html {
   background-color: var(--color-bg-dark);
   color: var(--color-text-main);
   overflow: hidden;
+  -webkit-user-select: none;
+  -moz-user-select: none;
   user-select: none;
   touch-action: none;
   overscroll-behavior: none;
