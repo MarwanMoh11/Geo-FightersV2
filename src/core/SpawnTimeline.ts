@@ -119,6 +119,7 @@ export const STAGE_1_WAVES: Wave[] = [
       { type: EnemyType.VIRUS, weight: 50 },
       { type: EnemyType.GLITCH, weight: 55 },
       { type: EnemyType.FIREWALL, weight: 8 },
+      { type: EnemyType.SPITTER, weight: 6 },
     ],
   },
   {
@@ -132,6 +133,7 @@ export const STAGE_1_WAVES: Wave[] = [
       { type: EnemyType.VIRUS, weight: 45 },
       { type: EnemyType.GLITCH, weight: 60 },
       { type: EnemyType.FIREWALL, weight: 10 },
+      { type: EnemyType.SPITTER, weight: 6 },
     ],
   },
   {
@@ -145,6 +147,8 @@ export const STAGE_1_WAVES: Wave[] = [
       { type: EnemyType.VIRUS, weight: 40 },
       { type: EnemyType.GLITCH, weight: 65 },
       { type: EnemyType.FIREWALL, weight: 12 },
+      { type: EnemyType.SPITTER, weight: 6 },
+      { type: EnemyType.STALKER, weight: 5 },
     ],
   },
   {
@@ -158,6 +162,8 @@ export const STAGE_1_WAVES: Wave[] = [
       { type: EnemyType.VIRUS, weight: 35 },
       { type: EnemyType.GLITCH, weight: 70 },
       { type: EnemyType.FIREWALL, weight: 14 },
+      { type: EnemyType.SPITTER, weight: 6 },
+      { type: EnemyType.STALKER, weight: 5 },
     ],
   },
   {
@@ -171,6 +177,8 @@ export const STAGE_1_WAVES: Wave[] = [
       { type: EnemyType.VIRUS, weight: 30 },
       { type: EnemyType.GLITCH, weight: 70 },
       { type: EnemyType.FIREWALL, weight: 16 },
+      { type: EnemyType.SPITTER, weight: 6 },
+      { type: EnemyType.STALKER, weight: 5 },
     ],
   },
   {
@@ -184,6 +192,8 @@ export const STAGE_1_WAVES: Wave[] = [
       { type: EnemyType.VIRUS, weight: 25 },
       { type: EnemyType.GLITCH, weight: 70 },
       { type: EnemyType.FIREWALL, weight: 18 },
+      { type: EnemyType.SPITTER, weight: 6 },
+      { type: EnemyType.STALKER, weight: 5 },
     ],
   },
   {
@@ -197,6 +207,8 @@ export const STAGE_1_WAVES: Wave[] = [
       { type: EnemyType.VIRUS, weight: 20 },
       { type: EnemyType.GLITCH, weight: 70 },
       { type: EnemyType.FIREWALL, weight: 20 },
+      { type: EnemyType.SPITTER, weight: 6 },
+      { type: EnemyType.STALKER, weight: 5 },
     ],
   },
 ];
@@ -254,12 +266,15 @@ export const STAGE_1_ELITES: EliteEvent[] = [
   { at: 240, type: EnemyType.WARDEN, count: 2 },
   { at: 270, type: EnemyType.ENFORCER, count: 2 },
   { at: 300, type: EnemyType.HYDRA, count: 1, announce: 'PROXY HYDRA ONLINE' },
+  { at: 305, type: EnemyType.WEAVER, count: 1 },
   { at: 330, type: EnemyType.COLOSSUS, count: 2 },
   { at: 360, type: EnemyType.WARDEN, count: 3 },
   { at: 390, type: EnemyType.ENFORCER, count: 3 },
+  { at: 395, type: EnemyType.WEAVER, count: 1 },
   { at: 420, type: EnemyType.HYDRA, count: 2, announce: 'PROXY HYDRA ONLINE' },
   { at: 450, type: EnemyType.COLOSSUS, count: 2 },
   { at: 480, type: EnemyType.WARDEN, count: 3 },
+  { at: 485, type: EnemyType.WEAVER, count: 2 },
   { at: 510, type: EnemyType.ENFORCER, count: 4 },
   { at: 540, type: EnemyType.HYDRA, count: 2, announce: 'PROXY HYDRA ONLINE' },
 ];
@@ -267,7 +282,13 @@ export const STAGE_1_ELITES: EliteEvent[] = [
 // Endless: an elite pack every 45s, cycling types
 export const ENDLESS_ELITES = {
   interval: 25,
-  rotation: [EnemyType.ENFORCER, EnemyType.WARDEN, EnemyType.COLOSSUS, EnemyType.HYDRA],
+  rotation: [
+    EnemyType.ENFORCER,
+    EnemyType.WARDEN,
+    EnemyType.COLOSSUS,
+    EnemyType.HYDRA,
+    EnemyType.WEAVER,
+  ],
 };
 
 // --- HELPERS ---

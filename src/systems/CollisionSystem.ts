@@ -13,7 +13,7 @@ import { world } from '../core/world';
 import * as THREE from 'three';
 import { addTrauma } from './CameraSystem';
 import { WEAPONS } from '../core/WeaponRegistry';
-import { spawnXP, spawnCredit } from '../core/factories';
+import { spawnXP, spawnCredit, spawnEnemy, EnemyType } from '../core/factories';
 import { offerSecondChanceOrEnd } from './GameManager';
 import { playExplosion, playHurt, playCollect } from '../core/audio';
 import { reportDamageTaken, reportKill } from '../core/FlowStateManager';
@@ -41,6 +41,10 @@ const _tempVec = new THREE.Vector3();
 // --- FRAME CACHES (materialized once, shared by every sweep) ---
 const _enemies: any[] = [];
 const _players: any[] = [];
+const _weavers: any[] = [];
+
+const AURA_RADIUS_SQ = 4.5 * 4.5;
+const ABILITY_ENEMY_CAP = 2500;
 
 // --- SPATIAL GRID over living enemies ---
 // Cell size 4u ≥ the largest interaction radius (boss hit-reach ~2.7u, contact
@@ -88,6 +92,10 @@ export function CollisionSystem(scene: THREE.Scene) {
   _players.length = 0;
   for (const p of world.with('isPlayer', 'position', 'health')) {
     if (p.health && p.health.current > 0) _players.push(p);
+  }
+  _weavers.length = 0;
+  for (const w of world.with('abilityKind')) {
+    if (w.enemyType === 'weaver' && w.health && w.health.current > 0) _weavers.push(w);
   }
 
   _grid.clear();
@@ -196,6 +204,35 @@ export function CollisionSystem(scene: THREE.Scene) {
 
 function handleProjectileEnemyCollision(bullet: any, enemy: any, scene: THREE.Scene) {
   if (!bullet.projectile || !enemy.health || enemy.health.current <= 0) return;
+
+  if (enemy.phased) return;
+
+  if (
+    enemy.shieldArc !== undefined &&
+    enemy.shieldArc > 0 &&
+    enemy.enemyType === EnemyType.ENFORCER
+  ) {
+    const bvx = bullet.velocity?.x ?? 0;
+    const bvz = bullet.velocity?.z ?? 0;
+    const bLen = Math.sqrt(bvx * bvx + bvz * bvz);
+    if (bLen > 0.001) {
+      const invLen = 1 / bLen;
+      const bnx = bvx * invLen;
+      const bnz = bvz * invLen;
+      const fx = Math.sin(enemy.rotationY ?? 0);
+      const fz = Math.cos(enemy.rotationY ?? 0);
+      const dot = bnx * fx + bnz * fz;
+      if (dot < -Math.cos(enemy.shieldArc * 0.5)) {
+        bullet.projectile.hitList.push(enemy.id!);
+        bullet.projectile.pierce -= 1;
+        if (bullet.projectile.pierce <= 0 || bullet.projectile.explodeRadius > 0) {
+          despawn(bullet, scene);
+        }
+        spawnImpactFX(bullet.position, scene, bullet.weaponId, 0x00ffcc, 2);
+        return;
+      }
+    }
+  }
 
   // PIERCE CHECK: Already hit
   if (enemy.id && bullet.projectile.hitList.includes(enemy.id)) return;
@@ -322,8 +359,11 @@ const CONTACT_DAMAGE: Record<string, number> = {
   virus: 4,
   glitch: 6,
   firewall: 12,
+  spitter: 5,
+  stalker: 8,
   enforcer: 14,
   warden: 10,
+  weaver: 12,
   colossus: 18,
   hydra: 16,
   overseer: 20,
@@ -468,16 +508,32 @@ function applyDamage(
   // Roll for Critical Hit (base 5% chance, scaled by luck)
   const critChance = 0.05 * luckMult;
   const isCrit = Math.random() < critChance;
-  const finalDamage = isCrit ? Math.round(dmg * 2.5) : dmg;
+  let finalDamage = isCrit ? Math.round(dmg * 2.5) : dmg;
   recordDamage(finalDamage);
 
   if (enemy.isBoss) {
-    // Boss takes real damage and can now be killed. Death/cleanup is owned by
-    // FinaleBossSystem (it manages the boss entity, rapier body and victory
-    // trigger), so we only apply the damage here — no knockback/stun, and no
-    // generic enemy death/XP/chest handling.
     enemy.health.current -= finalDamage;
     spawnDamageNumber(enemy.position, finalDamage, variant, isCrit);
+    enemy.hitFlashTimer = 0.1;
+    return;
+  }
+
+  if (finalDamage > 0 && !enemy.abilityKind && _weavers.length > 0) {
+    for (let wi = 0; wi < _weavers.length; wi++) {
+      const w = _weavers[wi];
+      if (!w.health || w.health.current <= 0) continue;
+      const dx = enemy.position.x - w.position.x;
+      const dz = enemy.position.z - w.position.z;
+      if (dx * dx + dz * dz <= AURA_RADIUS_SQ && w.shieldHp && w.shieldHp > 0) {
+        const absorbed = Math.min(finalDamage, w.shieldHp);
+        w.shieldHp -= absorbed;
+        finalDamage -= absorbed;
+        if (finalDamage <= 0) break;
+      }
+    }
+  }
+
+  if (finalDamage <= 0) {
     enemy.hitFlashTimer = 0.1;
     return;
   }
@@ -575,12 +631,32 @@ export function handleEnemyDeath(
 
   const type = enemy.enemyType;
 
+  if (type === EnemyType.VIRUS && !enemy.noSplit && world.count('isEnemy') < ABILITY_ENEMY_CAP) {
+    for (let i = 0; i < 2; i++) {
+      if (world.count('isEnemy') >= ABILITY_ENEMY_CAP) break;
+      const a = (i / 2) * Math.PI * 2 + Math.random();
+      const frag = spawnEnemy(
+        scene,
+        enemy.position.x + Math.cos(a) * 0.5,
+        enemy.position.z + Math.sin(a) * 0.5,
+        EnemyType.VIRUS,
+        0.5,
+        1.3,
+      );
+      if (frag) {
+        frag.velocity.set(Math.cos(a) * 4, 0, Math.sin(a) * 4);
+        frag.noSplit = true;
+      }
+    }
+  }
+
   // Elite/miniboss deaths punch a shockwave ring into the ground — trash
   // keeps the cheap particle burst (this fires at elite rates only).
   const ELITE_DEATH_RING: Record<string, number> = {
     enforcer: 0x00ffcc,
     colossus: 0xffaa00,
     warden: 0xff00cc,
+    weaver: 0x66ffaa,
     hydra: 0xff2244,
     overseer: 0xaa44ff,
   };

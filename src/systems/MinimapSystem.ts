@@ -21,7 +21,15 @@ let lastDraw = 0;
 const SCALE = 80 / 150;
 
 // Elite / mini-boss enemy types worth an off-screen direction arrow
-const ELITE_TYPES = new Set(['firewall', 'enforcer', 'warden', 'colossus', 'hydra', 'overseer']);
+const ELITE_TYPES = new Set([
+  'firewall',
+  'enforcer',
+  'warden',
+  'colossus',
+  'weaver',
+  'hydra',
+  'overseer',
+]);
 
 // Colors
 const COLORS = {
