@@ -54,6 +54,14 @@ const tempQuaternion = new THREE.Quaternion();
 const tempMatrix = new THREE.Matrix4();
 const tempColor = new THREE.Color();
 
+/**
+ * Per-frame loot simulation tick: magnetically attract XP shards, collect them
+ * on contact, apply XP to players, trigger level-ups, and bank XP that
+ * despawns too far away.
+ *
+ * @param {number} dt - delta time since last frame in seconds
+ * @param {THREE.Scene} scene - the Three.js scene for bank delivery spawns
+ */
 export function LootSystem(dt: number, scene: THREE.Scene) {
   if (uiState.magnaPulseTimer > 0) uiState.magnaPulseTimer -= dt;
 

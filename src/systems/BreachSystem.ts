@@ -360,6 +360,11 @@ function setNodeReadyLook(node: BreachNode, ready: boolean): void {
 // --- POIS ---
 
 /** Ready doors get wayfinding arrows; depots only signpost when nearby. */
+/**
+ * Collect POIs for breach doors that are off cooldown (ready to jack into).
+ *
+ * @returns {Poi[]} list of breach door POIs for the wayfinding system
+ */
 export function getBreachPois(): Poi[] {
   const pois: Poi[] = [];
   for (const node of nodes) {
@@ -376,6 +381,11 @@ export function getBreachPois(): Poi[] {
 }
 
 /** MapEventSystem's opening choreography points at the nearest ready relay. */
+/**
+ * Return positions of relay towers that are off cooldown and ready to breach.
+ *
+ * @returns {{ x: number; z: number }[]} ready relay positions
+ */
 export function getReadyRelaySpots(): { x: number; z: number }[] {
   return nodes
     .filter((n) => n.kind === 'relay' && n.cooldown <= 0)
@@ -385,6 +395,11 @@ export function getReadyRelaySpots(): { x: number; z: number }[] {
 // --- BREACH LIFECYCLE ---
 
 /** Open the mini-game for the prompted node (E key / prompt button). */
+/**
+ * Open the breach mini-game for the nearest ready node.
+ *
+ * @param {boolean} overclock - true to use the overclock (enhanced) entry
+ */
 export function startBreach(overclock: boolean): void {
   const prompt = uiState.breachPrompt;
   if (!prompt || uiState.breach) return;
@@ -414,6 +429,9 @@ export function startBreach(overclock: boolean): void {
 }
 
 /** SKELETON KEY: skip the mini-game, take the reward (F key / prompt button). */
+/**
+ * Consume a skeleton key to bypass the breach mini-game and take the reward.
+ */
 export function useSkeletonKey(): void {
   const prompt = uiState.breachPrompt;
   if (!prompt || uiState.breach || uiState.skeletonKeys <= 0) return;
@@ -431,6 +449,11 @@ export function useSkeletonKey(): void {
 }
 
 /** The overlay (or the shield drain) reports how the breach ended. */
+/**
+ * Resolve the breach mini-game with the given outcome and apply rewards or penalties.
+ *
+ * @param {'win' | 'fail' | 'abort'} outcome - how the breach ended
+ */
 export function resolveBreach(outcome: 'win' | 'fail' | 'abort'): void {
   const breach = uiState.breach;
   if (!breach) return;
@@ -621,6 +644,9 @@ if (typeof window !== 'undefined' && new URLSearchParams(window.location.search)
 
 // --- RESET ---
 
+/**
+ * Reset all breach system state for a no-reload restart.
+ */
 export function resetBreachSystem(): void {
   firstBreachDone = false;
   for (const node of nodes) {
@@ -636,6 +662,14 @@ export function resetBreachSystem(): void {
 
 // --- TICK ---
 
+/**
+ * Per-frame breach tick: manage cooldowns, pulse ready rings, drive the
+ * door prompt, and handle the defend-the-hacker shield in co-op.
+ *
+ * @param {number} dt - delta time since last frame in seconds
+ * @param {THREE.Scene} scene - the Three.js scene for initial dressing setup
+ * @returns {void}
+ */
 export function BreachSystem(dt: number, scene: THREE.Scene): void {
   if (!initialized) {
     initialized = true;

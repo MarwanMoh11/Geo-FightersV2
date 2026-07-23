@@ -1,6 +1,9 @@
 import { world } from '../core/world';
 import * as THREE from 'three';
 
+/**
+ * Find the nearest enemy within range and set the player's aim target.
+ */
 export function AimSystem() {
   // 1. Get the Player
   const player = world.with('isLocalPlayer', 'position').first;

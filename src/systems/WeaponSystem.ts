@@ -38,6 +38,13 @@ const _axisY = new THREE.Vector3(0, 1, 0);
 const _enemiesCache: any[] = [];
 const _weaponPlayers: any[] = [];
 
+/**
+ * Per-frame weapon tick: updates projectile visuals, handles player weapon
+ * firing, and cleans up expired muzzle-flash particles.
+ *
+ * @param {number} dt - delta time since last frame in seconds
+ * @param {THREE.Scene} scene - the Three.js scene to add projectiles to
+ */
 export function WeaponSystem(dt: number, scene: THREE.Scene) {
   // 1. PROJECTILE VISUALS & ANIMATIONS
   for (const p of world.with('isProjectile', 'transform', 'projectile')) {
@@ -297,6 +304,14 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
   }
 }
 
+/**
+ * Simulate a weapon fire event on a client from a remote shoot broadcast.
+ *
+ * @param {THREE.Scene} scene - the Three.js scene to add projectiles to
+ * @param {any} owner - the player entity that owns the weapon
+ * @param {string} weaponId - identifier of the weapon being fired
+ * @param {{ x: number; z: number }} dirVec - normalized direction vector of the shot
+ */
 export function fireWeaponRemote(
   scene: THREE.Scene,
   owner: any,

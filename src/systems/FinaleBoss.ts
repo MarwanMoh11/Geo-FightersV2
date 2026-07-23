@@ -43,12 +43,22 @@ const BOSS_SIZE = 9;
 const BOSS_MAX_HEALTH = 20000;
 
 // --- RESET ---
+/**
+ * Reset the boss spawn state for a fresh run.
+ */
 export function resetBoss() {
   bossSpawned = false;
   bossEntity = null;
 }
 
 // --- MAIN SYSTEM ---
+/**
+ * Main boss tick: spawn the boss at 8:00, drive its chase/attack/spawn logic,
+ * resolve shockwave damage, and trigger victory if the boss escapes or is killed.
+ *
+ * @param {number} dt - delta time since last frame in seconds
+ * @param {THREE.Scene} scene - the Three.js scene for spawning and VFX
+ */
 export function FinaleBossSystem(dt: number, scene: THREE.Scene) {
   const gameTime = getGameTime();
 
@@ -317,6 +327,11 @@ function nearestLivingPlayer(pos: THREE.Vector3): any {
 }
 
 // --- BUILD BOSS VISUAL (shared by host spawn + client mirror) ---
+/**
+ * Construct the boss's visual hierarchy (core, plates, rings, spikes, shadow).
+ *
+ * @returns {THREE.Group} the assembled boss model group
+ */
 export function buildBossGroup(): THREE.Group {
   const group = new THREE.Group();
 
@@ -479,6 +494,16 @@ function spawnBoss(scene: THREE.Scene, nearX: number, nearZ: number) {
 // Visual-only boss representation on a multiplayer client. The host owns the boss
 // simulation; the client just renders its model and tracks its synced health so the
 // boss bar and on-screen body stay in sync. No physics body (host is authoritative).
+/**
+ * Spawn a visual-only boss entity on a multiplayer client for rendering.
+ *
+ * @param {THREE.Scene} scene - the Three.js scene to add the boss model to
+ * @param {number} x - spawn X position
+ * @param {number} z - spawn Z position
+ * @param {number} hpCurrent - current boss HP from host sync
+ * @param {number} hpMax - max boss HP from host sync
+ * @returns the spawned boss entity
+ */
 export function spawnClientBoss(
   scene: THREE.Scene,
   x: number,
@@ -501,6 +526,12 @@ export function spawnClientBoss(
   });
 }
 
+/**
+ * Remove a client-side boss entity from the scene and the world.
+ *
+ * @param {THREE.Scene} scene - the Three.js scene to remove the boss model from
+ * @param {Entity} entity - the boss entity to remove
+ */
 export function removeClientBoss(scene: THREE.Scene, entity: Entity) {
   if (entity.transform) scene.remove(entity.transform);
   world.remove(entity);
@@ -563,6 +594,12 @@ function despawnBoss(scene: THREE.Scene) {
 
 const shockwaveGeo = new THREE.RingGeometry(0.1, 0.2, 32);
 
+/**
+ * Fire a ring of glitch projectiles outward from a point (boss barrage attack).
+ *
+ * @param {THREE.Scene} scene - the Three.js scene to spawn projectiles into
+ * @param {THREE.Vector3} pos - center position of the ring
+ */
 export function fireGlitchRing(scene: THREE.Scene, pos: THREE.Vector3) {
   const count = 12;
   const speed = 12.0;
@@ -621,6 +658,12 @@ export function fireGlitchRing(scene: THREE.Scene, pos: THREE.Vector3) {
   }
 }
 
+/**
+ * Spawn an expanding shockwave ring that damages and knocks back players it passes through.
+ *
+ * @param {THREE.Scene} scene - the Three.js scene to add the shockwave visual to
+ * @param {THREE.Vector3} pos - center position of the shockwave
+ */
 export function triggerShockwave(scene: THREE.Scene, pos: THREE.Vector3) {
   // Holographic purple basic wireframe material
   const mat = new THREE.MeshBasicMaterial({

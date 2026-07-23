@@ -25,6 +25,7 @@
   }
 
   function handleStart(e: TouchEvent | MouseEvent) {
+    if (e.cancelable) e.preventDefault();
     if (touchId !== null) return;
     maxRadius = computeMaxRadius();
 
@@ -41,6 +42,7 @@
   }
 
   function handleMove(e: TouchEvent | MouseEvent) {
+    if (e.cancelable) e.preventDefault();
     if (!isDragging) return;
 
     let clientX, clientY;
@@ -163,6 +165,8 @@
     inset: 0;
     pointer-events: auto;
     z-index: 1;
+    -webkit-user-select: none;
+    user-select: none;
   }
 
   .joystick-base {

@@ -10,6 +10,12 @@ const ORBIT_SPEED = 2.5; // Radians per second
 // Track orbital angle globally
 let globalOrbitAngle = 0;
 
+/**
+ * Per-frame orbital tick: rotate each orbital projectile around its owner
+ * player, spacing orbitals of the same weapon type evenly.
+ *
+ * @param {number} dt - delta time since last frame in seconds
+ */
 export function OrbitalSystem(dt: number) {
   // Map every player by id so each orbital can orbit its own owner. Previously
   // this only used the first player, so in co-op a second player's orbitals
@@ -133,6 +139,12 @@ export function spawnOrbitalProjectile(
   }
 }
 
+/**
+ * Remove all orbital projectiles belonging to a specific player.
+ *
+ * @param {number} ownerId - the player entity id whose orbitals to remove
+ * @param {THREE.Scene} scene - the Three.js scene to remove meshes from
+ */
 export function removePlayerOrbitals(ownerId: number, scene: THREE.Scene) {
   for (const entity of world.with('isOrbital', 'orbitalData', 'transform')) {
     if (entity.orbitalData?.ownerId === ownerId) {

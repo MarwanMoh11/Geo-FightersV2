@@ -90,6 +90,13 @@ function tickVault(dt: number, scene: THREE.Scene): void {
 
 const zoneGeo = new THREE.PlaneGeometry(6, 6);
 
+/**
+ * Per-frame anomaly tick: spawn data vaults and anomaly zones on a schedule,
+ * apply zone overlap effects to the player and enemies (overclock, defrag, leak).
+ *
+ * @param {number} dt - delta time since last frame in seconds
+ * @param {THREE.Scene} scene - the Three.js scene for anomaly VFX
+ */
 export function AnomalySystem(dt: number, scene: THREE.Scene) {
   if (uiState.gameState !== 'PLAYING') return;
 
