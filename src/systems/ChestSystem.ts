@@ -31,10 +31,18 @@ const CHEST_MAGNET_FORCE = 15.0;
 // --- GAME TIME TRACKING ---
 let gameTime = 0;
 
+/**
+ * Reset the in-game clock to zero for a fresh run.
+ */
 export function resetGameTime() {
   gameTime = 0;
 }
 
+/**
+ * Return the current accumulated game time in seconds.
+ *
+ * @returns {number} elapsed game time in seconds
+ */
 export function getGameTime(): number {
   return gameTime;
 }
@@ -51,32 +59,36 @@ let lastChestDropTime = -999;
 
 /**
  * Rarity scales with run time (fewer chests late, but better ones) and is
- * nudged by luck and corruption. Early: mostly common. Past 6:00: mostly
- * rare with a real epic chance.
+ * nudged by luck and corruption. Early: mostly common/uncommon. Past 6:00:
+ * mostly rare with a real epic chance.
  */
-export function rollChestRarity(luck: number = 1): 'common' | 'rare' | 'epic' {
+export function rollChestRarity(luck: number = 1): 'common' | 'uncommon' | 'rare' | 'epic' {
   const t = gameTime;
-  // Base odds per phase: [epic, rare] thresholds, remainder = common.
   let epicChance: number;
   let rareChance: number;
+  let uncommonChance: number;
   if (t < 180) {
     epicChance = 0.02;
     rareChance = 0.18;
+    uncommonChance = 0.30;
   } else if (t < 360) {
     epicChance = 0.08;
     rareChance = 0.32;
+    uncommonChance = 0.30;
   } else {
     epicChance = 0.18;
     rareChance = 0.42;
+    uncommonChance = 0.25;
   }
-  // Luck (1.0 = neutral) and corruption sweeten the odds.
   const bonus = (luck - 1) * 0.1 + uiState.corruption * 0.02;
   epicChance += bonus;
   rareChance += bonus;
+  uncommonChance += bonus * 0.5;
 
   const roll = Math.random();
   if (roll < epicChance) return 'epic';
   if (roll < epicChance + rareChance) return 'rare';
+  if (roll < epicChance + rareChance + uncommonChance) return 'uncommon';
   return 'common';
 }
 
@@ -98,10 +110,11 @@ export function registerGuaranteedChestDrop(): void {
 
 // --- SHARED RESOURCES ---
 const chestGeometry = new THREE.BoxGeometry(0.8, 0.6, 0.5);
-// Rarity colors: brown = common (1 drop), purple = rare (3 drops),
-// gold emissive = epic/jackpot (5 drops, special chest model).
+// Rarity colors: brown = common (1 drop), blue = uncommon (2 drops),
+// purple = rare (3 drops), gold emissive = epic (5 drops, jackpot).
 const chestMaterials = {
   common: new THREE.MeshBasicMaterial({ color: 0x8B5E3C }), // Brown crate
+  uncommon: new THREE.MeshBasicMaterial({ color: 0x44aaff }), // Blue loot box
   rare: new THREE.MeshBasicMaterial({ color: 0xb44dff }), // Purple loot box
   epic: new THREE.MeshStandardMaterial({
     color: 0xffcc00,
@@ -124,7 +137,7 @@ export function spawnChest(
   scene: THREE.Scene,
   x: number,
   z: number,
-  rarity: 'common' | 'rare' | 'epic' = 'common',
+  rarity: 'common' | 'uncommon' | 'rare' | 'epic' = 'common',
 ) {
   const isEpic = rarity === 'epic';
   const mesh = new THREE.Mesh(chestGeometry, chestMaterials[rarity]);
@@ -236,7 +249,7 @@ export function ChestSystem(dt: number, scene: THREE.Scene) {
  *   their client and syncs back via client-update.
  */
 function collectChest(chest: any, player: any, scene: THREE.Scene) {
-  const rarity: 'common' | 'rare' | 'epic' = chest.chestRarity || 'common';
+  const rarity: 'common' | 'uncommon' | 'rare' | 'epic' = chest.chestRarity || 'common';
 
   if (!player.isLocalPlayer) {
     // Remote opener (we are the host): hand the ceremony to their client.
@@ -271,7 +284,7 @@ function collectChest(chest: any, player: any, scene: THREE.Scene) {
  * path and by clients receiving a targeted 'chest-opened' event from the host.
  */
 export function openChestLocally(
-  rarity: 'common' | 'rare' | 'epic',
+  rarity: 'common' | 'uncommon' | 'rare' | 'epic',
   scene?: THREE.Scene,
   position?: THREE.Vector3,
 ) {
@@ -304,11 +317,12 @@ export function openChestLocally(
     }
   }
 
-  // 2. CHEST CEREMONY: deterministic drops by rarity — common=1, rare=3,
-  // epi​c=5. No RNG; the chest color tells you exactly what you're getting.
+  // 2. CHEST CEREMONY: deterministic drops by rarity —
+  // common=1, uncommon=2, rare=3, epic=5 (jackpot).
   let count = 1;
   if (rarity === 'epic') count = 5;
   else if (rarity === 'rare') count = 3;
+  else if (rarity === 'uncommon') count = 2;
 
   const rewards = applyRandomChestRewards(count);
   if (rewards.length > 0) {
@@ -319,8 +333,8 @@ export function openChestLocally(
     // Build is fully maxed — pay out credits instead so chests never whiff.
     const px = position?.x ?? player.position.x;
     const pz = position?.z ?? player.position.z;
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2;
+    for (let i = 0; i < count * 2; i++) {
+      const a = (i / (count * 2)) * Math.PI * 2;
       spawnCredit(scene, px + Math.cos(a), pz + Math.sin(a), 5);
     }
   }
