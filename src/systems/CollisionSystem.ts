@@ -354,9 +354,9 @@ function handleEnemyPlayerCollision(enemy: any, player: any, _scene: THREE.Scene
   // Contact damage scales with corruption only past the standard (5) — the
   // horde bites harder at the brutal tiers, not at the default.
   const baseDamage =
-    (CONTACT_DAMAGE[enemy.enemyType as string] ?? 5)
-    * corruptionDamage(uiState.corruption)
-    * (enemy.wavePower ?? 1.0);
+    (CONTACT_DAMAGE[enemy.enemyType as string] ?? 5) *
+    corruptionDamage(uiState.corruption) *
+    (enemy.wavePower ?? 1.0);
   const armor = player.stats?.armor || 0;
   let actualDamage = Math.max(1, Math.round(baseDamage - armor));
   // Map 1 Aegis Relay: halve incoming damage for the buff window

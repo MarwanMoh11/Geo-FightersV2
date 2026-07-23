@@ -199,7 +199,12 @@ function startGameLoop(
         if (player) {
           const x = player.position.x + (Math.random() - 0.5) * 4;
           const z = player.position.z + (Math.random() - 0.5) * 4;
-          const rarities: ('common' | 'uncommon' | 'rare' | 'epic')[] = ['common', 'uncommon', 'rare', 'epic'];
+          const rarities: ('common' | 'uncommon' | 'rare' | 'epic')[] = [
+            'common',
+            'uncommon',
+            'rare',
+            'epic',
+          ];
           const rarity = rarities[Math.floor(Math.random() * 4)];
           spawnChest(scene, x, z, rarity);
           dlog('[DEBUG] Spawned', rarity, 'chest at', x.toFixed(1), z.toFixed(1));
@@ -325,58 +330,110 @@ function startGameLoop(
 
     // 1. Logic
     let _t: () => void;
-    _t = benchmark.trace('MusicDirector'); MusicDirector(dt); _t();
-    _t = benchmark.trace('InputSystem'); InputSystem(); _t();
-    _t = benchmark.trace('AimSystem'); AimSystem(); _t();
-    _t = benchmark.trace('PlayerControlSystem'); PlayerControlSystem(dt); _t();
+    _t = benchmark.trace('MusicDirector');
+    MusicDirector(dt);
+    _t();
+    _t = benchmark.trace('InputSystem');
+    InputSystem();
+    _t();
+    _t = benchmark.trace('AimSystem');
+    AimSystem();
+    _t();
+    _t = benchmark.trace('PlayerControlSystem');
+    PlayerControlSystem(dt);
+    _t();
 
     if (!isMultiplayer || isHost) {
-      _t = benchmark.trace('EnemySystem'); EnemySystem(dt, scene); _t();
-      _t = benchmark.trace('TimelineSpawnerSystem'); TimelineSpawnerSystem(dt, scene); _t();
+      _t = benchmark.trace('EnemySystem');
+      EnemySystem(dt, scene);
+      _t();
+      _t = benchmark.trace('TimelineSpawnerSystem');
+      TimelineSpawnerSystem(dt, scene);
+      _t();
     }
 
     // 2. Combat
-    _t = benchmark.trace('WeaponSystem'); WeaponSystem(dt, scene); _t();
+    _t = benchmark.trace('WeaponSystem');
+    WeaponSystem(dt, scene);
+    _t();
 
     if (!isMultiplayer || isHost) {
-      _t = benchmark.trace('CollisionSystem'); CollisionSystem(scene); _t();
+      _t = benchmark.trace('CollisionSystem');
+      CollisionSystem(scene);
+      _t();
     }
     if (!isMultiplayer) SoloDeathWatchdog();
 
     // 3. Physics/Visuals
-    _t = benchmark.trace('PhysicsSystem'); PhysicsSystem(dt); _t();
-    _t = benchmark.trace('LifecycleSystem'); LifecycleSystem(dt, scene); _t();
+    _t = benchmark.trace('PhysicsSystem');
+    PhysicsSystem(dt);
+    _t();
+    _t = benchmark.trace('LifecycleSystem');
+    LifecycleSystem(dt, scene);
+    _t();
 
     // GPU compute systems (no-op placeholders until WebGPU compute lands;
     // the CPU equivalents below own these updates to avoid double-applying)
     ParticleComputeSystem(dt, renderer);
     EnemyComputeSystem(dt, renderer);
 
-    _t = benchmark.trace('ParticleSystem'); ParticleSystem(dt, scene); _t();
+    _t = benchmark.trace('ParticleSystem');
+    ParticleSystem(dt, scene);
+    _t();
     // Loot (XP/credit collection + leveling) is HOST-authoritative in co-op:
     // clients running it locally double-collected the synced XP mirrors and
     // triggered duplicate level-ups on top of the host's.
     if (!isMultiplayer || isHost) {
-      _t = benchmark.trace('LootSystem'); LootSystem(dt, scene); _t();
+      _t = benchmark.trace('LootSystem');
+      LootSystem(dt, scene);
+      _t();
     }
     // ...but the instanced XP/credit gems are DRAWN for everyone, or the
     // joining player sees no orbs at all.
-    _t = benchmark.trace('LootRenderSystem'); LootRenderSystem(scene); _t();
-    _t = benchmark.trace('PassiveEffectsSystem'); PassiveEffectsSystem(dt); _t();
-    _t = benchmark.trace('OrbitalSystem'); OrbitalSystem(dt); _t();
-    _t = benchmark.trace('OverloadSystem'); OverloadSystem(dt, scene); _t();
-    _t = benchmark.trace('AnomalySystem'); AnomalySystem(dt, scene); _t();
-    _t = benchmark.trace('ShrineSystem'); ShrineSystem(dt, scene); _t();
-    _t = benchmark.trace('DestructibleSystem'); DestructibleSystem(dt, scene); _t();
-    _t = benchmark.trace('PickupSystem'); PickupSystem(scene); _t();
-    _t = benchmark.trace('MapEventSystem'); MapEventSystem(dt, scene); _t();
-    _t = benchmark.trace('BreachSystem'); BreachSystem(dt, scene); _t();
-    _t = benchmark.trace('updateGateFx'); updateGateFx(dt); _t();
+    _t = benchmark.trace('LootRenderSystem');
+    LootRenderSystem(scene);
+    _t();
+    _t = benchmark.trace('PassiveEffectsSystem');
+    PassiveEffectsSystem(dt);
+    _t();
+    _t = benchmark.trace('OrbitalSystem');
+    OrbitalSystem(dt);
+    _t();
+    _t = benchmark.trace('OverloadSystem');
+    OverloadSystem(dt, scene);
+    _t();
+    _t = benchmark.trace('AnomalySystem');
+    AnomalySystem(dt, scene);
+    _t();
+    _t = benchmark.trace('ShrineSystem');
+    ShrineSystem(dt, scene);
+    _t();
+    _t = benchmark.trace('DestructibleSystem');
+    DestructibleSystem(dt, scene);
+    _t();
+    _t = benchmark.trace('PickupSystem');
+    PickupSystem(scene);
+    _t();
+    _t = benchmark.trace('MapEventSystem');
+    MapEventSystem(dt, scene);
+    _t();
+    _t = benchmark.trace('BreachSystem');
+    BreachSystem(dt, scene);
+    _t();
+    _t = benchmark.trace('updateGateFx');
+    updateGateFx(dt);
+    _t();
 
     if (!isMultiplayer || isHost) {
-      _t = benchmark.trace('ChestSystem'); ChestSystem(dt, scene); _t();
-      _t = benchmark.trace('FinaleBossSystem'); FinaleBossSystem(dt, scene); _t();
-      _t = benchmark.trace('CoopSystem'); CoopSystem(dt); _t();
+      _t = benchmark.trace('ChestSystem');
+      ChestSystem(dt, scene);
+      _t();
+      _t = benchmark.trace('FinaleBossSystem');
+      FinaleBossSystem(dt, scene);
+      _t();
+      _t = benchmark.trace('CoopSystem');
+      CoopSystem(dt);
+      _t();
     } else {
       // Client: ease remote players/enemies/boss toward their net targets
       NetSmoothingSystem(dt);
@@ -399,10 +456,18 @@ function startGameLoop(
     }
 
     // 4. UI & Camera
-    _t = benchmark.trace('RenderSystem'); RenderSystem(dt, scene); _t();
-    _t = benchmark.trace('CameraSystem'); CameraSystem(dt, camera); _t();
-    _t = benchmark.trace('DamageNumberSystem'); DamageNumberSystem(dt, camera); _t();
-    _t = benchmark.trace('UISystem'); UISystem(); _t();
+    _t = benchmark.trace('RenderSystem');
+    RenderSystem(dt, scene);
+    _t();
+    _t = benchmark.trace('CameraSystem');
+    CameraSystem(dt, camera);
+    _t();
+    _t = benchmark.trace('DamageNumberSystem');
+    DamageNumberSystem(dt, camera);
+    _t();
+    _t = benchmark.trace('UISystem');
+    UISystem();
+    _t();
     if (DEBUG) DebugSystem(scene); // Debug panel (Shift+Alt+D, requires ?debug)
 
     benchmark.endFrame();

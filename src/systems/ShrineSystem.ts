@@ -270,6 +270,11 @@ export function ShrineSystem(dt: number, scene: THREE.Scene): void {
 }
 
 // Suppress unused-declaration warnings for removed stash code
-void (STASH_LIFETIME as unknown); void (STASH_RETRY as unknown); void (STASH_RADIUS as unknown);
-void (stashTimer as unknown); void (stashLife as unknown);
-void (pickStashSpot as unknown); void (buildStash as unknown); void (openStash as unknown);
+void (STASH_LIFETIME as unknown);
+void (STASH_RETRY as unknown);
+void (STASH_RADIUS as unknown);
+void (stashTimer as unknown);
+void (stashLife as unknown);
+void (pickStashSpot as unknown);
+void (buildStash as unknown);
+void (openStash as unknown);
