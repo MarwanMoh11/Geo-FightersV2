@@ -50,3 +50,8 @@ hf_space/
 
 # Local browser performance captures
 Firefox*profile.json
+
+# CrazyGames build output and marketing assets
+geofighters-crazygames.zip
+geofighters-crazygames/
+covers/
