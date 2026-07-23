@@ -10,6 +10,7 @@ const CONFUSED_ATTACK_RANGE_SQ = 2.0 * 2.0;
 // --- JOINER PREDICTION ---
 const PRED_RECONCILE_RATE = 10;
 const PRED_TELEPORT_THRESHOLD_SQ = 15 * 15;
+const PRED_RANGE_SQ = 50 * 50;
 
 // --- SEPARATION (spatial hash, position relaxation — stable, no vibration) ---
 const SEPARATION_RADIUS = 0.5;
@@ -134,6 +135,15 @@ export function EnemySystem(dt: number, _scene: THREE.Scene) {
     }
     if (enemy.contactCooldown && enemy.contactCooldown > 0) {
       enemy.contactCooldown -= dt;
+    }
+
+    // On the joiner, skip the expensive steering/separation/velocity-integration
+    // for enemies >50u from any player — prediction reconciliation (netX/netZ
+    // drift) keeps their position in the ballpark at a fraction of the cost.
+    if (uiState.isMultiplayer && !uiState.isHost) {
+      const dx = enemy.position.x - _players[0].position.x;
+      const dz = enemy.position.z - _players[0].position.z;
+      if (dx * dx + dz * dz > PRED_RANGE_SQ) continue;
     }
 
     // STUN CHECK
