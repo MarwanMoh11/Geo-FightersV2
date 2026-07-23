@@ -1,12 +1,9 @@
-// --- WAYFINDING SYSTEM (Phase 1.95, Pillar P2: nothing exists without a signpost) ---
-// Collects every touchable point of interest and turns the off-screen ones
-// into HUD edge-arrows (rendered by PoiArrows.svelte from uiState.poiArrows).
-// Runs its math at 10 Hz — arrows don't need frame-rate precision — and the
-// overlay is DOM, so it costs the renderer nothing.
+// --- WAYFINDING SYSTEM (Phase 1.95) ---
+// Collects every touchable point of interest for the minimap overlay.
+// Runs its math at 10 Hz — minimap waypoints don't need frame-rate precision.
 
 import * as THREE from 'three';
 import { world } from '../core/world';
-import { uiState } from '../core/UIState.svelte.ts';
 import { getStashPoi } from './ShrineSystem';
 import { getEventPois } from './MapEventSystem';
 import { getBreachPois } from './BreachSystem';
@@ -108,10 +105,7 @@ export function WayfindingSystem(dt: number, camera: THREE.Camera): void {
   accumulator = 0;
 
   const player = world.with('isLocalPlayer', 'position').first;
-  if (!player) {
-    if (uiState.poiArrows.length) uiState.poiArrows = [];
-    return;
-  }
+  if (!player) return;
 
   const arrows: PoiArrow[] = [];
   const pois = collectPois();
@@ -141,5 +135,4 @@ export function WayfindingSystem(dt: number, camera: THREE.Camera): void {
   }
 
   arrows.sort((a, b) => a.dist - b.dist);
-  uiState.poiArrows = arrows.slice(0, 8);
 }

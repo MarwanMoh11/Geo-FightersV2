@@ -142,6 +142,7 @@ export type Entity = {
     // Signal Hijacker: applies confusion instead of damage
     confusionDuration?: number;
   };
+  color?: number;
 
   // stats
   level?: number;

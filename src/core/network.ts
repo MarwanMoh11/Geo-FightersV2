@@ -1,9 +1,9 @@
 import { io, Socket } from 'socket.io-client';
 import * as THREE from 'three';
-import { world } from './world';
+import { world, type Entity } from './world';
 import { uiState, showToast, announce } from './UIState.svelte';
 import { setGameState } from './GameState';
-import { spawnPlayer, spawnEnemy, spawnXP, spawnCredit, applyCharacterModel } from './factories';
+import { spawnPlayer, spawnEnemy, spawnXP, applyCharacterModel } from './factories';
 import { spawnChest, openChestLocally } from '../systems/ChestSystem';
 import { spawnClientBoss, removeClientBoss } from '../systems/FinaleBoss';
 import { removeBody, createDynamicBody, isRapierInitialized } from './RapierWorld';
@@ -624,6 +624,7 @@ function handleHostState(state: any) {
       }
       enemy.facingRight = eFacingRight;
       enemy.hitFlashTimer = eHitFlashTimer;
+      decodeAbilityState(eData.s ?? 0, enemy);
       enemyMap.delete(eId);
     }
   });
@@ -667,7 +668,7 @@ function handleHostState(state: any) {
       if (dir.lengthSq() === 0) dir.set(0, 0, 1);
       const mesh = createCustomProjectileMesh(
         'smart_rail_needles',
-        0xff3333,
+        d.k ?? 0xff3333,
         0.15,
         0.8,
         dir.clone().normalize(),
@@ -750,27 +751,6 @@ function handleHostState(state: any) {
     }
     if (obsoleteXP.transform) activeScene?.remove(obsoleteXP.transform);
     world.remove(obsoleteXP);
-  }
-
-  // 3b. Sync Cyber Credits (so the joining player sees dropped currency too)
-  const creditMap = new Map<number, any>();
-  for (const c of world.with('isCredit')) {
-    creditMap.set(c.id!, c);
-  }
-  (state.credits || []).forEach((cData: any) => {
-    const cId = cData.i;
-    let credit = creditMap.get(cId);
-    if (!credit) {
-      credit = spawnCredit(activeScene!, cData.p[0], cData.p[1], cData.v || 1);
-      if (credit) credit.id = cId;
-    }
-    if (credit) {
-      credit.position.set(cData.p[0], credit.position.y, cData.p[1]);
-      creditMap.delete(cId);
-    }
-  });
-  for (const obsolete of creditMap.values()) {
-    world.remove(obsolete);
   }
 
   // 4. Sync Chests
@@ -949,6 +929,34 @@ export function sendClientUpdate() {
   }
 }
 
+// --- Ability-state byte encoding for enemy sync ---
+function encodeAbilityState(e: Entity): number {
+  const kindMap: Record<string, number> = { ranged: 0, dash: 1, phase: 2, trash: 3, shield: 4 };
+  const dsMap: Record<string, number> = { idle: 0, windup: 1, dash: 2, recover: 3 };
+  const kind = kindMap[e.abilityKind ?? ''] ?? 0;
+  const ds = dsMap[e.dashState ?? ''] ?? 0;
+  const phased = e.phased ? 1 : 0;
+  const tel = e.telegraph !== undefined && e.telegraph > 0 ? 1 : 0;
+  return ((kind & 7) << 5) | ((ds & 3) << 3) | (phased << 2) | (tel << 1);
+}
+
+function decodeAbilityState(s: number, e: Entity): void {
+  const kinds = ['ranged', 'dash', 'phase', 'trash', 'shield'];
+  const dss = ['idle', 'windup', 'dash', 'recover'];
+  const kindIdx = (s >> 5) & 7;
+  const dsIdx = (s >> 3) & 3;
+  const phased = ((s >> 2) & 1) === 1;
+  const telActive = ((s >> 1) & 1) === 1;
+  e.abilityKind = kinds[kindIdx] ?? 'ranged';
+  e.dashState = (dss[dsIdx] ?? 'idle') as Entity['dashState'];
+  e.phased = phased;
+  // On 0->active edge, seed a fresh telegraph timer so the joiner's local sim
+  // can count it down. If already active, leave the existing countdown alone
+  // (prediction/EnemySystem owns the decrement).
+  if (telActive && (!e.telegraph || e.telegraph <= 0)) e.telegraph = 0.5;
+  else if (!telActive) e.telegraph = 0;
+}
+
 // 5. Send Host updates to Clients
 export function sendHostUpdate() {
   if (!socket || socket.disconnected || !uiState.isHost) return;
@@ -989,6 +997,7 @@ export function sendHostUpdate() {
       h: Math.round(e.health?.current || 0),
       f: e.facingRight ? 1 : 0,
       fl: e.hitFlashTimer > 0 ? 1 : 0,
+      s: encodeAbilityState(e),
     }));
 
   // Gather active XP gems
@@ -998,19 +1007,13 @@ export function sendHostUpdate() {
     v: x.xpValue || 5,
   }));
 
-  // Gather active cyber credits (so clients render dropped currency)
-  const credits = Array.from(world.with('isCredit', 'position')).map((c: any) => ({
-    i: c.id,
-    p: [Math.round(c.position.x * 10) / 10, Math.round(c.position.z * 10) / 10],
-    v: c.creditValue || 1,
-  }));
-
   // Gather enemy projectiles (boss glitch ring) so clients can SEE and dodge
   // the bullets that damage them
   const ep = Array.from(world.with('isEnemyProjectile', 'position', 'velocity')).map((p: any) => ({
     i: p.id,
     p: [Math.round(p.position.x * 10) / 10, Math.round(p.position.z * 10) / 10],
     v: [Math.round(p.velocity.x * 10) / 10, Math.round(p.velocity.z * 10) / 10],
+    k: p.color ?? 0xff3333,
   }));
 
   // Gather active chests
@@ -1035,7 +1038,6 @@ export function sendHostUpdate() {
     players,
     enemies,
     xp,
-    credits,
     ep,
     chests,
     boss,
@@ -1108,10 +1110,12 @@ export function NetSmoothingSystem(dt: number) {
   const kickDecay = Math.exp(-6 * dt);
 
   for (const e of world.with('netX', 'position')) {
+    // Enemy prediction owns their position (EnemySystem reconciliation + fxKick).
+    // Bosses still need smoothing (they have a Three.js transform).
+    if (e.isEnemy && !e.isBoss) continue;
+
     const dx = (e.netX ?? e.position.x) - e.position.x;
     const dz = (e.netZ ?? e.position.z) - e.position.z;
-    // Teleport if desync is huge (spawn, knockback burst) — lerping across
-    // the map reads worse than a snap.
     if (dx * dx + dz * dz > 15 * 15) {
       e.position.x = e.netX ?? e.position.x;
       e.position.z = e.netZ ?? e.position.z;
@@ -1120,8 +1124,6 @@ export function NetSmoothingSystem(dt: number) {
       e.position.z += dz * t;
     }
 
-    // Cosmetic knockback impulse from local bullet hits: instant shove that
-    // decays fast while the authoritative lerp pulls the enemy back in line.
     if (e.fxKickX || e.fxKickZ) {
       e.position.x += (e.fxKickX ?? 0) * dt;
       e.position.z += (e.fxKickZ ?? 0) * dt;
