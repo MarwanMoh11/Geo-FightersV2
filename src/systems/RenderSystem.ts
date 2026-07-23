@@ -30,6 +30,7 @@ const ELITE_AURA_COLORS: Partial<Record<EnemyType, number>> = {
   [EnemyType.ENFORCER]: 0x00ffcc,
   [EnemyType.COLOSSUS]: 0xffaa00,
   [EnemyType.WARDEN]: 0xff00cc,
+  [EnemyType.WEAVER]: 0x66ffaa,
   [EnemyType.HYDRA]: 0xff2244,
   [EnemyType.OVERSEER]: 0xaa44ff,
 };
@@ -686,6 +687,36 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
             scaleMult = 1 + 0.05 * Math.sin(time * 1.4 + phase);
             yawExtra = time * 0.25;
             break;
+          case EnemyType.SPITTER: {
+            hoverY = Math.sin(time * 5 + phase) * 0.06;
+            yawExtra = time * 0.4;
+            rotZ = Math.sin(time * 2.8 + phase) * 0.04;
+            break;
+          }
+          case EnemyType.STALKER: {
+            const ds = entity.dashState;
+            if (ds === 'windup') {
+              scaleMult = 0.85;
+              hoverY = -0.04;
+            } else if (ds === 'dash') {
+              hoverY = -0.02;
+              rotZ = Math.sin(time * 30) * 0.05;
+            } else {
+              hoverY = Math.sin(time * 4 + phase) * 0.04;
+              yawExtra = Math.sin(time * 1.5 + phase) * 0.1;
+            }
+            break;
+          }
+          case EnemyType.WEAVER: {
+            hoverY = Math.sin(time * 1.8 + phase) * 0.07;
+            yawExtra = time * 0.3;
+            scaleMult = 1 + 0.03 * Math.sin(time * 1.8 + phase);
+            break;
+          }
+        }
+
+        if (entity.abilityKind === 'ranged' && entity.telegraph && entity.telegraph > 0) {
+          scaleMult *= 1 + Math.min(0.2, entity.telegraph * 0.4);
         }
 
         // Spawn-in pop: ease-out-back from 0 over 0.35s (stamped in spawnEnemy)
@@ -732,8 +763,17 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
 
         if (glowMesh) {
           glowMesh.setMatrixAt(count, _tempMat);
-          // Additive layer flashes to full white on hit — reads as a spark
-          _tempColor.setHex(entity.hitFlashTimer && entity.hitFlashTimer > 0 ? 0xffffff : 0xdddddd);
+          if (entity.hitFlashTimer && entity.hitFlashTimer > 0) {
+            _tempColor.setHex(0xffffff);
+          } else if (entity.phased) {
+            _tempColor.setHex(Math.sin(time * 25) > 0 ? 0xaa44ff : 0x6622aa);
+          } else if (entity.dashState === 'windup') {
+            _tempColor.setHex(0x88ffee);
+          } else if (entity.abilityKind === 'ranged' && entity.telegraph && entity.telegraph > 0) {
+            _tempColor.setHex(0xff66cc);
+          } else {
+            _tempColor.setHex(0xdddddd);
+          }
           glowMesh.setColorAt(count, _tempColor);
         }
 

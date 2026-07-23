@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { world } from '../core/world';
+import { EnemyType } from '../core/factories';
 import { uiState } from '../core/UIState.svelte.ts';
 
 const STEER_STRENGTH = 12.0;
@@ -104,114 +105,139 @@ export function EnemySystem(dt: number, _scene: THREE.Scene) {
       enemy.velocity.x *= STUN_FRICTION;
       enemy.velocity.z *= STUN_FRICTION;
     } else {
-      let closestPlayer = _players[0];
-      let minPDistSq = Infinity;
-      for (const p of _players) {
-        const dx = p.position.x - enemy.position.x;
-        const dz = p.position.z - enemy.position.z;
-        const distSq = dx * dx + dz * dz;
-        if (distSq < minPDistSq) {
-          minPDistSq = distSq;
-          closestPlayer = p;
-        }
-      }
+      const skipSteer =
+        enemy.dashState === 'dash' ||
+        (enemy.abilityKind === 'ranged' && enemy.enemyType === EnemyType.SPITTER);
 
-      let targetX = closestPlayer.position.x;
-      let targetZ = closestPlayer.position.z;
-
-      // CONFUSED: Target nearest non-confused enemy instead of player
-      if (enemy.confusedTimer && enemy.confusedTimer > 0) {
-        let nearestDistSq = Infinity;
-        let nearestEnemy = null;
-
-        for (let j = 0; j < _confTargets.length; j++) {
-          const other = _confTargets[j];
-          const dx = other.position.x - enemy.position.x;
-          const dz = other.position.z - enemy.position.z;
+      if (!skipSteer) {
+        let closestPlayer = _players[0];
+        let minPDistSq = Infinity;
+        for (const p of _players) {
+          const dx = p.position.x - enemy.position.x;
+          const dz = p.position.z - enemy.position.z;
           const distSq = dx * dx + dz * dz;
-
-          if (distSq < nearestDistSq) {
-            nearestDistSq = distSq;
-            nearestEnemy = other;
+          if (distSq < minPDistSq) {
+            minPDistSq = distSq;
+            closestPlayer = p;
           }
         }
 
-        if (nearestEnemy) {
-          targetX = nearestEnemy.position.x;
-          targetZ = nearestEnemy.position.z;
+        let targetX = closestPlayer.position.x;
+        let targetZ = closestPlayer.position.z;
 
-          if (nearestDistSq < CONFUSED_ATTACK_RANGE_SQ) {
-            nearestEnemy.health.current -= 5 * dt;
-            nearestEnemy.hitFlashTimer = 0.1;
+        // CONFUSED: Target nearest non-confused enemy instead of player
+        if (enemy.confusedTimer && enemy.confusedTimer > 0) {
+          let nearestDistSq = Infinity;
+          let nearestEnemy = null;
+
+          for (let j = 0; j < _confTargets.length; j++) {
+            const other = _confTargets[j];
+            const dx = other.position.x - enemy.position.x;
+            const dz = other.position.z - enemy.position.z;
+            const distSq = dx * dx + dz * dz;
+
+            if (distSq < nearestDistSq) {
+              nearestDistSq = distSq;
+              nearestEnemy = other;
+            }
           }
-        } else {
-          enemy.velocity.x *= 0.9;
-          enemy.velocity.z *= 0.9;
-          continue;
+
+          if (nearestEnemy) {
+            targetX = nearestEnemy.position.x;
+            targetZ = nearestEnemy.position.z;
+
+            if (nearestDistSq < CONFUSED_ATTACK_RANGE_SQ) {
+              nearestEnemy.health.current -= 5 * dt;
+              nearestEnemy.hitFlashTimer = 0.1;
+            }
+          } else {
+            enemy.velocity.x *= 0.9;
+            enemy.velocity.z *= 0.9;
+            continue;
+          }
+        }
+
+        // 1. MOVE TOWARD TARGET (No pathfinding, no AI)
+        const dx = targetX - enemy.position.x;
+        const dz = targetZ - enemy.position.z;
+        const invLen = 1.0 / Math.sqrt(dx * dx + dz * dz + 0.001);
+
+        const speed = (enemy.moveSpeed || 2.0) * relaySlow;
+        const targetVx = dx * invLen * speed;
+        const targetVz = dz * invLen * speed;
+
+        // 2. STEERING (Soft turn toward target velocity)
+        const steerFactor = STEER_STRENGTH * dt;
+        enemy.velocity.x += (targetVx - enemy.velocity.x) * steerFactor;
+        enemy.velocity.z += (targetVz - enemy.velocity.z) * steerFactor;
+
+        // GLITCH blink
+        if (
+          enemy.enemyType === EnemyType.GLITCH &&
+          Math.random() < 0.004 &&
+          !(enemy.confusedTimer && enemy.confusedTimer > 0)
+        ) {
+          const blinkDx = closestPlayer.position.x - enemy.position.x;
+          const blinkDz = closestPlayer.position.z - enemy.position.z;
+          const bInv = 1 / Math.sqrt(blinkDx * blinkDx + blinkDz * blinkDz + 0.001);
+          enemy.position.x += blinkDx * bInv * 1.8;
+          enemy.position.z += blinkDz * bInv * 1.8;
+          enemy.hitFlashTimer = 0.1;
         }
       }
-
-      // 1. MOVE TOWARD TARGET (No pathfinding, no AI)
-      const dx = targetX - enemy.position.x;
-      const dz = targetZ - enemy.position.z;
-      const invLen = 1.0 / Math.sqrt(dx * dx + dz * dz + 0.001);
-
-      const speed = (enemy.moveSpeed || 2.0) * relaySlow;
-      const targetVx = dx * invLen * speed;
-      const targetVz = dz * invLen * speed;
-
-      // 2. STEERING (Soft turn toward target velocity)
-      const steerFactor = STEER_STRENGTH * dt;
-      enemy.velocity.x += (targetVx - enemy.velocity.x) * steerFactor;
-      enemy.velocity.z += (targetVz - enemy.velocity.z) * steerFactor;
     }
 
     // 3. SEPARATION — spatial hash, position relaxation (bounces off each other)
     // Velocity impulses here fight the chase steering and oscillate violently;
     // relaxing a capped fraction of overlap cannot overshoot, so the horde packs
     // into a tight VS-style blob without phasing through.
-    let checksRemaining = MAX_SEPARATION_CHECKS;
-    const cellX = Math.floor(enemy.position.x / GRID_CELL);
-    const cellZ = Math.floor(enemy.position.z / GRID_CELL);
+    if (!enemy.phased) {
+      let checksRemaining = MAX_SEPARATION_CHECKS;
+      const cellX = Math.floor(enemy.position.x / GRID_CELL);
+      const cellZ = Math.floor(enemy.position.z / GRID_CELL);
 
-    for (let n = 0; n < 5 && checksRemaining > 0; n++) {
-      const cell = _grid.get(gridKey(cellX + NEIGHBOR_DX[n], cellZ + NEIGHBOR_DZ[n]));
-      if (!cell) continue;
+      for (let n = 0; n < 5 && checksRemaining > 0; n++) {
+        const cell = _grid.get(gridKey(cellX + NEIGHBOR_DX[n], cellZ + NEIGHBOR_DZ[n]));
+        if (!cell) continue;
 
-      for (let k = 0; k < cell.length && checksRemaining > 0; k++) {
-        const j = cell[k];
-        if (n === 0 && j <= i) continue; // own cell: visit each pair once
-        const other = _enemies[j];
+        for (let k = 0; k < cell.length && checksRemaining > 0; k++) {
+          const j = cell[k];
+          if (n === 0 && j <= i) continue; // own cell: visit each pair once
+          const other = _enemies[j];
 
-        const dx = enemy.position.x - other.position.x;
-        const dz = enemy.position.z - other.position.z;
-        const distSq = dx * dx + dz * dz;
+          const dx = enemy.position.x - other.position.x;
+          const dz = enemy.position.z - other.position.z;
+          const distSq = dx * dx + dz * dz;
 
-        if (distSq < SEPARATION_RADIUS_SQ && distSq > 0.0001) {
-          checksRemaining--;
+          if (distSq < SEPARATION_RADIUS_SQ && distSq > 0.0001) {
+            checksRemaining--;
 
-          const dist = Math.sqrt(distSq);
-          const overlap = SEPARATION_RADIUS - dist;
-          // Push a full 60% of the overlap — strong enough that enemies clearly
-          // bounce apart instead of sliding through each other, but still
-          // position-based (no velocity spike → no vibration).
-          const f = Math.min(0.6, 8 * dt);
-          const push = Math.min(overlap * f, 0.2);
-          const invDist = 1.0 / dist;
-          const px = dx * invDist * push;
-          const pz = dz * invDist * push;
+            const dist = Math.sqrt(distSq);
+            const overlap = SEPARATION_RADIUS - dist;
+            // Push a full 60% of the overlap — strong enough that enemies clearly
+            // bounce apart instead of sliding through each other, but still
+            // position-based (no velocity spike → no vibration).
+            const f = Math.min(0.6, 8 * dt);
+            const push = Math.min(overlap * f, 0.2);
+            const invDist = 1.0 / dist;
+            const px = dx * invDist * push;
+            const pz = dz * invDist * push;
 
-          enemy.position.x += px;
-          enemy.position.z += pz;
-          other.position.x -= px;
-          other.position.z -= pz;
+            enemy.position.x += px;
+            enemy.position.z += pz;
+            other.position.x -= px;
+            other.position.z -= pz;
+          }
         }
       }
-    }
 
-    // 4. MOVE
-    enemy.position.x += enemy.velocity.x * dt;
-    enemy.position.z += enemy.velocity.z * dt;
+      // 4. MOVE
+      enemy.position.x += enemy.velocity.x * dt;
+      enemy.position.z += enemy.velocity.z * dt;
+    } else {
+      enemy.velocity.x *= 0.8;
+      enemy.velocity.z *= 0.8;
+    }
 
     // 5. SYNC VISUAL DIRECTION
     if (enemy.velocity.lengthSq() > 0.01) {
