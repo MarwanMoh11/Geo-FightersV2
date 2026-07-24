@@ -197,6 +197,11 @@ export const uiState = $state({
     trace: number; // 0..traceMax, climbs during the dive
     traceMax: number;
     objectiveText: string; // HUD label for the current verb
+    health: number;
+    healthMax: number;
+    progress: number; // generic progress bar (0..progressMax)
+    progressMax: number;
+    verbStage: string; // short label for the current verb phase (e.g. "CHARGING", "COLLECT")
   },
   // NEON SURGE event: double XP inside this district rect while it ticks
   neonSurge: null as {
