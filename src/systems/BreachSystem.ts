@@ -583,11 +583,24 @@ export function completeBreachWin(node: BreachNode, outcome: DiveOutcome): void 
     try {
       const mod = await getExploitModule();
       if (!mod?.tryGrantRootkit) return;
+      // ROOTKIT GATE — deliberately very hard. Exploits are the only reward
+      // gated this tightly, and this is their ONLY source in the whole game.
+      // Every clause has to hold on the same dive:
+      //   • security >= 3   → only reachable after ~5.5min (late-game only)
+      //   • trace <= 35%    → a clean, low-detection clear
+      //   • bank/armory/stashden → the three high-value "vault" buildings
+      //   • overclock       → the player opted into the harder breach (Q)
+      //   • quality >= 0.7  → fast + clean per computeDiveQuality
+      // Note: first-breach is intentionally NOT required. It used to be, but
+      // (a) it read node.opened AFTER the await, when it was already true, so
+      // the grant never fired, and (b) requiring it made rootkits silently
+      // MISSABLE — breach a vault early and you'd lose the chance forever.
+      // Exploit slots already hard-cap the total at 3 (tryGrantRootkit returns
+      // false when full), so re-hackable vaults can't be farmed for more.
       if (
         outcome.security >= 3 &&
         outcome.trace <= outcome.traceMax * 0.35 &&
         (node.kind === 'bank' || node.kind === 'armory' || node.kind === 'stashden') &&
-        !node.opened &&
         outcome.overclock &&
         quality >= 0.7
       ) {
