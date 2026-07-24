@@ -1,26 +1,24 @@
-// --- BREACH DIVE SYSTEM (chunk3: dive verbs, ICE, trace-scaled ambush) ---
+// --- BREACH DIVE SYSTEM ---
 // Owns the dive sub-scene that swaps in for the arena once a breach is WON.
+// While `uiState.dive` is set, main.ts hands this system the whole frame: the
+// arena's Input/Enemy/Weapon/Collision/Physics/Render systems are all frozen,
+// so the dive runs its own movement, combat, objective logic and render pass.
 //
-// Per-building verbs (6 kinds, design-locked):
-//   bank      = extraction     — timed data download; survive a point
-//   substation = hold-&-overload — charge pads → overload capacitor
-//   armory    = grab-&-run     — collect pickups, reach exit pad
-//   relay     = evasion        — survive while ICE hunt; trace climbs fast
-//   depot     = supply run     — collect N supply pickups before time
-//   stashden  = gamble         — push-your-luck at altar, cash out or bust
+// Per-building verbs live in `dive/DiveVerbs.ts`, the constructs in
+// `dive/DiveICE.ts`, and the objective beacons in `dive/DiveMarkers.ts`. This
+// file is the frame orchestrator and the arena↔dive boundary.
 //
-// Each verb has WIN + FAIL detection. FAIL = trace >= traceMax (universal
-// backstop) + verb-specific (timer expiry, bust, etc.). On FAIL the player is
-// ejected into a trace-scaled ambush ring at the building door.
-//
-// ICE constructs: enemies spawned into the dive scene, steered per-frame by
-// a minimal loop inside this system. No weapon fire inside the dive; ICE deal
-// contact damage to a dive-local health bar. The outer arena systems are
-// frozen (Chunk 2 gate) — this system owns the full dive frame.
+// THE CLOCK. There is exactly one: the trace meter. It fills over the verb's
+// designed budget (shortened by security and overclock), and the HUD shows it
+// as seconds remaining. Killing constructs and completing objective steps
+// SCRUB trace back, floored at `TRACE_FLOOR_RATIO` of nominal progress so the
+// clock can be stretched at most ~2x. Verbs no longer run private countdowns
+// racing the trace — that model made every verb unwinnable at security >= 2
+// and put the rootkit gate (security 3 + trace <= 35%) out of physical reach.
 
 import * as THREE from 'three';
-import { uiState, announce } from '../core/UIState.svelte.ts';
-import { buildDiveSceneFor, disposeDiveScene, THEME } from '../core/DiveScenes';
+import { uiState } from '../core/UIState.svelte.ts';
+import { buildDiveSceneFor, disposeDiveScene, tickDiveScene, THEME } from '../core/DiveScenes';
 import {
   completeBreachWin,
   completeBreachFail,
@@ -28,116 +26,135 @@ import {
   type BreachKind,
   type DiveOutcome,
 } from './BreachSystem';
-import { spawnEnemy, EnemyType } from '../core/factories';
-import { InputSystem } from './InputSystem';
-import { resetVirtualJoystick } from './InputSystem';
+import { InputSystem, resetVirtualJoystick } from './InputSystem';
 import { haptics } from '../core/haptics';
 import { world, type Entity } from '../core/world';
 import { partySpawnMultiplier } from '../core/difficulty';
 import { getCurrentLevel } from '../core/LevelData';
+import { spawnEnemy, EnemyType } from '../core/factories';
+import { clearDamageNumbers } from './DamageNumberSystem';
+import {
+  playShoot,
+  playHurt,
+  playCollect,
+  playExplosion,
+  playLevelUp,
+  playMenuBuy,
+} from '../core/audio';
+import {
+  createVerb,
+  baseTraceRate,
+  TRACE_MAX,
+  DIVE_ARENA_R,
+  VERB_NAME,
+  VERB_BRIEF,
+  type DiveVerb,
+  type DiveCtx,
+} from './dive/DiveVerbs';
+import { disposeMarkers, updateMarker, type DiveMarker } from './dive/DiveMarkers';
+import {
+  spawnIce,
+  tickIce,
+  damageIce,
+  clearIce,
+  nearestIce,
+  countIceNear,
+  liveIceCount,
+  ICE_HIT_IFRAMES,
+  type Ice,
+} from './dive/DiveICE';
 
-// Minimal structural type for the raw renderer. `setRenderTarget` is optional
-// because the WebGL and WebGPU renderers both expose it, but the dive only
-// needs the two calls and shouldn't depend on the full renderer type.
+// Minimal structural type for the raw renderer. Both the WebGL and WebGPU
+// renderers expose these two calls; the dive needs nothing else.
 type DiveRenderer = {
   render: (scene: THREE.Scene, camera: THREE.Camera) => void;
   setRenderTarget?: (target: unknown | null) => void;
 };
 
 // ---------------------------------------------------------------------------
-// Configuration
+// Tuning
 // ---------------------------------------------------------------------------
 
-const TRACE_MAX = 100;
-const DIVE_PLAYER_SPEED = 5.5;
-const DIVE_BOUNDS = 34; // clamp player within this radius from origin
-const ICE_CONTACT_DIST = 1.2;
-const ICE_CONTACT_DAMAGE = 8;
-const ICE_CONTACT_COOLDOWN = 0.6; // invuln window between ICE hits
-const ICE_STEER_SPEED = 3.5;
-const ICE_WAVE_INTERVAL = 5; // seconds between ICE reinforcement waves
+const DIVE_PLAYER_SPEED = 7.0;
+/** Trace can never be scrubbed below this fraction of nominal progress. */
+const TRACE_FLOOR_RATIO = 0.45;
+/** Trace scrubbed per construct killed. */
+const TRACE_KILL_SCRUB = 1.6;
+
+const HP_BASE = 120;
+const HP_PER_SECURITY = 30;
+const PLAYER_KNOCKBACK = 5.0;
+
+// Constructs
+const ICE_CAP = 26;
+const ICE_WAVE_INTERVAL = 5.5;
+/** Extra constructs per reinforcement wave, per kind. */
+const WAVE_SIZE: Record<string, number> = {
+  relay: 4,
+  bank: 3,
+  armory: 2,
+  substation: 2,
+  depot: 2,
+  stashden: 2,
+};
+
+// Dive-local auto-fire
+const FIRE_INTERVAL = 0.24;
+const SHOT_BASE_DAMAGE = 26;
+const PROJECTILE_SPEED = 38;
+const PROJECTILE_LIFE = 1.2;
+const PROJECTILE_HIT_DIST = 1.05;
+const AIM_RANGE = 26;
+
+// Exit ambush (fail path)
 const AMBUSH_RADIUS = 25;
 const AMBUSH_CAP = 40;
 const AMBUSH_BASE = 8;
-const AMBUSH_TRACE_DIV = 6; // +1 enemy per N trace points
-const AMBUSH_TIME_DIV = 5; // +2 enemies per N seconds elapsed
+const AMBUSH_TRACE_DIV = 6;
+const AMBUSH_TIME_DIV = 5;
+
+// Camera. Matches the arena rig's 35° FOV framing so the dive doesn't read as
+// a different game; the mobile rig pulls back the same way CameraSystem does.
+const CAM_HEIGHT = 44;
+const CAM_DISTANCE = 13;
+const CAM_HEIGHT_MOBILE = 60;
+const CAM_DISTANCE_MOBILE = 20;
 
 // ---------------------------------------------------------------------------
-// Trace rate per verb (base rate). Security adds ~1-2 per level.
+// Module state
 // ---------------------------------------------------------------------------
-const TRACE_BASE: Record<string, number> = {
-  bank: 5,
-  substation: 4,
-  armory: 3,
-  relay: 8,
-  depot: 5,
-  stashden: 3,
-};
-const TRACE_SEC_MULT: Record<string, number> = {
-  bank: 1.5,
-  substation: 1,
-  armory: 1,
-  relay: 2,
-  depot: 1,
-  stashden: 1.5,
-};
 
-// ---------------------------------------------------------------------------
-// Verb timer presets (seconds). Higher security = less time.
-// ---------------------------------------------------------------------------
-const TIMER_BASE: Record<string, number> = {
-  bank: 30,
-  substation: 25,
-  armory: 20,
-  relay: 15,
-  depot: 20,
-  stashden: 28,
-};
-const TIMER_SEC_BONUS = 5; // extra seconds per security level
-
-// ---------------------------------------------------------------------------
-// Module-level dive state (accessible by tick + exit handlers)
-// ---------------------------------------------------------------------------
 let diveScene: THREE.Scene | null = null;
 let diveMeshes: THREE.Object3D[] = [];
 let diveNode: BreachNode | null = null;
 let diveOverclock = false;
 let diveSecurity = 0;
 let diveElapsed = 0;
-// Arena scene ref — stored so exitDive (called from key handler) can spawn ambush
 let arenaSceneRef: THREE.Scene | null = null;
 let keysBound = false;
 
-// Player reparent state: the local player's `transform` (its visible mesh group)
-// normally lives in the arena scene graph. We reparent it into the dive scene
-// on enter so the player is visible during the dive, and move it back on exit.
-// We also stash the arena-space position and reset to the dive origin (0,0).
+let verb: DiveVerb | null = null;
+let markers: DiveMarker[] = [];
+let iceList: Ice[] = [];
+
+let traceRate = 1;
+let traceValue = 0;
+let diveHealth = HP_BASE;
+let diveHealthMax = HP_BASE;
+let playerIFrames = 0;
+let hurtFlash = 0;
+let fireCooldown = 0;
+let radarTimer = 0;
+/** Guards against re-entrant exits (a verb win inside the same frame as a trace fail). */
+let exiting = false;
+
+// Player reparent state: the local player's mesh group normally lives in the
+// arena scene graph. It is moved into the dive scene on enter and back on exit.
 let playerTransformParent: THREE.Object3D | null = null;
 let stashedPlayerPosition: THREE.Vector3 | null = null;
 
-// Per-ICE ghost mesh: keyed by entity reference (not id, because network
-// sync overwrites the id). The mesh itself is added to `diveMeshes` so
-// disposeDiveScene handles its teardown alongside the themed scene.
-const iceMeshes: WeakMap<Entity, THREE.Object3D> = new WeakMap();
-
-// Explicit list of dive-local ICE entities. We do NOT use
-// `world.with('isEnemy','isICE', ...)` for these: miniplex only re-indexes an
-// entity into a query on add/addComponent/removeComponent, and spawnEnemy
-// creates the entity WITHOUT isICE — we tack `isICE = true` on afterwards by
-// direct assignment, which miniplex never sees. So the query stayed empty and
-// the ICE never got steered (they froze at their spawn ring, off-camera) and
-// never got cleaned up on exit (they leaked into the arena). Tracking them in
-// a plain array sidesteps the reactivity gap entirely.
-let iceEntities: Entity[] = [];
-
-// --- Dive-local combat ---
-// The arena's WeaponSystem/CollisionSystem are frozen during a dive, so the
-// dive owns its own auto-fire: the player targets the nearest ICE and lobs
-// dive-local projectiles at it. These are plain THREE meshes + a light struct
-// array (same pattern as the ICE ghost meshes), never touching the arena world
-// beyond reading the player's `stats.might` for damage scaling.
 interface DiveProjectile {
-  mesh: THREE.Object3D;
+  mesh: THREE.Mesh;
   x: number;
   z: number;
   vx: number;
@@ -145,561 +162,180 @@ interface DiveProjectile {
   life: number;
   dmg: number;
 }
-let diveProjectiles: DiveProjectile[] = [];
-let playerFireCooldown = 0;
-
-const DIVE_FIRE_INTERVAL = 0.26; // seconds between shots
-const DIVE_BASE_DAMAGE = 24; // scaled by player might
-const DIVE_PROJECTILE_SPEED = 34; // units/s
-const DIVE_PROJECTILE_LIFE = 1.3; // seconds before despawn
-const DIVE_PROJECTILE_HIT_DIST = 1.0; // hit radius against ICE
-const DIVE_AIM_RANGE = 30; // won't fire at ICE beyond this
-
-// Per-verb state machine (discriminated union)
-type DiveVerbData =
-  | {
-      verb: 'extraction';
-      extractionProgress: number;
-      extractionMax: number;
-      timer: number;
-      timerMax: number;
-    }
-  | {
-      verb: 'holdOverload';
-      pads: { x: number; z: number; charged: boolean }[];
-      padCount: number;
-      capacitorProgress: number;
-      capacitorMax: number;
-      timer: number;
-      timerMax: number;
-      overloadActive: boolean;
-    }
-  | {
-      verb: 'grabAndRun';
-      pickups: { x: number; z: number; collected: boolean }[];
-      collectedCount: number;
-      totalCount: number;
-      exitX: number;
-      exitZ: number;
-      exitActive: boolean;
-      timer: number;
-      timerMax: number;
-    }
-  | { verb: 'evasion'; timer: number; timerMax: number }
-  | {
-      verb: 'supplyRun';
-      pickups: { x: number; z: number; collected: boolean }[];
-      collected: number;
-      needed: number;
-      timer: number;
-      timerMax: number;
-    }
-  | {
-      verb: 'gamble';
-      altarX: number;
-      altarZ: number;
-      cashOutX: number;
-      cashOutZ: number;
-      stack: number;
-      bustChance: number;
-      cashedOut: boolean;
-      timer: number;
-      timerMax: number;
-      pushCooldown: number;
-    };
-
-let diveVerbState: DiveVerbData | null = null;
-
-// Dive-local health
-let diveHealth = 100;
-let diveHealthMax = 100;
-let iceContactTimer = 0;
+let projectiles: DiveProjectile[] = [];
+let projectileGeo: THREE.SphereGeometry | null = null;
+let projectileMat: THREE.MeshBasicMaterial | null = null;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function isMobileRig(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    (window.innerWidth < 768 || 'ontouchstart' in window || navigator.maxTouchPoints > 0)
+  );
+}
 
 function clampToArena(v: number, half: number): number {
   const lim = half - 2;
   return v < -lim ? -lim : v > lim ? lim : v;
 }
 
-function getTraceRate(kind: string, security: number, verbState: DiveVerbData | null): number {
-  const base = TRACE_BASE[kind] ?? 4;
-  const secMult = TRACE_SEC_MULT[kind] ?? 1;
-  let rate = base + security * secMult;
-  if (kind === 'stashden' && verbState?.verb === 'gamble') {
-    rate += verbState.stack * 2;
-  }
-  return rate;
+/** Centre-screen dive banner. The arena HUD (which owns `announce`) is hidden. */
+function banner(text: string): void {
+  if (!uiState.dive) return;
+  uiState.dive.banner = text;
+  uiState.dive.bannerSeq++;
 }
 
-/** Build verb state for the given kind + security. Also spawns visual pads/pickups. */
-function initVerbState(kind: string, security: number): DiveVerbData {
-  const timerMax = (TIMER_BASE[kind] ?? 25) + security * TIMER_SEC_BONUS;
-
-  switch (kind) {
-    case 'bank': {
-      return {
-        verb: 'extraction',
-        extractionProgress: 0,
-        extractionMax: 100,
-        timer: 0,
-        timerMax,
-      };
-    }
-    case 'substation': {
-      const padCount = 3 + security;
-      const pads: { x: number; z: number; charged: boolean }[] = [];
-      for (let i = 0; i < padCount; i++) {
-        const angle = (i / padCount) * Math.PI * 2;
-        const r = 8 + Math.random() * 6;
-        pads.push({ x: Math.cos(angle) * r, z: Math.sin(angle) * r, charged: false });
-      }
-      return {
-        verb: 'holdOverload',
-        pads,
-        padCount,
-        capacitorProgress: 0,
-        capacitorMax: 80,
-        timer: 0,
-        timerMax,
-        overloadActive: false,
-      };
-    }
-    case 'armory': {
-      const totalCount = 4 + security;
-      const pickups: { x: number; z: number; collected: boolean }[] = [];
-      for (let i = 0; i < totalCount; i++) {
-        const angle = (i / totalCount) * Math.PI * 2 + Math.random() * 0.5;
-        const r = 5 + Math.random() * 18;
-        pickups.push({ x: Math.cos(angle) * r, z: Math.sin(angle) * r, collected: false });
-      }
-      const exitAngle = Math.random() * Math.PI * 2;
-      const exitR = 28;
-      return {
-        verb: 'grabAndRun',
-        pickups,
-        collectedCount: 0,
-        totalCount,
-        exitX: Math.cos(exitAngle) * exitR,
-        exitZ: Math.sin(exitAngle) * exitR,
-        exitActive: false,
-        timer: 0,
-        timerMax,
-      };
-    }
-    case 'relay': {
-      // Evasion is a pure race against the trace meter, so the survive timer
-      // MUST expire before trace maxes out — otherwise the universal trace
-      // backstop ejects you before the timer can ever finish. It used to take
-      // the shared TIMER_BASE (15 + 5/security) against a relay trace rate of
-      // 8 + 2/security, which caps trace in 7.1-12.5s: relay was unwinnable at
-      // EVERY security level. Derive the timer from the real trace rate (win at
-      // ~75% trace) and let ICE density carry the difficulty instead — relay
-      // already spawns 3 + security reinforcements per wave.
-      const rate = getTraceRate('relay', security, null);
-      return { verb: 'evasion', timer: 0, timerMax: (TRACE_MAX / rate) * 0.75 };
-    }
-    case 'depot': {
-      const needed = 5 + security * 2;
-      const total = needed + 3; // spawn a few extra
-      const pickups: { x: number; z: number; collected: boolean }[] = [];
-      for (let i = 0; i < total; i++) {
-        const angle = (i / total) * Math.PI * 2 + Math.random() * 0.4;
-        const r = 5 + Math.random() * 20;
-        pickups.push({ x: Math.cos(angle) * r, z: Math.sin(angle) * r, collected: false });
-      }
-      return { verb: 'supplyRun', pickups, collected: 0, needed, timer: 0, timerMax };
-    }
-    case 'stashden': {
-      const altarR = 6;
-      const altarAngle = Math.random() * Math.PI * 2;
-      const cashOutAngle = altarAngle + Math.PI + (Math.random() - 0.5) * 1;
-      return {
-        verb: 'gamble',
-        altarX: Math.cos(altarAngle) * altarR,
-        altarZ: Math.sin(altarAngle) * altarR,
-        cashOutX: Math.cos(cashOutAngle) * 26,
-        cashOutZ: Math.sin(cashOutAngle) * 26,
-        stack: 0,
-        bustChance: 0.1,
-        cashedOut: false,
-        timer: 0,
-        timerMax,
-        pushCooldown: 0,
-      };
-    }
-    default: {
-      return { verb: 'evasion', timer: 0, timerMax };
-    }
-  }
+/** The player's current dive shot damage — ICE HP is derived from it. */
+function shotDamage(): number {
+  const player = world.with('isLocalPlayer', 'position').first;
+  return SHOT_BASE_DAMAGE * (player?.stats?.might ?? 1);
 }
 
-/** Spawn visual markers for pads/pickups in the dive scene. */
-function spawnVerbVisuals(vs: DiveVerbData): void {
-  if (!diveScene) return;
-  const mkCube = (x: number, z: number, color: number, y: number = 0.5, size: number = 0.6) => {
-    const geo = new THREE.BoxGeometry(size, size, size);
-    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8 });
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(x, y, z);
-    diveScene!.add(mesh);
-    diveMeshes.push(mesh);
-    return mesh;
-  };
-  const mkRing = (x: number, z: number, color: number, y: number = 0.15) => {
-    const geo = new THREE.RingGeometry(0.5, 0.7, 24);
-    const mat = new THREE.MeshBasicMaterial({
-      color,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.7,
-    });
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.position.set(x, y, z);
-    diveScene!.add(mesh);
-    diveMeshes.push(mesh);
-    return mesh;
-  };
-
-  switch (vs.verb) {
-    case 'holdOverload': {
-      for (const pad of vs.pads) {
-        mkRing(pad.x, pad.z, 0x36e6ff);
-      }
-      break;
-    }
-    case 'grabAndRun': {
-      for (const p of vs.pickups) {
-        mkCube(p.x, p.z, 0xff8c3a);
-      }
-      const exitMat = new THREE.MeshBasicMaterial({
-        color: 0x00ff88,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.5,
-      });
-      const exitGeo = new THREE.CircleGeometry(1.5, 24);
-      const exitMesh = new THREE.Mesh(exitGeo, exitMat);
-      exitMesh.rotation.x = -Math.PI / 2;
-      exitMesh.position.set(vs.exitX, 0.1, vs.exitZ);
-      exitMesh.visible = false;
-      diveScene!.add(exitMesh);
-      diveMeshes.push(exitMesh);
-      break;
-    }
-    case 'supplyRun': {
-      for (const p of vs.pickups) {
-        mkCube(p.x, p.z, 0xffd75e);
-      }
-      break;
-    }
-    case 'gamble': {
-      mkCube(vs.altarX, vs.altarZ, 0xc46bff, 0.8, 1.0);
-      const coGeo = new THREE.CircleGeometry(1.5, 24);
-      const coMat = new THREE.MeshBasicMaterial({
-        color: 0x00ff88,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.5,
-      });
-      const coMesh = new THREE.Mesh(coGeo, coMat);
-      coMesh.rotation.x = -Math.PI / 2;
-      coMesh.position.set(vs.cashOutX, 0.1, vs.cashOutZ);
-      diveScene!.add(coMesh);
-      diveMeshes.push(coMesh);
-      break;
-    }
-  }
+function scrubTrace(points: number): void {
+  // The floor rises with elapsed time, so scrubbing buys real seconds but can
+  // never turn the dive into an unbounded farm.
+  const floor = Math.min(TRACE_MAX, diveElapsed * traceRate * TRACE_FLOOR_RATIO);
+  traceValue = Math.max(floor, traceValue - points);
 }
 
-/**
- * Spawn ICE constructs into the dive scene.
- *
- * @param count    how many to spawn
- * @param security dive security level (scales HP/speed/type)
- * @param minR     inner spawn radius — the first wave spawns closer so the
- *                 player has visible enemies immediately instead of an empty
- *                 arena while the horde walks in from off-camera.
- */
-function spawnICEWave(count: number, security: number, minR: number = 12): void {
+function spikeTrace(points: number): void {
+  traceValue = Math.min(TRACE_MAX, traceValue + points);
+}
+
+function spawnIceRing(n: number, cx: number, cz: number, minR: number, maxR: number): void {
   if (!diveScene || !diveNode) return;
-  for (let i = 0; i < count; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const r = minR + Math.random() * 12;
-    const x = Math.cos(angle) * r;
-    const z = Math.sin(angle) * r;
-    const type = security >= 2 && Math.random() < 0.3 ? EnemyType.FIREWALL : EnemyType.VIRUS;
-    const hpMult = 0.6 + security * 0.15;
-    const e = spawnEnemy(diveScene, x, z, type, hpMult, 0.9);
-    e.isICE = true;
-    e.moveSpeed = ICE_STEER_SPEED + security * 0.4 + Math.random() * 0.5;
-    // Track explicitly — see `iceEntities` note above (miniplex won't index the
-    // post-hoc isICE flag, so a world query would miss these).
-    iceEntities.push(e);
-    const mesh = makeIceMesh(e, diveNode.kind, diveSecurity);
-    mesh.position.set(x, 0.6, z);
-    diveScene.add(mesh);
-    diveMeshes.push(mesh);
-    iceMeshes.set(e, mesh);
+  const cap = Math.round(ICE_CAP * (diveOverclock ? 1.4 : 1));
+  const dmg = shotDamage();
+  for (let i = 0; i < n; i++) {
+    if (liveIceCount(iceList) >= cap) return;
+    const a = (i / Math.max(1, n)) * Math.PI * 2 + Math.random() * 0.6;
+    const r = minR + Math.random() * Math.max(0.001, maxR - minR);
+    let x = cx + Math.cos(a) * r;
+    let z = cz + Math.sin(a) * r;
+    // Keep spawns inside the arena so constructs never materialise in the void.
+    const d = Math.hypot(x, z);
+    if (d > DIVE_ARENA_R - 1) {
+      x = (x / d) * (DIVE_ARENA_R - 1);
+      z = (z / d) * (DIVE_ARENA_R - 1);
+    }
+    iceList.push(spawnIce(diveScene, diveNode.kind, diveSecurity, x, z, dmg));
   }
 }
 
-/**
- * Build a per-ICE ghost mesh. The arena's InstancedMesh flow is frozen
- * during the dive (RenderSystem does not run), so the enemy entities
- * spawnEnemy produces would be invisible without an attached mesh.
- * Geometry depends on enemyType; color matches the dive theme.
- */
-function makeIceMesh(entity: Entity, kind: BreachKind, security: number): THREE.Object3D {
-  const theme = THEME[kind] ?? THEME.depot;
-  const color = theme.accent;
-  const scale = 0.9 + security * 0.18;
-  const type = entity.enemyType;
-  const wireMat = new THREE.MeshBasicMaterial({
-    color,
-    wireframe: true,
-    transparent: true,
-    opacity: 0.9,
-  });
-  const fillMat = new THREE.MeshBasicMaterial({
-    color: theme.gridAccent,
-    transparent: true,
-    opacity: 0.45,
-  });
-  let mesh: THREE.Object3D;
-  if (type === EnemyType.FIREWALL) {
-    // Boxy firewall: chunky cube, bigger than a virus
-    const geo = new THREE.BoxGeometry(1.3 * scale, 1.3 * scale, 1.3 * scale);
-    const g = new THREE.Group();
-    g.add(new THREE.Mesh(geo, fillMat));
-    g.add(new THREE.Mesh(geo, wireMat));
-    mesh = g;
-  } else if (type === EnemyType.WARDEN) {
-    // Warden: tall crowned icosahedron (crown = small box on top)
-    const g = new THREE.Group();
-    const body = new THREE.IcosahedronGeometry(0.9 * scale, 0);
-    g.add(new THREE.Mesh(body, fillMat));
-    g.add(new THREE.Mesh(body, wireMat));
-    const crown = new THREE.Mesh(
-      new THREE.BoxGeometry(0.4 * scale, 0.4 * scale, 0.4 * scale),
-      wireMat,
-    );
-    crown.position.y = 0.9 * scale;
-    g.add(crown);
-    mesh = g;
-  } else {
-    // Virus: spiky small icosahedron
-    const geo = new THREE.IcosahedronGeometry(0.6 * scale, 0);
-    const g = new THREE.Group();
-    g.add(new THREE.Mesh(geo, fillMat));
-    g.add(new THREE.Mesh(geo, wireMat));
-    mesh = g;
-  }
-  return mesh;
-}
-
-/** Compute ambush horde size from dive state. */
-function computeAmbushSize(): number {
-  const overclock = diveOverclock;
-  const trace = uiState.dive?.trace ?? 0;
-  const elapsed = diveElapsed;
-  let count =
-    AMBUSH_BASE + Math.floor(trace / AMBUSH_TRACE_DIV) + Math.floor(elapsed / AMBUSH_TIME_DIV) * 2;
-  count = Math.min(count, AMBUSH_CAP);
-  if (overclock) count *= 2;
-  count = Math.round(count * partySpawnMultiplier());
-  return Math.max(1, count);
-}
-
-/** Spawn the exit ambush ring around the node's door position. */
-function spawnAmbush(scene: THREE.Scene): void {
-  const node = diveNode;
-  if (!node) return;
-  const count = computeAmbushSize();
-  const cx = node.doorX;
-  const cz = node.doorZ;
-  const level = getCurrentLevel();
-  const halfW = level.mapWidth / 2;
-  const halfH = level.mapHeight / 2;
-
-  announce('THE HORDE CLOSES IN');
-  for (let i = 0; i < count; i++) {
-    const ang = (i / count) * Math.PI * 2;
-    const x = clampToArena(cx + Math.cos(ang) * AMBUSH_RADIUS, halfW);
-    const z = clampToArena(cz + Math.sin(ang) * AMBUSH_RADIUS, halfH);
-    const type =
-      i % 5 === 0 && uiState.dive && uiState.dive.trace > 60 ? EnemyType.WARDEN : EnemyType.VIRUS;
-    const hpMult = 0.6;
-    const speedMult = 1.0;
-    const e = spawnEnemy(scene, x, z, type, hpMult, speedMult);
-    e.moveSpeed = (e.moveSpeed ?? 1) * speedMult;
+function diveSfx(name: 'pickup' | 'step' | 'alarm' | 'bust' | 'reveal'): void {
+  switch (name) {
+    case 'pickup':
+      playCollect(1.15);
+      haptics.select();
+      break;
+    case 'step':
+      playCollect(0.85);
+      haptics.select();
+      break;
+    case 'reveal':
+      playMenuBuy();
+      break;
+    case 'alarm':
+      playExplosion();
+      haptics.hit();
+      break;
+    case 'bust':
+      playExplosion();
+      haptics.levelUp();
+      break;
   }
 }
 
-/** Integrate player movement inside the dive (InputSystem + velocity→position). */
-function movePlayerInDive(dt: number): THREE.Vector3 | null {
+// One reusable context object. The verb tick runs every frame, so allocating
+// a fresh ctx (plus five closures) per frame would be pure GC churn in the
+// dive's hot loop — see the hot-loop rule in AGENTS.md.
+let ctx: DiveCtx | null = null;
+
+/** Build the verb context once per dive. */
+function initCtx(): DiveCtx {
+  ctx = {
+    scene: diveScene!,
+    kind: diveNode!.kind,
+    security: diveSecurity,
+    overclock: diveOverclock,
+    accent: (THEME[diveNode!.kind] ?? THEME.depot).accent,
+    elapsed: 0,
+    px: 0,
+    pz: 0,
+    iceNear: (x, z, r) => countIceNear(iceList, x, z, r),
+    spawnICE: (n, minR = 12, maxR = 18) => spawnIceRing(n, 0, 0, minR, maxR),
+    spawnICEAt: (n, x, z, radius) => spawnIceRing(n, x, z, radius * 0.75, radius),
+    scrub: scrubTrace,
+    spike: spikeTrace,
+    banner,
+    sfx: diveSfx,
+  };
+  return ctx;
+}
+
+/** Refresh the per-frame fields of the shared context. */
+function frameCtx(px: number, pz: number): DiveCtx {
+  const c = ctx ?? initCtx();
+  c.elapsed = diveElapsed;
+  c.px = px;
+  c.pz = pz;
+  return c;
+}
+
+// ---------------------------------------------------------------------------
+// Player
+// ---------------------------------------------------------------------------
+
+/** Integrate player movement inside the dive. Returns the live position. */
+function movePlayer(dt: number): { entity: Entity; pos: THREE.Vector3 } | null {
   InputSystem();
-  for (const entity of world.with('isLocalPlayer', 'position', 'velocity', 'input')) {
-    if (!entity.input || !entity.position || !entity.velocity) continue;
-    const dx = entity.input.x ?? 0;
-    const dy = entity.input.y ?? 0;
-    const len = Math.sqrt(dx * dx + dy * dy);
-    if (len > 0.001) {
-      entity.velocity.set((dx / len) * DIVE_PLAYER_SPEED, 0, (dy / len) * DIVE_PLAYER_SPEED);
-    } else {
-      entity.velocity.set(0, 0, 0);
-    }
-    entity.position.x += entity.velocity.x * dt;
-    entity.position.z += entity.velocity.z * dt;
-    // Clamp within dive bounds
-    const dist = Math.sqrt(entity.position.x ** 2 + entity.position.z ** 2);
-    if (dist > DIVE_BOUNDS) {
-      const scale = DIVE_BOUNDS / dist;
-      entity.position.x *= scale;
-      entity.position.z *= scale;
-    }
-    entity.position.y = 0.5;
-    // RenderSystem (which normally copies entity.position → transform.position)
-    // is frozen during the dive, so sync the visible mesh here too.
-    if (entity.transform) entity.transform.position.copy(entity.position);
-    return entity.position;
+  const entity = world.with('isLocalPlayer', 'position', 'velocity', 'input').first;
+  if (!entity || !entity.input || !entity.position || !entity.velocity) return null;
+
+  const dx = entity.input.x ?? 0;
+  const dy = entity.input.y ?? 0;
+  const len = Math.hypot(dx, dy);
+  // moveSpeed is a multiplier (1.0 = base); clamp so neither a stacked speed
+  // build nor a Hardlight Shell turns the dive into a different game.
+  const speed = DIVE_PLAYER_SPEED * Math.min(1.35, Math.max(0.8, entity.stats?.moveSpeed ?? 1));
+  if (len > 0.001) {
+    entity.velocity.set((dx / len) * speed, 0, (dy / len) * speed);
+  } else {
+    entity.velocity.set(0, 0, 0);
   }
-  return null;
-}
 
-/** Nearest ICE to (px,pz) within DIVE_AIM_RANGE, or null. */
-function findNearestICE(px: number, pz: number): Entity | null {
-  let best: Entity | null = null;
-  let bestSq = DIVE_AIM_RANGE * DIVE_AIM_RANGE;
-  for (const ice of iceEntities) {
-    if (!ice.position) continue;
-    const dx = ice.position.x - px;
-    const dz = ice.position.z - pz;
-    const d2 = dx * dx + dz * dz;
-    if (d2 < bestSq) {
-      bestSq = d2;
-      best = ice;
-    }
+  entity.position.x += entity.velocity.x * dt;
+  entity.position.z += entity.velocity.z * dt;
+
+  const dist = Math.hypot(entity.position.x, entity.position.z);
+  if (dist > DIVE_ARENA_R) {
+    const k = DIVE_ARENA_R / dist;
+    entity.position.x *= k;
+    entity.position.z *= k;
   }
-  return best;
-}
-
-/** Remove one ICE from the dive (death): mesh, world entity, and tracking. */
-function killICE(ice: Entity): void {
-  const mesh = iceMeshes.get(ice);
-  if (mesh) {
-    if (diveScene) diveScene.remove(mesh);
-    const idx = diveMeshes.indexOf(mesh);
-    if (idx !== -1) diveMeshes.splice(idx, 1);
-    disposeObject(mesh);
-    iceMeshes.delete(ice);
-  }
-  const ei = iceEntities.indexOf(ice);
-  if (ei !== -1) iceEntities.splice(ei, 1);
-  world.remove(ice);
-}
-
-/** Dispose a mesh (geometry + material[s]) and its children. */
-function disposeObject(obj: THREE.Object3D): void {
-  obj.traverse((child) => {
-    const m = child as THREE.Mesh;
-    if (m.geometry) m.geometry.dispose();
-    const mat = m.material as THREE.Material | THREE.Material[] | undefined;
-    if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
-    else if (mat) mat.dispose();
-  });
-}
-
-/** Auto-fire: on cooldown, launch a projectile at the nearest ICE. */
-function tickDiveFiring(dt: number, player: Entity | null, px: number, pz: number): void {
-  playerFireCooldown = Math.max(0, playerFireCooldown - dt);
-  if (playerFireCooldown > 0 || !diveScene) return;
-  const target = findNearestICE(px, pz);
-  if (!target || !target.position) return;
-
-  const dx = target.position.x - px;
-  const dz = target.position.z - pz;
-  const d = Math.hypot(dx, dz) || 1;
-  const aimAngle = Math.atan2(dx, dz);
-
-  // Face the shot (RenderSystem's facing logic is frozen during the dive).
-  if (player?.transform) player.transform.rotation.y = aimAngle;
-
-  const theme = THEME[diveNode?.kind ?? 'depot'] ?? THEME.depot;
-  const geo = new THREE.SphereGeometry(0.28, 8, 8);
-  const mat = new THREE.MeshBasicMaterial({ color: theme.accent });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set(px, 0.6, pz);
-  diveScene.add(mesh);
-  diveMeshes.push(mesh);
-
-  const might = player?.stats?.might ?? 1;
-  diveProjectiles.push({
-    mesh,
-    x: px,
-    z: pz,
-    vx: (dx / d) * DIVE_PROJECTILE_SPEED,
-    vz: (dz / d) * DIVE_PROJECTILE_SPEED,
-    life: DIVE_PROJECTILE_LIFE,
-    dmg: DIVE_BASE_DAMAGE * might,
-  });
-  playerFireCooldown = DIVE_FIRE_INTERVAL;
-}
-
-/** Advance dive projectiles, resolve ICE hits + deaths, expire spent shots. */
-function tickDiveProjectiles(dt: number): void {
-  for (let i = diveProjectiles.length - 1; i >= 0; i--) {
-    const p = diveProjectiles[i];
-    p.x += p.vx * dt;
-    p.z += p.vz * dt;
-    p.life -= dt;
-    p.mesh.position.set(p.x, 0.6, p.z);
-
-    let consumed = p.life <= 0;
-    if (!consumed) {
-      for (const ice of iceEntities) {
-        if (!ice.position || !ice.health) continue;
-        const dx = ice.position.x - p.x;
-        const dz = ice.position.z - p.z;
-        if (dx * dx + dz * dz <= DIVE_PROJECTILE_HIT_DIST * DIVE_PROJECTILE_HIT_DIST) {
-          ice.health.current -= p.dmg;
-          if (ice.health.current <= 0) killICE(ice);
-          consumed = true;
-          break;
-        }
-      }
-    }
-    if (consumed) {
-      if (diveScene) diveScene.remove(p.mesh);
-      const mi = diveMeshes.indexOf(p.mesh);
-      if (mi !== -1) diveMeshes.splice(mi, 1);
-      disposeObject(p.mesh);
-      diveProjectiles.splice(i, 1);
-    }
-  }
+  entity.position.y = 0.5;
+  // RenderSystem normally copies position → transform; it is frozen here.
+  if (entity.transform) entity.transform.position.copy(entity.position);
+  return { entity, pos: entity.position };
 }
 
 /**
- * Lightweight player-rig "it's alive" animation for the dive. RenderSystem owns
- * the full rig choreography (banking, recoil, overload, death), but it's frozen
- * mid-dive, so replicate just the idle life here from the same rig-part cache:
- * gyro spin, wing bob, thruster flicker, core breathing. Facing is set by the
- * firing/movement code, not here.
+ * Idle rig life. RenderSystem owns the full choreography (banking, recoil,
+ * death) but is frozen mid-dive, so replicate just the "it's alive" layer from
+ * the same rig-part cache: gyro spin, wing bob, thruster flicker, core breath.
  */
-function animateDivePlayerRig(entity: Entity, elapsed: number, dt: number): void {
+function animateRig(entity: Entity, elapsed: number, dt: number): void {
   const cache = entity.transform?.userData?.cache as Record<string, THREE.Object3D> | undefined;
   if (!cache) return;
   const speed = entity.velocity ? entity.velocity.length() : 0;
 
-  const gyroH = cache['gyroHRing'];
-  const gyroV = cache['gyroVRing'];
-  const gyroT = cache['gyroTRing'];
-  if (gyroH) gyroH.rotation.y += dt * 2.5;
-  if (gyroV) gyroV.rotation.x += dt * 3.5;
-  if (gyroT) gyroT.rotation.y += dt * 3.0;
+  if (cache['gyroHRing']) cache['gyroHRing'].rotation.y += dt * 2.5;
+  if (cache['gyroVRing']) cache['gyroVRing'].rotation.x += dt * 3.5;
+  if (cache['gyroTRing']) cache['gyroTRing'].rotation.y += dt * 3.0;
 
   const maxTilt = Math.min(speed * 0.08, 0.4);
   const leftWing = cache['leftWing'];
@@ -721,200 +357,174 @@ function animateDivePlayerRig(entity: Entity, elapsed: number, dt: number): void
   }
 
   const core = cache['core'];
-  if (core && core.userData.baseScale === undefined) {
-    core.userData.baseScale = core.scale.x || 1;
-  }
   if (core) {
+    if (core.userData.baseScale === undefined) core.userData.baseScale = core.scale.x || 1;
     const base = core.userData.baseScale as number;
     core.scale.setScalar(base * (1 + 0.04 * Math.sin(elapsed * 3)));
   }
 }
 
-/** Set the camera for the dive scene (overhead 3/4 follow). */
-function setDiveCamera(camera: THREE.Camera, playerPos: THREE.Vector3 | null): void {
-  const px = playerPos?.x ?? 0;
-  const pz = playerPos?.z ?? 0;
-  // Pulled back from (28, +18) so a useful slice of the dive arena is on
-  // screen — the ICE hunt reads as a threat closing in, not enemies teleporting
-  // into frame at melee range.
-  camera.position.set(px, 40, pz + 28);
-  camera.lookAt(px, 0, pz);
+// ---------------------------------------------------------------------------
+// Dive-local combat
+// ---------------------------------------------------------------------------
+
+function tickFiring(dt: number, player: Entity | null, px: number, pz: number): void {
+  fireCooldown = Math.max(0, fireCooldown - dt);
+  if (fireCooldown > 0 || !diveScene) return;
+  const target = nearestIce(iceList, px, pz, AIM_RANGE);
+  if (!target || !target.entity.position) return;
+
+  const dx = target.entity.position.x - px;
+  const dz = target.entity.position.z - pz;
+  const d = Math.hypot(dx, dz) || 1;
+  // Face the shot — RenderSystem's facing logic is frozen during the dive.
+  if (player?.transform) player.transform.rotation.y = Math.atan2(dx, dz);
+
+  if (!projectileGeo) projectileGeo = new THREE.SphereGeometry(0.26, 8, 8);
+  if (!projectileMat) {
+    projectileMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.95,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+  }
+  const mesh = new THREE.Mesh(projectileGeo, projectileMat);
+  mesh.position.set(px, 0.6, pz);
+  diveScene.add(mesh);
+
+  projectiles.push({
+    mesh,
+    x: px,
+    z: pz,
+    vx: (dx / d) * PROJECTILE_SPEED,
+    vz: (dz / d) * PROJECTILE_SPEED,
+    life: PROJECTILE_LIFE,
+    dmg: shotDamage(),
+  });
+  // Cooldown is a multiplier (lower = faster), clamped so a maxed build can't
+  // trivialise the dive and a fresh one isn't unplayably slow.
+  const cd = Math.min(1.3, Math.max(0.45, player?.stats?.cooldown ?? 1));
+  fireCooldown = FIRE_INTERVAL * cd;
+  playShoot();
+}
+
+function tickProjectiles(dt: number): void {
+  for (let i = projectiles.length - 1; i >= 0; i--) {
+    const p = projectiles[i];
+    p.x += p.vx * dt;
+    p.z += p.vz * dt;
+    p.life -= dt;
+    p.mesh.position.set(p.x, 0.6, p.z);
+
+    let consumed = p.life <= 0;
+    if (!consumed) {
+      for (const ice of iceList) {
+        if (ice.deathTimer > 0 || !ice.entity.position) continue;
+        const dx = ice.entity.position.x - p.x;
+        const dz = ice.entity.position.z - p.z;
+        if (dx * dx + dz * dz <= PROJECTILE_HIT_DIST * PROJECTILE_HIT_DIST) {
+          if (damageIce(ice, p.dmg)) scrubTrace(TRACE_KILL_SCRUB);
+          consumed = true;
+          break;
+        }
+      }
+    }
+    if (consumed) {
+      if (diveScene) diveScene.remove(p.mesh);
+      projectiles.splice(i, 1);
+    }
+  }
+}
+
+function clearProjectiles(): void {
+  if (diveScene) for (const p of projectiles) diveScene.remove(p.mesh);
+  projectiles = [];
 }
 
 // ---------------------------------------------------------------------------
-// Verb state tick
+// Camera + radar
 // ---------------------------------------------------------------------------
 
-/** Tick the per-verb state machine. Returns 'win' | 'fail' | null (ongoing). */
-function tickVerbState(dt: number, playerPos: THREE.Vector3 | null): 'win' | 'fail' | null {
-  const vs = diveVerbState;
-  if (!vs) return null;
-  const px = playerPos?.x ?? 0;
-  const pz = playerPos?.z ?? 0;
+function setDiveCamera(camera: THREE.Camera, px: number, pz: number): void {
+  const mobile = isMobileRig();
+  camera.position.set(
+    px,
+    mobile ? CAM_HEIGHT_MOBILE : CAM_HEIGHT,
+    pz + (mobile ? CAM_DISTANCE_MOBILE : CAM_DISTANCE),
+  );
+  camera.lookAt(px, 0, pz);
+}
 
-  switch (vs.verb) {
-    case 'extraction': {
-      vs.timer += dt;
-      const dist = Math.sqrt(px ** 2 + pz ** 2);
-      if (dist < 3) {
-        vs.extractionProgress = Math.min(vs.extractionMax, vs.extractionProgress + dt * 10);
-      }
-      // Update HUD
-      if (uiState.dive) {
-        uiState.dive.progress = vs.extractionProgress;
-        uiState.dive.progressMax = vs.extractionMax;
-        uiState.dive.verbStage = dist < 3 ? 'DOWNLOADING' : 'STAND ON POINT';
-        uiState.dive.objectiveText = `Extraction ${Math.floor(vs.extractionProgress)}%`;
-      }
-      if (vs.extractionProgress >= vs.extractionMax) return 'win';
-      if (vs.timer >= vs.timerMax) return 'fail';
-      return null;
-    }
-    case 'holdOverload': {
-      vs.timer += dt;
-      let allCharged = true;
-      for (const pad of vs.pads) {
-        if (!pad.charged) {
-          const dist = Math.sqrt((px - pad.x) ** 2 + (pz - pad.z) ** 2);
-          if (dist < 1.5) {
-            pad.charged = true;
-            announce(`PAD CHARGED ${vs.pads.filter((p) => p.charged).length}/${vs.padCount}`);
-          }
-          allCharged = false;
-        }
-      }
-      if (allCharged && !vs.overloadActive) {
-        vs.overloadActive = true;
-        announce('OVERLOAD INITIATED');
-      }
-      if (vs.overloadActive) {
-        vs.capacitorProgress = Math.min(vs.capacitorMax, vs.capacitorProgress + dt * 8);
-      }
-      if (uiState.dive) {
-        uiState.dive.progress = vs.overloadActive
-          ? vs.capacitorProgress
-          : vs.pads.filter((p) => p.charged).length;
-        uiState.dive.progressMax = vs.overloadActive ? vs.capacitorMax : vs.padCount;
-        uiState.dive.verbStage = vs.overloadActive ? 'OVERLOADING' : 'CHARGING PADS';
-        uiState.dive.objectiveText = vs.overloadActive
-          ? `Overload ${Math.floor(vs.capacitorProgress)}%`
-          : `Charge pads ${vs.pads.filter((p) => p.charged).length}/${vs.padCount}`;
-      }
-      if (vs.capacitorProgress >= vs.capacitorMax) return 'win';
-      if (vs.timer >= vs.timerMax) return 'fail';
-      return null;
-    }
-    case 'grabAndRun': {
-      vs.timer += dt;
-      for (const p of vs.pickups) {
-        if (!p.collected) {
-          const dist = Math.sqrt((px - p.x) ** 2 + (pz - p.z) ** 2);
-          if (dist < 1.5) {
-            p.collected = true;
-            vs.collectedCount++;
-            announce(`PICKUP ${vs.collectedCount}/${vs.totalCount}`);
-          }
-        }
-      }
-      if (vs.collectedCount >= vs.totalCount && !vs.exitActive) {
-        vs.exitActive = true;
-        announce('EXIT OPEN — REACH THE PAD');
-        // Show exit pad mesh
-        if (diveMeshes.length > 0) {
-          const last = diveMeshes[diveMeshes.length - 1];
-          if (last instanceof THREE.Mesh && last.geometry.type === 'CircleGeometry') {
-            last.visible = true;
-          }
-        }
-      }
-      if (vs.exitActive) {
-        const exitDist = Math.sqrt((px - vs.exitX) ** 2 + (pz - vs.exitZ) ** 2);
-        if (exitDist < 2) return 'win';
-      }
-      if (uiState.dive) {
-        uiState.dive.progress = vs.collectedCount;
-        uiState.dive.progressMax = vs.totalCount;
-        uiState.dive.verbStage = vs.exitActive ? 'GET TO EXIT' : 'COLLECT GEAR';
-        uiState.dive.objectiveText = vs.exitActive
-          ? 'Reach exit pad'
-          : `Collect ${vs.collectedCount}/${vs.totalCount}`;
-      }
-      if (vs.timer >= vs.timerMax) return 'fail';
-      return null;
-    }
-    case 'evasion': {
-      vs.timer += dt;
-      if (uiState.dive) {
-        uiState.dive.progress = vs.timer;
-        uiState.dive.progressMax = vs.timerMax;
-        uiState.dive.verbStage = 'SURVIVE';
-        uiState.dive.objectiveText = `Survive ${Math.max(0, Math.ceil(vs.timerMax - vs.timer))}s`;
-      }
-      if (vs.timer >= vs.timerMax) return 'win';
-      return null;
-    }
-    case 'supplyRun': {
-      vs.timer += dt;
-      for (const p of vs.pickups) {
-        if (!p.collected) {
-          const dist = Math.sqrt((px - p.x) ** 2 + (pz - p.z) ** 2);
-          if (dist < 1.5) {
-            p.collected = true;
-            vs.collected++;
-            announce(`SUPPLY ${vs.collected}/${vs.needed}`);
-          }
-        }
-      }
-      if (uiState.dive) {
-        uiState.dive.progress = vs.collected;
-        uiState.dive.progressMax = vs.needed;
-        uiState.dive.verbStage = 'COLLECTING';
-        uiState.dive.objectiveText = `Supplies ${vs.collected}/${vs.needed}`;
-      }
-      if (vs.collected >= vs.needed) return 'win';
-      if (vs.timer >= vs.timerMax) return 'fail';
-      return null;
-    }
-    case 'gamble': {
-      vs.timer += dt;
-      vs.pushCooldown = Math.max(0, vs.pushCooldown - dt);
-      const altarDist = Math.sqrt((px - vs.altarX) ** 2 + (pz - vs.altarZ) ** 2);
-      const coDist = Math.sqrt((px - vs.cashOutX) ** 2 + (pz - vs.cashOutZ) ** 2);
+/**
+ * Publish a compact radar frame: objective and construct positions relative to
+ * the player, normalised to the radar disc. This is what makes the dive
+ * legible — the camera can only show a slice of the arena, and previously the
+ * player had no way at all to find an off-screen objective.
+ */
+const RADAR_RANGE = DIVE_ARENA_R * 2;
+function updateRadar(px: number, pz: number): void {
+  const dive = uiState.dive;
+  if (!dive) return;
+  // Packed triples: [nx, nz, kind] where kind 0=objective 1=active 2=exit 3=ICE
+  const blips: number[] = [];
 
-      // Auto-push while near altar
-      if (altarDist < 2 && vs.pushCooldown <= 0 && !vs.cashedOut) {
-        vs.pushCooldown = 1.5;
-        vs.stack++;
-        vs.bustChance = Math.min(0.85, 0.1 + vs.stack * 0.08);
-        const roll = Math.random();
-        if (roll < vs.bustChance) {
-          announce('BUST!');
-          return 'fail';
-        }
-        announce(`STACK ${vs.stack}`);
-      }
-      // Cash out
-      if (coDist < 2 && vs.stack > 0) {
-        vs.cashedOut = true;
-        return 'win';
-      }
-      if (uiState.dive) {
-        uiState.dive.progress = vs.stack;
-        uiState.dive.progressMax = 10;
-        uiState.dive.verbStage = vs.stack === 0 ? 'PUSH AT ALTAR' : `STACK ${vs.stack}`;
-        uiState.dive.objectiveText =
-          vs.stack === 0 ? 'Approach altar to push' : `Stack ${vs.stack} — cash out at green pad`;
-      }
-      if (vs.timer >= vs.timerMax && vs.stack === 0) return 'fail';
-      // If timer expires with stack > 0, auto-cash at half value (still a win)
-      if (vs.timer >= vs.timerMax && vs.stack > 0) {
-        vs.cashedOut = true;
-        return 'win';
-      }
-      return null;
+  const push = (x: number, z: number, kind: number) => {
+    const dx = (x - px) / RADAR_RANGE;
+    const dz = (z - pz) / RADAR_RANGE;
+    const d = Math.hypot(dx, dz);
+    // Clamp to the rim so off-radar contacts still read as a bearing.
+    const k = d > 0.5 ? 0.5 / d : 1;
+    blips.push(dx * k * 2, dz * k * 2, kind);
+  };
+
+  if (verb) {
+    for (const m of verb.markers) {
+      if (m.collected || m.hidden || m.popTimer > 0) continue;
+      push(m.x, m.z, m.shape === 'exit' ? 2 : m.state === 'active' ? 1 : 0);
     }
-    default:
-      return null;
+  }
+  let iceShown = 0;
+  for (const ice of iceList) {
+    if (ice.deathTimer > 0 || !ice.entity.position || iceShown >= 22) continue;
+    push(ice.entity.position.x, ice.entity.position.z, 3);
+    iceShown++;
+  }
+  dive.radar = blips;
+}
+
+// ---------------------------------------------------------------------------
+// Fail ambush
+// ---------------------------------------------------------------------------
+
+function computeAmbushSize(): number {
+  let count =
+    AMBUSH_BASE +
+    Math.floor(traceValue / AMBUSH_TRACE_DIV) +
+    Math.floor(diveElapsed / AMBUSH_TIME_DIV) * 2;
+  count = Math.min(count, AMBUSH_CAP);
+  if (diveOverclock) count *= 2;
+  count = Math.round(count * partySpawnMultiplier());
+  return Math.max(1, count);
+}
+
+/** Spawn the exit ambush ring around the node's door. */
+function spawnAmbush(scene: THREE.Scene): void {
+  const node = diveNode;
+  if (!node) return;
+  const count = computeAmbushSize();
+  const level = getCurrentLevel();
+  const halfW = level.mapWidth / 2;
+  const halfH = level.mapHeight / 2;
+  const elite = traceValue > 60;
+
+  for (let i = 0; i < count; i++) {
+    const ang = (i / count) * Math.PI * 2;
+    const x = clampToArena(node.doorX + Math.cos(ang) * AMBUSH_RADIUS, halfW);
+    const z = clampToArena(node.doorZ + Math.sin(ang) * AMBUSH_RADIUS, halfH);
+    const type = i % 5 === 0 && elite ? EnemyType.WARDEN : EnemyType.VIRUS;
+    spawnEnemy(scene, x, z, type, 0.6, 1.0);
   }
 }
 
@@ -924,10 +534,20 @@ function tickVerbState(dt: number, playerPos: THREE.Vector3 | null): 'win' | 'fa
 
 /**
  * Enter a breach dive for the given (won) node.
+ *
+ * @param arenaScene the arena scene to eject back into. Captured here rather
+ *                   than on the first tick, so an immediate ESC still spawns
+ *                   the fail ambush instead of silently skipping it.
  */
-export function enterDive(node: BreachNode, overclock: boolean, security: number): void {
+export function enterDive(
+  node: BreachNode,
+  overclock: boolean,
+  security: number,
+  arenaScene: THREE.Scene | null = null,
+): void {
   if (uiState.dive) return;
 
+  arenaSceneRef = arenaScene;
   const built = buildDiveSceneFor(node.kind);
   diveScene = built.scene;
   diveMeshes = built.meshes;
@@ -935,21 +555,19 @@ export function enterDive(node: BreachNode, overclock: boolean, security: number
   diveOverclock = overclock;
   diveSecurity = security;
   diveElapsed = 0;
-  diveHealth = 100 + security * 25;
+  exiting = false;
+
+  traceRate = baseTraceRate(node.kind, security, overclock);
+  traceValue = 0;
+  diveHealth = HP_BASE + security * HP_PER_SECURITY;
   diveHealthMax = diveHealth;
-  iceContactTimer = 0;
+  playerIFrames = 0;
+  hurtFlash = 0;
+  fireCooldown = 0;
+  radarTimer = 0;
 
-  // Init verb state + visuals
-  diveVerbState = initVerbState(node.kind, security);
-  spawnVerbVisuals(diveVerbState);
-
-  // Spawn initial ICE
-  const iceCount = security * 3 + 2;
-  spawnICEWave(iceCount, security);
-
-  // Reparent the local player's transform (its mesh group) from the arena
-  // scene into the dive scene so the player is visible while diving. Stash
-  // the arena-space position to restore on exit; reset to the dive origin.
+  // Reparent the local player's mesh group into the dive scene and stash its
+  // arena-space position for the exit.
   {
     const player = world.with('isLocalPlayer', 'position', 'transform').first;
     if (player?.transform && player.position) {
@@ -962,26 +580,53 @@ export function enterDive(node: BreachNode, overclock: boolean, security: number
     }
   }
 
-  resetVirtualJoystick();
-  haptics.select();
-  announce('DIVE INITIATED');
   uiState.dive = {
     nodeId: node.id,
     kind: node.kind,
     name: node.name,
+    verb: VERB_NAME[node.kind] ?? 'INTRUSION',
+    brief: VERB_BRIEF[node.kind] ?? '',
     icon: node.icon,
     color: '#' + node.color.toString(16).padStart(6, '0'),
     security,
     overclock,
     trace: 0,
     traceMax: TRACE_MAX,
-    objectiveText: 'DIVE INITIATED',
+    secondsLeft: TRACE_MAX / traceRate,
+    traceFloor: 0,
+    objectiveText: '',
+    stage: '',
+    note: '',
     health: diveHealth,
     healthMax: diveHealthMax,
     progress: 0,
     progressMax: 100,
-    verbStage: 'INITIATING',
+    iceCount: 0,
+    hurt: 0,
+    banner: '',
+    bannerSeq: 0,
+    radar: [],
   };
+
+  // Build the verb (spawns its markers) now that the ctx can be made.
+  verb = createVerb(node.kind, initCtx());
+  markers = verb.markers;
+  uiState.dive.stage = verb.stage;
+  uiState.dive.objectiveText = verb.text;
+  uiState.dive.note = verb.note;
+  uiState.dive.progress = verb.progress;
+  uiState.dive.progressMax = verb.progressMax;
+
+  // Opening pressure: enough to matter, spawned away from the player's feet.
+  spawnIceRing(2 + security * 2, 0, 0, 11, 17);
+
+  // Arena damage numbers are DOM nodes ticked by a system that is about to be
+  // frozen — without this they hang over the dive for its whole duration.
+  clearDamageNumbers();
+  resetVirtualJoystick();
+  haptics.select();
+  banner(VERB_BRIEF[node.kind] ?? 'DIVE INITIATED');
+
   uiState.diveTransition = 'enter';
   setTimeout(() => {
     if (uiState.diveTransition === 'enter') uiState.diveTransition = null;
@@ -989,9 +634,7 @@ export function enterDive(node: BreachNode, overclock: boolean, security: number
   bindKeys();
 }
 
-/**
- * Per-frame dive tick.
- */
+/** Per-frame dive tick. Owns the entire frame while a dive is active. */
 export function BreachDiveSystem(
   dt: number,
   scene: THREE.Scene,
@@ -999,118 +642,114 @@ export function BreachDiveSystem(
   renderer: DiveRenderer,
 ): void {
   const dive = uiState.dive;
-  if (!dive || !diveScene) return;
+  if (!dive || !diveScene || !diveNode) return;
 
-  // Store arena scene ref for exitDive (may be called from key handler)
-  arenaSceneRef = scene;
-
+  // Normally captured in enterDive; re-assert it in case the dive was opened
+  // by a debug hook with no scene to hand.
+  if (!arenaSceneRef) arenaSceneRef = scene;
   diveElapsed += dt;
+  const time = diveElapsed;
 
-  // --- Trace meter tick ---
-  const traceRate = getTraceRate(dive.kind, diveSecurity, diveVerbState);
-  dive.trace = Math.min(dive.traceMax, dive.trace + dt * traceRate);
+  // --- player ---
+  const moved = movePlayer(dt);
+  const player = moved?.entity ?? null;
+  const px = moved?.pos.x ?? 0;
+  const pz = moved?.pos.z ?? 0;
 
-  // --- Universal trace backstop ---
-  if (dive.trace >= dive.traceMax) {
-    exitDive('fail');
-    return;
-  }
+  // --- trace clock ---
+  const mult = verb?.traceMult ?? 1;
+  traceValue = Math.min(TRACE_MAX, traceValue + dt * traceRate * mult);
 
-  // --- Player movement ---
-  const playerPos = movePlayerInDive(dt);
-
-  // --- Verb state tick ---
-  if (diveVerbState) {
-    const outcome = tickVerbState(dt, playerPos);
-    if (outcome === 'win') {
-      exitDive('win');
-      return;
-    }
-    if (outcome === 'fail') {
-      exitDive('fail');
-      return;
-    }
-  }
-
-  // --- ICE tick: steer + contact damage ---
-  iceContactTimer = Math.max(0, iceContactTimer - dt);
-  if (playerPos) {
-    const px = playerPos.x;
-    const pz = playerPos.z;
-    // Iterate the explicit ICE list, not a world query — the isICE flag is set
-    // by direct assignment and miniplex never indexed it (see `iceEntities`).
-    for (const ice of iceEntities) {
-      if (!ice.position || !ice.velocity) continue;
-      const dx = px - ice.position.x;
-      const dz = pz - ice.position.z;
-      const dist = Math.sqrt(dx * dx + dz * dz);
-      // Steer toward player
-      if (dist > 0.01) {
-        const speed = (ice.moveSpeed as number) ?? ICE_STEER_SPEED;
-        ice.velocity.set((dx / dist) * speed, 0, (dz / dist) * speed);
-      }
-      ice.position.x += ice.velocity.x * dt;
-      ice.position.z += ice.velocity.z * dt;
-      // Sync ghost mesh to steered position (no separate per-frame world.with)
-      const mesh = iceMeshes.get(ice);
-      if (mesh) {
-        mesh.position.set(ice.position.x, 0.6, ice.position.z);
-        if (dist > 0.01) mesh.rotation.y = Math.atan2(dx, dz);
-      }
-      // Contact damage
-      if (dist < ICE_CONTACT_DIST && iceContactTimer <= 0) {
-        diveHealth -= ICE_CONTACT_DAMAGE;
-        iceContactTimer = ICE_CONTACT_COOLDOWN;
-        if (uiState.dive) uiState.dive.health = diveHealth;
-        if (diveHealth <= 0) {
-          announce('ICE TERMINATED CONNECTION');
-          exitDive('fail');
-          return;
-        }
-      }
+  // --- constructs ---
+  playerIFrames = Math.max(0, playerIFrames - dt);
+  hurtFlash = Math.max(0, hurtFlash - dt);
+  const hit = tickIce(iceList, dt, time, px, pz, DIVE_ARENA_R, playerIFrames, diveScene);
+  if (hit.damage > 0) {
+    // Armor is flat reduction, same contract as the arena — a tanky build
+    // should survive noticeably longer inside a dive too.
+    const armor = player?.stats?.armor ?? 0;
+    diveHealth -= Math.max(1, hit.damage - armor);
+    playerIFrames = ICE_HIT_IFRAMES;
+    hurtFlash = 0.35;
+    playHurt();
+    haptics.hit();
+    // Knock the player off the construct so a pack can't pin them in place.
+    if (player?.position) {
+      player.position.x -= hit.knockX * PLAYER_KNOCKBACK * 0.12;
+      player.position.z -= hit.knockZ * PLAYER_KNOCKBACK * 0.12;
+      if (player.transform) player.transform.position.copy(player.position);
     }
   }
 
-  // --- Periodic ICE reinforcement ---
+  // --- scene dressing ---
+  tickDiveScene(diveMeshes, dt, time);
+
+  // --- verb ---
+  let outcome: 'win' | 'fail' | null = null;
+  if (verb) {
+    outcome = verb.tick(frameCtx(px, pz), dt);
+    for (const m of markers) updateMarker(m, dt, time);
+  }
+
+  // --- combat ---
+  tickFiring(dt, player, px, pz);
+  tickProjectiles(dt);
+  if (player) animateRig(player, time, dt);
+
+  // --- reinforcement waves ---
   const waveIdx = Math.floor(diveElapsed / ICE_WAVE_INTERVAL);
   const prevWaveIdx = Math.floor((diveElapsed - dt) / ICE_WAVE_INTERVAL);
   if (waveIdx > prevWaveIdx) {
-    const extra = dive.kind === 'relay' ? 3 + diveSecurity : 1;
-    // Reinforcements enter from the far ring so they visibly close in.
-    spawnICEWave(extra, diveSecurity, 22);
+    const n = (WAVE_SIZE[diveNode.kind] ?? 2) + Math.floor(diveSecurity / 2);
+    spawnIceRing(n, 0, 0, 15, DIVE_ARENA_R - 2);
   }
 
-  // --- Player combat + rig life ---
-  // The arena's WeaponSystem (auto-fire) and RenderSystem (rig choreography)
-  // are both frozen during a dive, which is why the player used to sit there
-  // as a static, weaponless snippet while only the ICE did anything. The dive
-  // owns both here: auto-fire at the nearest ICE, advance dive-local
-  // projectiles, and keep the rig visibly alive.
-  const divePlayer = world.with('isLocalPlayer', 'position').first ?? null;
-  if (playerPos) tickDiveFiring(dt, divePlayer, playerPos.x, playerPos.z);
-  tickDiveProjectiles(dt);
-  if (divePlayer) animateDivePlayerRig(divePlayer, diveElapsed, dt);
-
-  // --- Update shared HUD fields ---
-  if (uiState.dive) {
-    uiState.dive.health = diveHealth;
-    uiState.dive.healthMax = diveHealthMax;
+  // --- HUD ---
+  dive.trace = traceValue;
+  dive.traceFloor = Math.min(TRACE_MAX, diveElapsed * traceRate * TRACE_FLOOR_RATIO);
+  dive.secondsLeft = Math.max(0, (TRACE_MAX - traceValue) / (traceRate * mult));
+  dive.health = diveHealth;
+  dive.healthMax = diveHealthMax;
+  dive.hurt = hurtFlash;
+  dive.iceCount = liveIceCount(iceList);
+  if (verb) {
+    dive.stage = verb.stage;
+    dive.objectiveText = verb.text;
+    dive.note = verb.note;
+    dive.progress = verb.progress;
+    dive.progressMax = verb.progressMax;
+  }
+  radarTimer -= dt;
+  if (radarTimer <= 0) {
+    radarTimer = 1 / 15; // 15Hz is plenty for a radar and keeps Svelte quiet
+    updateRadar(px, pz);
   }
 
-  // --- Camera ---
-  setDiveCamera(camera, playerPos);
+  // --- camera ---
+  setDiveCamera(camera, px, pz);
 
-  // --- Render ---
-  // The arena's bloom pipeline (EffectComposer on WebGL2, node PostProcessing
-  // on WebGPU) leaves an offscreen render target bound after its last frame.
-  // On the WebGPU backend that stale target is NOT the screen, so a raw
-  // renderer.render(diveScene) draws into it and the canvas keeps showing the
-  // frozen last arena frame — the dive looks empty ("no enemies, nothing").
-  // WebGL2's composer happens to leave the screen target bound, which is why
-  // the dive rendered there but not under WebGPU. Force the screen target
-  // before drawing so the dive presents on every backend.
+  // --- render ---
+  // The arena's bloom pipeline leaves an offscreen render target bound after
+  // its last frame. On WebGPU that target is not the screen, so a raw
+  // renderer.render() would draw the dive into it and the canvas would keep
+  // showing the frozen last arena frame. Force the screen target first.
   renderer.setRenderTarget?.(null);
   renderer.render(diveScene, camera);
+
+  // --- resolution (last, so the final frame is always presented) ---
+  if (outcome === 'win') {
+    exitDive('win');
+    return;
+  }
+  if (outcome === 'fail' || diveHealth <= 0) {
+    banner(diveHealth <= 0 ? 'ICE TERMINATED CONNECTION' : 'OBJECTIVE FAILED');
+    exitDive('fail');
+    return;
+  }
+  if (traceValue >= TRACE_MAX) {
+    banner('TRACE COMPLETE — EJECTED');
+    exitDive('fail');
+  }
 }
 
 /** Bind the ESC eject key once. */
@@ -1123,36 +762,41 @@ function bindKeys(): void {
   });
 }
 
-/**
- * Exit the active dive and resolve it against the breach node.
- */
+/** Eject from the dive (HUD button / ESC). Counts as a fail. */
+export function ejectDive(): void {
+  if (uiState.dive) exitDive('abort');
+}
+
+/** Exit the active dive and resolve it against the breach node. */
 export function exitDive(outcome: 'win' | 'fail' | 'abort'): void {
+  if (exiting) return;
+  exiting = true;
+
   const node = diveNode;
   const dive = uiState.dive;
   if (!dive || !node) {
     teardownDiveScene();
     uiState.dive = null;
+    exiting = false;
     return;
   }
 
   if (outcome === 'win') {
-    const winOutcome: DiveOutcome = {
+    playLevelUp();
+    haptics.reward();
+    completeBreachWin(node, {
       overclock: diveOverclock,
       security: diveSecurity,
-      trace: dive.trace,
-      traceMax: dive.traceMax,
+      trace: traceValue,
+      traceMax: TRACE_MAX,
       elapsed: diveElapsed,
-      verb: dive.kind as DiveOutcome['verb'],
-    };
-    completeBreachWin(node, winOutcome);
+      verb: node.kind as DiveOutcome['verb'],
+      bonus: verb?.bonus ?? 0,
+    });
   } else {
-    // Fail / abort: resolve the breach fail, then spawn ambush
     completeBreachFail(node);
-    // Spawn ambush ring AFTER teardown but BEFORE clearing dive state
-    // so announcement still has dive context if needed.
   }
 
-  // Brief exit flash, then clear
   uiState.diveTransition = 'exit';
   setTimeout(() => {
     if (uiState.diveTransition === 'exit') uiState.diveTransition = null;
@@ -1160,21 +804,20 @@ export function exitDive(outcome: 'win' | 'fail' | 'abort'): void {
 
   teardownDiveScene();
 
-  if (outcome !== 'win' && arenaSceneRef) {
-    spawnAmbush(arenaSceneRef);
-  }
+  if (outcome !== 'win' && arenaSceneRef) spawnAmbush(arenaSceneRef);
 
   uiState.dive = null;
   arenaSceneRef = null;
+  exiting = false;
 }
 
 /**
- * Reset all dive system state for a no-reload restart. Tears down any
- * half-open dive scene (e.g. a restart triggered mid-dive), removes dive-local
- * ICE entities, and clears the shared `uiState.dive` / `diveTransition` flags.
- * Called from `resetBreachSystem` so a restart cleans both halves.
+ * Reset all dive state for a no-reload restart. Tears down a half-open dive
+ * scene, removes dive-local constructs, and clears the shared dive flags.
+ * Called from `resetBreachSystem`.
  */
 export function resetBreachDiveSystem(): void {
+  exiting = false;
   teardownDiveScene();
   arenaSceneRef = null;
   uiState.dive = null;
@@ -1182,23 +825,20 @@ export function resetBreachDiveSystem(): void {
 }
 
 function teardownDiveScene(): void {
-  // Bug B: ICE entities are dive-local illusions. Remove them from the world
-  // BEFORE nulling diveScene so they don't bleed back into the arena (where
-  // RenderSystem would draw them and EnemySystem would steer them). Use a
-  // plain world.remove — these are NOT deaths, just cleanups (no death side
-  // effects, no XP/loot, no score). The swap-remove in world.remove is O(1)
-  // and never triggers handleEnemyDeath. Iterate the explicit list, not a
-  // world query: the isICE flag was never indexed (see `iceEntities`), so a
-  // query would miss them and they'd leak into the arena on exit.
-  for (const ice of iceEntities) {
-    world.remove(ice);
+  if (diveScene) {
+    // Constructs are dive-local illusions — remove them from the world BEFORE
+    // the scene goes so they can't bleed back into the arena (where
+    // RenderSystem would draw them and EnemySystem would steer them).
+    clearIce(diveScene, iceList);
+    clearProjectiles();
+    disposeMarkers(diveScene, markers);
   }
-  iceEntities = [];
+  iceList = [];
+  markers = [];
+  verb = null;
 
-  // Reparent the local player's transform back to the arena scene graph (it
-  // was moved into the dive scene on enter). Restore the stashed arena-space
-  // position so the fighter reappears where it left off. Do this BEFORE
-  // disposing the dive scene so the player's mesh isn't orphaned.
+  // Reparent the player's mesh group back into the arena scene graph BEFORE
+  // disposing the dive scene, so it is never orphaned.
   if (playerTransformParent) {
     const player = world.with('isLocalPlayer', 'position', 'transform').first;
     if (player?.transform) {
@@ -1207,8 +847,7 @@ function teardownDiveScene(): void {
       if (stashedPlayerPosition) {
         player.position.copy(stashedPlayerPosition);
         player.transform.position.copy(stashedPlayerPosition);
-        stashedPlayerPosition = null;
-        // Re-sync the rigidBody too (PhysicsSystem owns it on the next arena tick).
+        // Re-sync the rigid body; PhysicsSystem owns it from the next arena tick.
         player.rigidBody?.setTranslation(
           { x: player.position.x, y: 0.5, z: player.position.z },
           true,
@@ -1217,26 +856,26 @@ function teardownDiveScene(): void {
     }
   }
   playerTransformParent = null;
+  stashedPlayerPosition = null;
 
   if (diveScene) {
     disposeDiveScene(diveScene, diveMeshes);
     diveScene = null;
     diveMeshes = [];
   }
-  // WeakMap has no .clear(), but the keys are dead entity references that
-  // the GC will reap. No leak.
+
   diveNode = null;
   diveOverclock = false;
   diveSecurity = 0;
   diveElapsed = 0;
-  diveVerbState = null;
-  diveHealth = 100;
-  diveHealthMax = 100;
-  iceContactTimer = 0;
-  // Projectile meshes live in `diveMeshes`, so disposeDiveScene already tore
-  // them down — just drop the tracking structs so a fresh dive starts clean.
-  diveProjectiles = [];
-  playerFireCooldown = 0;
+  traceValue = 0;
+  traceRate = 1;
+  diveHealth = HP_BASE;
+  diveHealthMax = HP_BASE;
+  playerIFrames = 0;
+  hurtFlash = 0;
+  fireCooldown = 0;
+  ctx = null;
 }
 
 // Debug hook
@@ -1245,16 +884,14 @@ if (typeof window !== 'undefined' && new URLSearchParams(window.location.search)
   (window as unknown as { __dive: object }).__dive = {
     enterDive,
     exitDive,
-    // Debug helper: synthesize a stub BreachNode of a given kind and enter
-    // a dive. Useful for testing each themed scene in isolation. Combine
-    // with `?dive-k=<kind>` in the URL to auto-enter on load (see below).
-    enterDiveForKind: (kind: BreachKind) => {
+    /** Synthesize a stub node of a given kind and dive into it. */
+    enterDiveForKind: (kind: BreachKind, security: number = 0, overclock: boolean = false) => {
       const node: BreachNode = {
         id: 'debug_' + kind,
         kind,
         name: kind.toUpperCase(),
         icon: '◆',
-        color: 0xffffff,
+        color: (THEME[kind] ?? THEME.depot).accent,
         x: 0,
         z: 0,
         signY: 5,
@@ -1269,12 +906,20 @@ if (typeof window !== 'undefined' && new URLSearchParams(window.location.search)
         sign: null,
         opened: false,
       };
-      enterDive(node, false, 0);
+      enterDive(node, overclock, security);
     },
+    /** Live dive telemetry for balance checks. */
+    stats: () => ({
+      elapsed: diveElapsed,
+      trace: traceValue,
+      traceRate,
+      secondsLeft: uiState.dive?.secondsLeft ?? 0,
+      ice: liveIceCount(iceList),
+      hp: diveHealth,
+      stage: verb?.stage,
+      progress: verb ? `${verb.progress}/${verb.progressMax}` : '',
+    }),
   };
-  // Auto-enter a dive on load when `?dive-k=<kind>` is present. Gated by
-  // `?debug` so it's invisible in normal play. Used for visual QA of each
-  // themed scene without having to complete a full mini-game first.
   const diveKind = params.get('dive-k') as BreachKind | null;
   if (
     diveKind &&
@@ -1282,8 +927,8 @@ if (typeof window !== 'undefined' && new URLSearchParams(window.location.search)
   ) {
     setTimeout(() => {
       (
-        window as unknown as { __dive: { enterDiveForKind: (k: BreachKind) => void } }
-      ).__dive.enterDiveForKind(diveKind);
+        window as unknown as { __dive: { enterDiveForKind: (k: BreachKind, s?: number) => void } }
+      ).__dive.enterDiveForKind(diveKind, Number(params.get('dive-s') ?? 0));
     }, 1500);
   }
 }
