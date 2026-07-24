@@ -21,6 +21,7 @@ import {
   canLevelUpPassive,
   getAllPassives,
 } from '../core/PassiveRegistry';
+import { EXPLOITS } from '../core/ExploitRegistry';
 import type { PlayerStats } from '../core/PlayerStats';
 import { getDefaultStats } from '../core/PlayerStats';
 import { getCharacter } from '../core/CharacterRegistry';
@@ -36,13 +37,41 @@ const MAX_WEAPON_SLOTS = 6;
 const MAX_PASSIVE_SLOTS = 6;
 const UPGRADE_CHOICES = 3;
 
+// --- DEBUG GRANT ---
+const DEBUG_GRANT_EXPLOITS = false;
+
+export function grantAllExploitsDebug(): void {
+  if (!DEBUG_GRANT_EXPLOITS) return;
+  const player = world.with('isLocalPlayer', 'weaponSlots', 'passiveSlots', 'stats').first;
+  if (!player) return;
+  const slots: (import('../core/ExploitRegistry').ExploitDef | null)[] =
+    player.exploitSlots || [null, null, null];
+  const seen = new Set<string>();
+  for (const def of EXPLOITS) {
+    if (seen.has(def.id)) continue;
+    const freeIdx = slots.findIndex((s) => s == null);
+    if (freeIdx === -1) break;
+    slots[freeIdx] = def;
+    seen.add(def.id);
+  }
+  player.exploitSlots = slots;
+  dlog('[ExploitDBG] granted', seen.size, 'exploits to player');
+}
+
+console.log(
+  '[ExploitDBG] roster:',
+  EXPLOITS.length,
+  'granted via debug after Chest UI impl',
+);
+
 // --- UPGRADE TYPES ---
 export type UpgradeType =
   | 'weapon_new'
   | 'weapon_level'
   | 'passive_new'
   | 'passive_level'
-  | 'health';
+  | 'health'
+  | 'exploit_new';
 
 export interface UpgradeOption {
   type: UpgradeType;
@@ -228,7 +257,29 @@ function generateUpgradePool(player: any): UpgradeOption[] {
     }
   }
 
-  // 5. Health heal (always available as fallback)
+  // 5. Exploit offers (rare drop — requires free slot)
+  const exploitSlots: (import('../core/ExploitRegistry').ExploitDef | null)[] =
+    player.exploitSlots || [];
+  const freeExploitIdx = exploitSlots.findIndex((s) => s == null);
+  if (freeExploitIdx !== -1) {
+    const ownedExploitIds = new Set(exploitSlots.filter(Boolean).map((s) => s!.id));
+    for (const def of EXPLOITS) {
+      if (ownedExploitIds.has(def.id)) continue;
+      // Level-up pool: only 'rare' exploits
+      if (def.rarity !== 'rare') continue;
+      pool.push({
+        type: 'exploit_new',
+        id: def.id,
+        name: def.name,
+        description: def.desc,
+        weight: 12,
+        icon: def.icon,
+        rarity: 'rare',
+      });
+    }
+  }
+
+  // 6. Health heal (always available as fallback)
   pool.push({
     type: 'health',
     id: 'health_boost',
@@ -284,6 +335,9 @@ function applyOptionEffect(player: any, option: UpgradeOption) {
     case 'health':
       applyHealthUpgrade(player);
       break;
+    case 'exploit_new':
+      addNewExploit(player, option.id);
+      break;
   }
 
   // Recalculate stats from passives
@@ -303,6 +357,27 @@ export function applyRandomChestRewards(
 
   const granted: { name: string; icon: string; detail: string }[] = [];
   for (let i = 0; i < count; i++) {
+    // Chest: 15% chance per roll to grant an exploit (if slot available)
+    const exploitSlots: (import('../core/ExploitRegistry').ExploitDef | null)[] =
+      player.exploitSlots || [null, null, null];
+    const freeExploitIdx = exploitSlots.findIndex((s) => s == null);
+    if (freeExploitIdx !== -1 && Math.random() < 0.15) {
+      const ownedIds = new Set(exploitSlots.filter(Boolean).map((s) => s!.id));
+      const candidates = EXPLOITS.filter(
+        (e) => !ownedIds.has(e.id) && (e.rarity === 'rare' || e.rarity === 'epic'),
+      );
+      if (candidates.length > 0) {
+        const pick = candidates[Math.floor(Math.random() * candidates.length)];
+        addNewExploit(player, pick.id);
+        granted.push({
+          name: pick.name,
+          icon: pick.icon,
+          detail: 'NEW EXPLOIT',
+        });
+        continue;
+      }
+    }
+
     const pool = generateUpgradePool(player);
     // Chests prefer real upgrades; health only when nothing else remains.
     const nonHealth = pool.filter((o) => o.type !== 'health');
@@ -472,6 +547,21 @@ function applyHealthUpgrade(player: any) {
     player.health.current = Math.min(player.health.current + 20, player.health.max);
   }
   dlog('[Upgrade] Health recharge applied (+20 HP)');
+}
+
+// --- EXPLOIT OPERATIONS ---
+function addNewExploit(player: any, exploitId: string) {
+  const def = EXPLOITS.find((e) => e.id === exploitId);
+  if (!def) return;
+
+  const slots: (import('../core/ExploitRegistry').ExploitDef | null)[] =
+    player.exploitSlots || [null, null, null];
+  const freeIdx = slots.findIndex((s) => s == null);
+  if (freeIdx === -1) return;
+  slots[freeIdx] = def;
+  player.exploitSlots = slots;
+
+  dlog(`[Upgrade] Added exploit: ${def.name} in slot ${freeIdx}`);
 }
 
 function levelUpPassive(player: any, passiveId: string) {

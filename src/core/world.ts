@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { PlayerStats } from './PlayerStats';
+import type { ExploitDef } from './ExploitRegistry';
 import type RAPIER from '@dimforge/rapier3d-compat';
 
 let nextId = 0;
@@ -14,6 +15,27 @@ export interface WeaponSlot {
 export interface PassiveSlot {
   passiveId: string;
   level: number;
+}
+
+export interface ProjectileMods {
+  pierce: number;
+  explodeRadius: number;
+  knockback: number;
+  hitList: number[];
+  spinSpeed?: number;
+  confusionDuration?: number;
+  // --- exploit-driven (added by build-depth plan); all default to 0/empty when unused
+  ricochetLeft?: number;
+  ricochetDamageMult?: number;
+  chainLeft?: number;
+  chainRange?: number;
+  poolOnKill?: number; // damage per second
+  poolRadius?: number;
+  poolDuration?: number;
+  procEvery?: number; // 0 = off; >0 = proc cadence in seconds
+  procTimer?: number; // runtime accumulator
+  critProc?: boolean;
+  pierceProcOnProc?: boolean;
 }
 
 export type Entity = {
@@ -47,6 +69,9 @@ export type Entity = {
   isCredit?: boolean;
   creditValue?: number;
   isLashTear?: boolean;
+  isPool?: boolean;
+  dps?: number;
+  radius?: number;
   hitList?: number[];
   isAnomaly?: boolean;
   anomalyType?: 'overclock' | 'defrag' | 'leak';
@@ -90,6 +115,9 @@ export type Entity = {
   weaponSlots?: WeaponSlot[];
   passiveSlots?: PassiveSlot[];
   stats?: PlayerStats;
+  // TODO(@grunt): initialize in factories.ts spawnPlayer player literal
+  exploitSlots?: (ExploitDef | null)[];
+  overflowAccumulator?: Partial<Record<'cooldown' | 'might' | 'area' | 'amount', number>>;
 
   // data
   position: THREE.Vector3;
@@ -132,16 +160,7 @@ export type Entity = {
   };
 
   // PROJECTILE
-  projectile?: {
-    pierce: number;
-    hitList: number[];
-    knockback: number;
-    explodeRadius: number;
-    // New: visual rotation speed for ORBS
-    spinSpeed?: number;
-    // Signal Hijacker: applies confusion instead of damage
-    confusionDuration?: number;
-  };
+  projectile?: ProjectileMods;
   color?: number;
 
   // stats
@@ -214,6 +233,7 @@ function createECS() {
     'isInstancedParticle',
     'isXP',
     'isLashTear',
+    'isPool',
     'isAnomaly',
     'isWeapon',
     'isChest',

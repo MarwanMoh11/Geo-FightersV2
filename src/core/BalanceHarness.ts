@@ -23,9 +23,10 @@ import * as THREE from 'three';
 import { world } from './world';
 import { uiState } from './UIState.svelte.ts';
 import { updateVirtualJoystick, resetVirtualJoystick } from '../systems/InputSystem';
-import { debugGrantWeapon, upgradeRandomOwnedWeapon } from '../systems/UpgradeSystem';
+import { debugGrantWeapon, upgradeRandomOwnedWeapon, grantAllExploitsDebug } from '../systems/UpgradeSystem';
 import { getSpawnerDebugInfo } from '../systems/TimelineSpawner';
 import { spawnEnemy, EnemyType } from './factories';
+import { getExploitById } from './ExploitRegistry';
 
 /**
  * Synchronous spawn-cost microbench (no render loop needed). Times a burst of
@@ -126,6 +127,7 @@ function grantBuild(tier: 'mid' | 'late'): string {
     const name = upgradeRandomOwnedWeapon();
     if (name) granted.push(name);
   }
+  grantAllExploitsDebug();
   return `${tier} build: +${extraWeapons.length} weapons, +${granted.length} levels`;
 }
 
@@ -173,12 +175,34 @@ function report(): object {
   };
 }
 
+export function grantExploit(id: string): string {
+  const player = world.with('isLocalPlayer', 'exploitSlots').first;
+  if (!player) return 'no local player — start a run first';
+  const def = getExploitById(id);
+  if (!def) return `unknown exploit: ${id}`;
+  const slots = player.exploitSlots ?? [null, null, null];
+  const free = slots.findIndex((s) => s == null);
+  if (free === -1) return 'no free exploit slots — clear one first with clearExploits()';
+  slots[free] = def;
+  player.exploitSlots = slots;
+  return `granted ${def.name} to slot ${free}`;
+}
+
+export function clearExploits(): string {
+  const player = world.with('isLocalPlayer', 'exploitSlots').first;
+  if (!player) return 'no local player';
+  player.exploitSlots = [null, null, null];
+  return 'exploit slots cleared';
+}
+
 export function initBalanceHarness(): void {
   if (rafId) return;
   rafId = requestAnimationFrame(botTick);
   (window as unknown as { __balance: object }).__balance = {
     bot,
     grantBuild,
+    grantExploit,
+    clearExploits,
     start,
     stop,
     report,

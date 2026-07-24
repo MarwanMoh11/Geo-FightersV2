@@ -7,6 +7,26 @@
  */
 
 import type { PlayerStats } from './PlayerStats';
+import type * as THREE from 'three';
+import {
+  cypherRebootSurgeActivate,
+  cypherRebootSurgeTick,
+  titanAftershockActivate,
+  titanAftershockTick,
+  fluxChaosEchoActivate,
+  fluxChaosEchoTick,
+} from './characterMechanics';
+
+export interface CharacterMechanic {
+  id: string; // unique mechanic key (e.g. 'rail_pierce_mode', 'burst_overload')
+  description: string;
+  /** Hook called once per overload-activation step. Returns nothing. */
+  onOverloadActivate?: (ctx: { player: any; scene: THREE.Scene; dt: number }) => void;
+  /** Hook called per-frame while overload is active. Returns nothing. */
+  onOverloadTick?: (ctx: { player: any; scene: THREE.Scene; dt: number }) => void;
+  /** Optional: tweak a stat at runtime other than `applyStats` (e.g. trade rules). */
+  applyRule?: (stats: PlayerStats) => void;
+}
 
 export interface CharacterDef {
   id: string;
@@ -22,6 +42,7 @@ export interface CharacterDef {
   /** One-line quirk shown on the card. */
   quirk?: string;
   statPreview: string[]; // short chips like "HP: 100"
+  mechanic?: CharacterMechanic;
 }
 
 export const CHARACTERS: CharacterDef[] = [
@@ -36,6 +57,12 @@ export const CHARACTERS: CharacterDef[] = [
     baseHp: 100,
     applyStats: () => {},
     statPreview: ['HP: 100', 'SPD: 100%', 'Might: 100%'],
+    mechanic: {
+      id: 'cypher_reboot_surge',
+      description: 'System Reboot overload gains a surge follow-up.',
+      onOverloadActivate: cypherRebootSurgeActivate,
+      onOverloadTick: cypherRebootSurgeTick,
+    },
   },
   {
     id: 'lash',
@@ -133,6 +160,12 @@ export const CHARACTERS: CharacterDef[] = [
     },
     quirk: '+2 Armor, immovable',
     statPreview: ['HP: 150', 'Armor: +2', 'SPD: 80%'],
+    mechanic: {
+      id: 'titan_seismic_aftershock',
+      description: 'Seismic Slam overload triggers an aftershock wave.',
+      onOverloadActivate: titanAftershockActivate,
+      onOverloadTick: titanAftershockTick,
+    },
   },
   {
     id: 'flux',
@@ -150,6 +183,12 @@ export const CHARACTERS: CharacterDef[] = [
     },
     quirk: 'Luck +25%, but enemies swarm harder',
     statPreview: ['HP: 85', 'Luck: 125%', 'Curse: +25%'],
+    mechanic: {
+      id: 'flux_chaos_echo',
+      description: 'Chaos Surge overload may echo the rolled effect once.',
+      onOverloadActivate: fluxChaosEchoActivate,
+      onOverloadTick: fluxChaosEchoTick,
+    },
   },
 ];
 

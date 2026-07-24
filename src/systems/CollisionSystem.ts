@@ -200,6 +200,35 @@ export function CollisionSystem(scene: THREE.Scene) {
       }
     }
   }
+
+  // 4. POOL DAMAGE (exploit: pool-on-kill)
+  for (const pool of world.with('isPool', 'position', 'dps', 'radius')) {
+    const pcx = Math.floor(pool.position.x / GRID_CELL);
+    const pcz = Math.floor(pool.position.z / GRID_CELL);
+    for (let gx = pcx - 1; gx <= pcx + 1; gx++) {
+      for (let gz = pcz - 1; gz <= pcz + 1; gz++) {
+        const cell = _grid.get(gridKey(gx, gz));
+        if (!cell) continue;
+        for (let k = 0; k < cell.length; k++) {
+          const enemy = _enemies[cell[k]];
+          if (!enemy.health || enemy.health.current <= 0) continue;
+          const dx = enemy.position.x - pool.position.x;
+          const dz = enemy.position.z - pool.position.z;
+          const r = pool.radius || 3;
+          if (dx * dx + dz * dz < r * r) {
+            applyDamage(enemy, pool.dps || 0, _pushDir.set(dx, 0, dz).normalize(), 0, scene, 'enemy', undefined, undefined, pool.ownerConnId);
+          }
+        }
+      }
+    }
+
+    if (pool.transform && pool.lifeTimer !== undefined && pool.maxLife) {
+      const baseScale = (pool.radius || 3) / 0.2;
+      pool.transform.scale.setScalar(baseScale);
+      const mat = (pool.transform as THREE.Mesh).material as THREE.MeshBasicMaterial;
+      if (mat) mat.opacity = 0.06 * (1 - pool.lifeTimer / pool.maxLife);
+    }
+  }
 }
 
 function handleProjectileEnemyCollision(bullet: any, enemy: any, scene: THREE.Scene) {
@@ -237,6 +266,27 @@ function handleProjectileEnemyCollision(bullet: any, enemy: any, scene: THREE.Sc
   // PIERCE CHECK: Already hit
   if (enemy.id && bullet.projectile.hitList.includes(enemy.id)) return;
 
+  // 0. PROC HANDLING (critProc / pierceProcOnProc)
+  const savedDamage = bullet.damage;
+  let procFired = false;
+  if (
+    bullet.projectile.procEvery &&
+    bullet.projectile.procEvery > 0 &&
+    (bullet.projectile.procTimer || 0) >= bullet.projectile.procEvery
+  ) {
+    procFired = true;
+    bullet.projectile.procTimer = 0;
+    if (bullet.projectile.critProc) {
+      bullet.damage = Math.round((savedDamage || 1) * 2.0);
+      spawnBlastFX(enemy.position, 0.8, scene, 0xffcc33);
+    }
+  }
+
+  let skipPierceDecrement = false;
+  if (procFired && bullet.projectile.pierceProcOnProc) {
+    skipPierceDecrement = true;
+  }
+
   // 1. APPLY DAMAGE
   applyDamage(
     enemy,
@@ -253,9 +303,85 @@ function handleProjectileEnemyCollision(bullet: any, enemy: any, scene: THREE.Sc
   // Spark FX on impact
   spawnImpactFX(bullet.position, scene, bullet.weaponId, bullet.weapon?.bulletColor, 2);
 
+  // Restore damage if critProc borrowed it
+  bullet.damage = savedDamage;
+
+  // 1b. POOL-ON-KILL: spawn a damage pool if this hit killed the enemy
+  if (bullet.projectile.poolOnKill > 0 && enemy.health && enemy.health.current <= 0) {
+    const poolMesh = new THREE.Mesh(poolGeo, poolMat.clone());
+    poolMesh.rotation.x = -Math.PI / 2;
+    poolMesh.position.copy(enemy.position);
+    poolMesh.position.y = 0.05;
+    poolMesh.scale.setScalar((bullet.projectile.poolRadius || 3) / 0.2);
+    (poolMesh.material as THREE.MeshBasicMaterial).opacity = 0.06;
+    scene.add(poolMesh);
+
+    world.add({
+      isPool: true,
+      position: enemy.position.clone(),
+      velocity: new THREE.Vector3(),
+      radius: bullet.projectile.poolRadius || 3,
+      dps: bullet.projectile.poolOnKill,
+      lifeTimer: 0,
+      maxLife: bullet.projectile.poolDuration || 2,
+      ownerConnId: bullet.ownerConnId,
+      transform: poolMesh,
+    });
+  }
+
   // 2. REGISTER HIT
   bullet.projectile.hitList.push(enemy.id!);
-  bullet.projectile.pierce -= 1;
+  if (!skipPierceDecrement) bullet.projectile.pierce -= 1;
+
+  // 2b. CHAIN: arc damage to a second enemy within chainRange
+  if (bullet.projectile.chainLeft > 0) {
+    const chainRange = bullet.projectile.chainRange || 8;
+    let nearestChain: any = null;
+    let nearestChainDistSq = chainRange * chainRange;
+    const ccx = Math.floor(bullet.position.x / GRID_CELL);
+    const ccz = Math.floor(bullet.position.z / GRID_CELL);
+    for (let gx = ccx - 1; gx <= ccx + 1; gx++) {
+      for (let gz = ccz - 1; gz <= ccz + 1; gz++) {
+        const cell = _grid.get(gridKey(gx, gz));
+        if (!cell) continue;
+        for (let k = 0; k < cell.length; k++) {
+          const target = _enemies[cell[k]];
+          if (target === enemy) continue;
+          if (!target.health || target.health.current <= 0) continue;
+          if (bullet.projectile.hitList.includes(target.id!)) continue;
+          const dx = target.position.x - bullet.position.x;
+          const dz = target.position.z - bullet.position.z;
+          const distSq = dx * dx + dz * dz;
+          if (distSq < nearestChainDistSq) {
+            nearestChainDistSq = distSq;
+            nearestChain = target;
+          }
+        }
+      }
+    }
+    if (nearestChain) {
+      const halfDamage = Math.round((savedDamage || 1) * 0.5);
+      _pushDir.set(
+        nearestChain.position.x - bullet.position.x,
+        0,
+        nearestChain.position.z - bullet.position.z,
+      ).normalize();
+      applyDamage(
+        nearestChain,
+        halfDamage,
+        _pushDir,
+        (bullet.projectile.knockback || 5) * 0.5,
+        scene,
+        'enemy',
+        bullet.weaponId,
+        bullet.weapon?.bulletColor,
+        bullet.ownerConnId,
+      );
+      bullet.projectile.hitList.push(nearestChain.id!);
+      bullet.projectile.chainLeft--;
+      spawnChainArc(enemy.position, nearestChain.position, scene);
+    }
+  }
 
   // 3. EXPLOSION LOGIC (AoE)
   if (bullet.projectile.explodeRadius > 0) {
@@ -297,8 +423,50 @@ function handleProjectileEnemyCollision(bullet: any, enemy: any, scene: THREE.Sc
     }
   }
 
-  // 4. BULLET DEATH
+  // 4. BULLET DEATH OR RICOCHET
   if (bullet.projectile.explodeRadius > 0 || bullet.projectile.pierce <= 0) {
+    if (bullet.projectile.ricochetLeft > 0 && !(bullet.projectile.explodeRadius > 0)) {
+      const rcx = Math.floor(bullet.position.x / GRID_CELL);
+      const rcz = Math.floor(bullet.position.z / GRID_CELL);
+      let nearestRc: any = null;
+      let nearestRcDistSq = 6 * 6;
+      for (let gx = rcx - 1; gx <= rcx + 1; gx++) {
+        for (let gz = rcz - 1; gz <= rcz + 1; gz++) {
+          const cell = _grid.get(gridKey(gx, gz));
+          if (!cell) continue;
+          for (let k = 0; k < cell.length; k++) {
+            const target = _enemies[cell[k]];
+            if (target === enemy) continue;
+            if (!target.health || target.health.current <= 0) continue;
+            if (bullet.projectile.hitList.includes(target.id!)) continue;
+            const dx = target.position.x - bullet.position.x;
+            const dz = target.position.z - bullet.position.z;
+            const distSq = dx * dx + dz * dz;
+            if (distSq < nearestRcDistSq) {
+              nearestRcDistSq = distSq;
+              nearestRc = target;
+            }
+          }
+        }
+      }
+      if (nearestRc) {
+        bullet.position.copy(nearestRc.position);
+        if (bullet.transform) bullet.transform.position.copy(nearestRc.position);
+        _tempVec.set(
+          nearestRc.position.x - enemy.position.x,
+          0,
+          nearestRc.position.z - enemy.position.z,
+        ).normalize();
+        const speed = bullet.velocity
+          ? Math.sqrt(bullet.velocity.x * bullet.velocity.x + bullet.velocity.z * bullet.velocity.z)
+          : 20;
+        bullet.velocity.set(_tempVec.x * speed, 0, _tempVec.z * speed);
+        bullet.projectile.hitList.push(nearestRc.id!);
+        bullet.damage *= bullet.projectile.ricochetDamageMult;
+        bullet.projectile.ricochetLeft--;
+        return;
+      }
+    }
     despawn(bullet, scene);
   }
 }
@@ -858,7 +1026,53 @@ const blastMat = new THREE.MeshBasicMaterial({
   side: THREE.DoubleSide,
 });
 
-function spawnBlastFX(pos: THREE.Vector3, radius: number, scene: THREE.Scene, color?: number) {
+const poolGeo = new THREE.CircleGeometry(0.2, 32);
+{
+  const pos = poolGeo.attributes.position;
+  let seed = 1337;
+  const rand = () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return seed / 0x7fffffff;
+  };
+  const N = pos.count - 1;
+  const radii: number[] = new Array(N);
+  for (let i = 0; i < N; i++) radii[i] = 1 + (rand() - 0.5) * 0.18;
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < N; j++) {
+      radii[j] = radii[j] * 0.6 + radii[(j + 1) % N] * 0.2 + radii[(j + N - 1) % N] * 0.2;
+    }
+  }
+  for (let i = 1; i <= N; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const r = Math.sqrt(x * x + y * y);
+    if (r > 0.001) {
+      const jit = radii[i - 1];
+      pos.setXY(i, (x / r) * 0.2 * jit, (y / r) * 0.2 * jit);
+    }
+  }
+  pos.needsUpdate = true;
+  poolGeo.computeVertexNormals();
+}
+const poolMat = new THREE.MeshBasicMaterial({
+  color: 0x66ff33,
+  transparent: true,
+  opacity: 0.06,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+});
+
+const chainGeo = new THREE.CylinderGeometry(0.07, 0.07, 1, 6);
+chainGeo.rotateX(Math.PI / 2);
+const chainMat = new THREE.MeshBasicMaterial({
+  color: 0xfff4a3,
+  transparent: true,
+  opacity: 0.95,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+
+export function spawnBlastFX(pos: THREE.Vector3, radius: number, scene: THREE.Scene, color?: number) {
   // Clone the material so the fade-out doesn't affect other live rings
   const mesh = new THREE.Mesh(blastGeo, blastMat.clone());
   if (color !== undefined) (mesh.material as THREE.MeshBasicMaterial).color.setHex(color);
@@ -876,6 +1090,27 @@ function spawnBlastFX(pos: THREE.Vector3, radius: number, scene: THREE.Scene, co
     maxLife: 0.35,
     // RingGeometry outer radius is 0.2, so scale to reach the blast radius
     ringGrow: radius / 0.2 - 1,
+  });
+}
+
+function spawnChainArc(from: THREE.Vector3, to: THREE.Vector3, scene: THREE.Scene) {
+  const dx = to.x - from.x;
+  const dz = to.z - from.z;
+  const len = Math.sqrt(dx * dx + dz * dz);
+  if (len < 0.01) return;
+  const mesh = new THREE.Mesh(chainGeo, chainMat);
+  mesh.scale.set(1, 1, len);
+  mesh.position.set((from.x + to.x) * 0.5, 0.5, (from.z + to.z) * 0.5);
+  mesh.rotation.y = Math.atan2(dx, dz);
+  scene.add(mesh);
+
+  world.add({
+    isParticle: true,
+    position: mesh.position.clone(),
+    velocity: new THREE.Vector3(0, 0, 0),
+    transform: mesh,
+    lifeTimer: 0,
+    maxLife: 0.2,
   });
 }
 
