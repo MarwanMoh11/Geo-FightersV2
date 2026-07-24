@@ -257,27 +257,10 @@ function generateUpgradePool(player: any): UpgradeOption[] {
     }
   }
 
-  // 5. Exploit offers (rare drop — requires free slot)
-  const exploitSlots: (import('../core/ExploitRegistry').ExploitDef | null)[] =
-    player.exploitSlots || [];
-  const freeExploitIdx = exploitSlots.findIndex((s) => s == null);
-  if (freeExploitIdx !== -1) {
-    const ownedExploitIds = new Set(exploitSlots.filter(Boolean).map((s) => s!.id));
-    for (const def of EXPLOITS) {
-      if (ownedExploitIds.has(def.id)) continue;
-      // Level-up pool: only 'rare' exploits
-      if (def.rarity !== 'rare') continue;
-      pool.push({
-        type: 'exploit_new',
-        id: def.id,
-        name: def.name,
-        description: def.desc,
-        weight: 12,
-        icon: def.icon,
-        rarity: 'rare',
-      });
-    }
-  }
+  // 5. Exploits are NO LONGER offered on level-up. They are building-only:
+  // the sole source is winning a breach dive under the hard gate in
+  // BreachSystem.completeBreachWin -> ExploitRegistry.tryGrantRootkit. Keeping
+  // them out of the level-up pool is what makes them rare and worth the dive.
 
   // 6. Health heal (always available as fallback)
   pool.push({
@@ -357,27 +340,9 @@ export function applyRandomChestRewards(
 
   const granted: { name: string; icon: string; detail: string }[] = [];
   for (let i = 0; i < count; i++) {
-    // Chest: 15% chance per roll to grant an exploit (if slot available)
-    const exploitSlots: (import('../core/ExploitRegistry').ExploitDef | null)[] =
-      player.exploitSlots || [null, null, null];
-    const freeExploitIdx = exploitSlots.findIndex((s) => s == null);
-    if (freeExploitIdx !== -1 && Math.random() < 0.15) {
-      const ownedIds = new Set(exploitSlots.filter(Boolean).map((s) => s!.id));
-      const candidates = EXPLOITS.filter(
-        (e) => !ownedIds.has(e.id) && (e.rarity === 'rare' || e.rarity === 'epic'),
-      );
-      if (candidates.length > 0) {
-        const pick = candidates[Math.floor(Math.random() * candidates.length)];
-        addNewExploit(player, pick.id);
-        granted.push({
-          name: pick.name,
-          icon: pick.icon,
-          detail: 'NEW EXPLOIT',
-        });
-        continue;
-      }
-    }
-
+    // Chests no longer grant exploits — exploits are building-only (won from a
+    // breach dive under the hard gate in BreachSystem). Chests stay focused on
+    // weapons, passives, and heals.
     const pool = generateUpgradePool(player);
     // Chests prefer real upgrades; health only when nothing else remains.
     const nonHealth = pool.filter((o) => o.type !== 'health');
