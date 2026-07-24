@@ -35,7 +35,7 @@ import {
 import { upgradeRandomOwnedWeapon, flushDeferredLevelUps } from './UpgradeSystem';
 import { resetVirtualJoystick } from './InputSystem';
 import type { Poi } from './WayfindingSystem';
-import { enterDive } from './BreachDiveSystem';
+import { enterDive, resetBreachDiveSystem } from './BreachDiveSystem';
 
 // --- ROOTKIT SOFT-COUPLING ---
 // build-depth's `ExploitRegistry.ts` exports `tryGrantRootkit(player, kind, overclock): boolean`.
@@ -519,6 +519,11 @@ export function resolveBreach(outcome: 'win' | 'fail' | 'abort'): void {
   if (!node) return;
 
   if (outcome === 'win') {
+    if (uiState.isMultiplayer) {
+      // co-op parked this phase — dive is solo-only; co-op hosts get legacy instant grant.
+      legacyWinResolve(node, breach.overclock);
+      return;
+    }
     // Win → jack INTO the breach dive. The dive owns the rest of the
     // win-resolution flow now: on dive WIN-exit it calls
     // completeBreachWin() (grantReward + cooldown + opened=true); on a
@@ -611,6 +616,18 @@ export function completeBreachFail(node: BreachNode): void {
   node.cooldown = COOLDOWN_FAIL;
   announce('DIVE ABORTED — LOCKED OUT');
   haptics.hit();
+  setNodeReadyLook(node, false);
+}
+
+/**
+ * Legacy instant-grant win resolution used when the dive is gated off (co-op
+ * this phase). Mirrors the pre-dive win branch: grant loot + cooldown, but no
+ * permanent BREACHED scar (node stays re-hackable) and no rootkit grant.
+ */
+function legacyWinResolve(node: BreachNode, overclock: boolean): void {
+  grantReward(node, overclock);
+  node.cooldown = node.kind === 'depot' ? COOLDOWN_WIN_DEPOT : COOLDOWN_WIN;
+  announce('BREACHED — ' + node.name);
   setNodeReadyLook(node, false);
 }
 
@@ -807,6 +824,9 @@ export function resetBreachSystem(): void {
   uiState.breachShield = 1;
   uiState.skeletonKeys = 0;
   uiState.relaySlowTimer = 0;
+  // Dive halves: clear the sub-scene + shared dive flags so a no-reload
+  // restart doesn't resurrect a stale dive on a fresh arena.
+  resetBreachDiveSystem();
 }
 
 // --- TICK ---

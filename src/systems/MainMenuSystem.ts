@@ -81,6 +81,9 @@ function setupPauseListeners(): void {
 function setupKeyboardListeners(): void {
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Escape') {
+      // A breach dive owns ESC during its session (BreachDiveSystem binds its
+      // own abort handler). Don't toggle pause on top of it.
+      if (uiState.dive) return;
       const state = getGameState();
 
       // Close settings if open

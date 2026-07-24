@@ -898,6 +898,19 @@ export function exitDive(outcome: 'win' | 'fail' | 'abort'): void {
   arenaSceneRef = null;
 }
 
+/**
+ * Reset all dive system state for a no-reload restart. Tears down any
+ * half-open dive scene (e.g. a restart triggered mid-dive), removes dive-local
+ * ICE entities, and clears the shared `uiState.dive` / `diveTransition` flags.
+ * Called from `resetBreachSystem` so a restart cleans both halves.
+ */
+export function resetBreachDiveSystem(): void {
+  teardownDiveScene();
+  arenaSceneRef = null;
+  uiState.dive = null;
+  uiState.diveTransition = null;
+}
+
 function teardownDiveScene(): void {
   // Bug B: ICE entities are dive-local illusions. Remove them from the world
   // BEFORE nulling diveScene so they don't bleed back into the arena (where
