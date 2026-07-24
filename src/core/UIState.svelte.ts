@@ -178,6 +178,7 @@ export const uiState = $state({
     color: string;
     security: number;
     hasKey: boolean;
+    opened?: boolean; // true when the node has been permanently breached
   },
   // Co-op defend-the-hacker meter (1 = intact; solo never drains)
   breachShield: 1,
@@ -185,6 +186,28 @@ export const uiState = $state({
   skeletonKeys: 0,
   // RELAY TOWER reward: all enemies move at half speed while this ticks
   relaySlowTimer: 0,
+  // BREACH DIVE: active dive session (the sub-scene runs in place of the
+  // arena loop while this is non-null). Modeled on `breach` above — the
+  // union literal is inlined to avoid a circular import with BreachSystem.
+  dive: null as null | {
+    nodeId: string;
+    kind: 'depot' | 'armory' | 'bank' | 'relay' | 'substation' | 'stashden';
+    name: string;
+    icon: string;
+    color: string;
+    security: number; // 0-3
+    overclock: boolean;
+    trace: number; // 0..traceMax, climbs during the dive
+    traceMax: number;
+    objectiveText: string; // HUD label for the current verb
+    health: number;
+    healthMax: number;
+    progress: number; // generic progress bar (0..progressMax)
+    progressMax: number;
+    verbStage: string; // short label for the current verb phase (e.g. "CHARGING", "COLLECT")
+  },
+  // Brief enter/exit transition overlay (driven by DiveHUD CSS animation)
+  diveTransition: null as null | 'enter' | 'exit',
   // NEON SURGE event: double XP inside this district rect while it ticks
   neonSurge: null as {
     name: string;
