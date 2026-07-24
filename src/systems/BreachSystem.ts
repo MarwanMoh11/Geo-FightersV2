@@ -37,7 +37,30 @@ import { resetVirtualJoystick } from './InputSystem';
 import type { Poi } from './WayfindingSystem';
 import { enterDive } from './BreachDiveSystem';
 
+// --- ROOTKIT SOFT-COUPLING ---
+// build-depth's `ExploitRegistry.ts` exports `tryGrantRootkit(player, kind, overclock): boolean`.
+// Its absence here is expected — we gracefully degrade to scaled loot only.
+const EXPLOIT_MOD_PATH = '../core/ExploitRegistry';
+async function getExploitModule(): Promise<any> {
+  const path: string = EXPLOIT_MOD_PATH;
+  try {
+    const mod = await import(/* @vite-ignore */ path);
+    return mod ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export type BreachKind = 'depot' | 'armory' | 'bank' | 'relay' | 'substation' | 'stashden';
+
+export interface DiveOutcome {
+  overclock: boolean;
+  security: number;
+  trace: number;
+  traceMax: number;
+  elapsed: number;
+  verb: BreachKind;
+}
 
 interface NodeDef {
   id: string;
@@ -397,6 +420,11 @@ export function getReadyRelaySpots(): { x: number; z: number }[] {
     .map((n) => ({ x: n.x, z: n.z }));
 }
 
+/** Check whether a breach node has been permanently breached (opened=true). */
+export function isNodeBreached(id: string): boolean {
+  return nodes.some((n) => n.id === id && n.opened);
+}
+
 // --- BREACH LIFECYCLE ---
 
 /** Open the mini-game for the prompted node (E key / prompt button). */
@@ -436,6 +464,8 @@ export function startBreach(overclock: boolean): void {
 /** SKELETON KEY: skip the mini-game, take the reward (F key / prompt button). */
 /**
  * Consume a skeleton key to bypass the breach mini-game and take the reward.
+ * NOTE: skeleton-key bypassed wins do NOT grant rootkits — exploits are hard
+ * to get, skeleton keys give you the loot but NOT the rootkit.
  */
 export function useSkeletonKey(): void {
   const prompt = uiState.breachPrompt;
@@ -489,13 +519,65 @@ export function resolveBreach(outcome: 'win' | 'fail' | 'abort'): void {
 }
 
 /**
+ * Compute a 0..1 quality score from the dive outcome. Closer to 1 = cleaner
+ * and faster clear. Used to scale loot quantities and gate rootkit grants.
+ */
+function computeDiveQuality(outcome: DiveOutcome): number {
+  const TARGET_TIME = 30;
+  const traceRatio = 1 - outcome.trace / outcome.traceMax;
+  const timePenalty = Math.max(0, outcome.elapsed - TARGET_TIME) / TARGET_TIME * 0.25;
+  return clamp01(
+    0.5 + traceRatio * 0.5 - timePenalty + (outcome.overclock ? 0.1 : 0),
+  );
+}
+
+/**
  * Apply the full breach-WIN resolution (called by BreachDiveSystem on a
  * dive WIN-exit). Replicates the old resolveBreach win branch (grantReward +
  * cooldown + setNodeReadyLook) and additionally marks the node permanently
  * BREACHED. `grantReward` stays module-private; this is the public seam.
+ *
+ * The rootkit grant fires as a fire-and-forget async IIFE so that a missing
+ * or broken ExploitRegistry module can never throw into the dive-exit flow.
+ * The win path (cooldown + loot + opened flag) is always synchronous.
  */
-export function completeBreachWin(node: BreachNode, overclock: boolean): void {
-  grantReward(node, overclock);
+export function completeBreachWin(node: BreachNode, outcome: DiveOutcome): void {
+  const quality = computeDiveQuality(outcome);
+  const isFirstBreach = !node.opened;
+
+  if (isFirstBreach) {
+    announce('BREACHED — ' + node.name);
+  }
+
+  grantReward(node, outcome.overclock, quality);
+
+  // Rootkit grant: fire-and-forget async. Never awaited, never throws.
+  // Skeleton-key bypassed wins skip this entirely (useSkeletonKey calls
+  // grantReward directly — exploits are hard to get, skeleton keys give
+  // loot but NOT rootkits).
+  (async () => {
+    try {
+      const mod = await getExploitModule();
+      if (!mod?.tryGrantRootkit) return;
+      if (
+        outcome.security >= 3
+        && outcome.trace <= outcome.traceMax * 0.35
+        && (node.kind === 'bank' || node.kind === 'armory' || node.kind === 'stashden')
+        && !node.opened
+        && outcome.overclock
+        && quality >= 0.7
+      ) {
+        const player = world.with('isLocalPlayer', 'position').first;
+        if (player && mod.tryGrantRootkit(player, node.kind, outcome.overclock)) {
+          announce('ROOTKIT ACQUIRED — ' + node.name);
+          playLevelUp();
+        }
+      }
+    } catch {
+      // ExploitRegistry absent or broken — degrade silently to scaled loot
+    }
+  })();
+
   node.cooldown = node.kind === 'depot' ? COOLDOWN_WIN_DEPOT : COOLDOWN_WIN;
   node.opened = true;
   setNodeReadyLook(node, false);
@@ -530,7 +612,15 @@ function spawnTracer(node: BreachNode): void {
   announce('ICE TRACER DEPLOYED — RUN');
 }
 
-function grantReward(node: BreachNode, overclock: boolean): void {
+function clamp01(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+function scaleQty(base: number, quality: number): number {
+  return Math.max(1, Math.round(base * (0.6 + quality)));
+}
+
+function grantReward(node: BreachNode, overclock: boolean, quality: number = 0.5): void {
   const scene = sceneRef;
   const player = world.with('isLocalPlayer', 'position').first;
   if (!scene || !player) return;
@@ -543,7 +633,7 @@ function grantReward(node: BreachNode, overclock: boolean): void {
   switch (node.kind) {
     case 'depot': {
       const types = ['medkit', 'magnet', 'bomb'];
-      const n = overclock ? 4 : 2;
+      const n = scaleQty(overclock ? 4 : 2, quality);
       for (let i = 0; i < n; i++) {
         const a = (i / n) * Math.PI * 2;
         world.add({
@@ -553,7 +643,7 @@ function grantReward(node: BreachNode, overclock: boolean): void {
           velocity: new THREE.Vector3(),
         });
       }
-      const credits = overclock ? 14 : 7;
+      const credits = scaleQty(overclock ? 14 : 7, quality);
       for (let i = 0; i < credits; i++) {
         const a = (i / credits) * Math.PI * 2;
         spawnCredit(scene, dropX + Math.cos(a) * 3, dropZ + Math.sin(a) * 3, 3);
@@ -572,14 +662,16 @@ function grantReward(node: BreachNode, overclock: boolean): void {
         );
       } else {
         // Everything maxed — the armory pays out in kind instead
-        spawnChest(scene, dropX, dropZ, 'epic');
+        const rarity: 'epic' = quality >= 0.85 ? 'epic' : 'epic';
+        spawnChest(scene, dropX, dropZ, rarity);
         announce('ARMORY: ARSENAL MAXED — VAULT CHEST RELEASED');
       }
       break;
     }
     case 'bank': {
-      spawnChest(scene, dropX, dropZ, overclock ? 'epic' : 'rare');
-      const credits = overclock ? 20 : 10;
+      const bankRarity: 'rare' | 'epic' = (overclock || quality >= 0.85) ? 'epic' : 'rare';
+      spawnChest(scene, dropX, dropZ, bankRarity);
+      const credits = scaleQty(overclock ? 20 : 10, quality);
       for (let i = 0; i < credits; i++) {
         const a = (i / credits) * Math.PI * 2;
         spawnCredit(scene, dropX + Math.cos(a) * 3.2, dropZ + Math.sin(a) * 3.2, 4);
@@ -604,10 +696,11 @@ function grantReward(node: BreachNode, overclock: boolean): void {
         announce('SCAVENGER CHIP ACQUIRED — SLUMS EXCLUSIVE');
         playLevelUp();
       } else {
-        spawnChest(scene, dropX, dropZ, 'epic');
+        const stashRarity: 'epic' = quality >= 0.85 ? 'epic' : 'epic';
+        spawnChest(scene, dropX, dropZ, stashRarity);
         announce('STASH DEN LOOTED');
       }
-      const credits = overclock ? 16 : 8;
+      const credits = scaleQty(overclock ? 16 : 8, quality);
       for (let i = 0; i < credits; i++) {
         const a = (i / credits) * Math.PI * 2;
         spawnCredit(scene, dropX + Math.cos(a) * 2.6, dropZ + Math.sin(a) * 2.6, 4);

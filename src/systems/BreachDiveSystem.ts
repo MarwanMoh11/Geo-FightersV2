@@ -21,7 +21,7 @@
 import * as THREE from 'three';
 import { uiState, announce } from '../core/UIState.svelte.ts';
 import { buildGenericDiveScene, disposeDiveScene } from '../core/DiveScenes';
-import { completeBreachWin, completeBreachFail, type BreachNode } from './BreachSystem';
+import { completeBreachWin, completeBreachFail, type BreachNode, type DiveOutcome } from './BreachSystem';
 import { spawnEnemy, EnemyType } from '../core/factories';
 import { InputSystem } from './InputSystem';
 import { resetVirtualJoystick } from './InputSystem';
@@ -720,7 +720,15 @@ export function exitDive(outcome: 'win' | 'fail' | 'abort'): void {
   }
 
   if (outcome === 'win') {
-    completeBreachWin(node, diveOverclock);
+    const winOutcome: DiveOutcome = {
+      overclock: diveOverclock,
+      security: diveSecurity,
+      trace: dive.trace,
+      traceMax: dive.traceMax,
+      elapsed: diveElapsed,
+      verb: dive.kind as DiveOutcome['verb'],
+    };
+    completeBreachWin(node, winOutcome);
   } else {
     // Fail / abort: resolve the breach fail, then spawn ambush
     completeBreachFail(node);
