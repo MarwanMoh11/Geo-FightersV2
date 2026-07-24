@@ -18,6 +18,7 @@
   import PwaLayer from './PwaLayer.svelte';
   import Toast from './Toast.svelte';
   import BreachOverlay from './BreachOverlay.svelte';
+  import DiveHUD from './DiveHUD.svelte';
   import { uiState } from '../core/UIState.svelte.ts';
 </script>
 
@@ -31,6 +32,13 @@
        config at init; the world keeps simulating underneath -->
   {#if uiState.breach}
     <BreachOverlay />
+  {/if}
+
+  <!-- Breach dive HUD: pure-DOM overlay shown while a dive is active.
+       Mounted at the same level as BreachOverlay so it stacks with the
+       rest of the UI modals. -->
+  {#if uiState.dive}
+    <DiveHUD />
   {/if}
 
   <PauseModal />

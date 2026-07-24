@@ -20,13 +20,19 @@
 
 import * as THREE from 'three';
 import { uiState, announce } from '../core/UIState.svelte.ts';
-import { buildGenericDiveScene, disposeDiveScene } from '../core/DiveScenes';
-import { completeBreachWin, completeBreachFail, type BreachNode, type DiveOutcome } from './BreachSystem';
+import { buildDiveSceneFor, disposeDiveScene, THEME } from '../core/DiveScenes';
+import {
+  completeBreachWin,
+  completeBreachFail,
+  type BreachNode,
+  type BreachKind,
+  type DiveOutcome,
+} from './BreachSystem';
 import { spawnEnemy, EnemyType } from '../core/factories';
 import { InputSystem } from './InputSystem';
 import { resetVirtualJoystick } from './InputSystem';
 import { haptics } from '../core/haptics';
-import { world } from '../core/world';
+import { world, type Entity } from '../core/world';
 import { partySpawnMultiplier } from '../core/difficulty';
 import { getCurrentLevel } from '../core/LevelData';
 
@@ -97,14 +103,63 @@ let diveElapsed = 0;
 let arenaSceneRef: THREE.Scene | null = null;
 let keysBound = false;
 
+// Per-ICE ghost mesh: keyed by entity reference (not id, because network
+// sync overwrites the id). The mesh itself is added to `diveMeshes` so
+// disposeDiveScene handles its teardown alongside the themed scene.
+const iceMeshes: WeakMap<Entity, THREE.Object3D> = new WeakMap();
+
 // Per-verb state machine (discriminated union)
 type DiveVerbData =
-  | { verb: 'extraction'; extractionProgress: number; extractionMax: number; timer: number; timerMax: number }
-  | { verb: 'holdOverload'; pads: { x: number; z: number; charged: boolean }[]; padCount: number; capacitorProgress: number; capacitorMax: number; timer: number; timerMax: number; overloadActive: boolean }
-  | { verb: 'grabAndRun'; pickups: { x: number; z: number; collected: boolean }[]; collectedCount: number; totalCount: number; exitX: number; exitZ: number; exitActive: boolean; timer: number; timerMax: number }
+  | {
+      verb: 'extraction';
+      extractionProgress: number;
+      extractionMax: number;
+      timer: number;
+      timerMax: number;
+    }
+  | {
+      verb: 'holdOverload';
+      pads: { x: number; z: number; charged: boolean }[];
+      padCount: number;
+      capacitorProgress: number;
+      capacitorMax: number;
+      timer: number;
+      timerMax: number;
+      overloadActive: boolean;
+    }
+  | {
+      verb: 'grabAndRun';
+      pickups: { x: number; z: number; collected: boolean }[];
+      collectedCount: number;
+      totalCount: number;
+      exitX: number;
+      exitZ: number;
+      exitActive: boolean;
+      timer: number;
+      timerMax: number;
+    }
   | { verb: 'evasion'; timer: number; timerMax: number }
-  | { verb: 'supplyRun'; pickups: { x: number; z: number; collected: boolean }[]; collected: number; needed: number; timer: number; timerMax: number }
-  | { verb: 'gamble'; altarX: number; altarZ: number; cashOutX: number; cashOutZ: number; stack: number; bustChance: number; cashedOut: boolean; timer: number; timerMax: number; pushCooldown: number };
+  | {
+      verb: 'supplyRun';
+      pickups: { x: number; z: number; collected: boolean }[];
+      collected: number;
+      needed: number;
+      timer: number;
+      timerMax: number;
+    }
+  | {
+      verb: 'gamble';
+      altarX: number;
+      altarZ: number;
+      cashOutX: number;
+      cashOutZ: number;
+      stack: number;
+      bustChance: number;
+      cashedOut: boolean;
+      timer: number;
+      timerMax: number;
+      pushCooldown: number;
+    };
 
 let diveVerbState: DiveVerbData | null = null;
 
@@ -239,7 +294,12 @@ function spawnVerbVisuals(vs: DiveVerbData): void {
   };
   const mkRing = (x: number, z: number, color: number, y: number = 0.15) => {
     const geo = new THREE.RingGeometry(0.5, 0.7, 24);
-    const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent: true, opacity: 0.7 });
+    const mat = new THREE.MeshBasicMaterial({
+      color,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.7,
+    });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.rotation.x = -Math.PI / 2;
     mesh.position.set(x, y, z);
@@ -259,7 +319,12 @@ function spawnVerbVisuals(vs: DiveVerbData): void {
       for (const p of vs.pickups) {
         mkCube(p.x, p.z, 0xff8c3a);
       }
-      const exitMat = new THREE.MeshBasicMaterial({ color: 0x00ff88, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+      const exitMat = new THREE.MeshBasicMaterial({
+        color: 0x00ff88,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.5,
+      });
       const exitGeo = new THREE.CircleGeometry(1.5, 24);
       const exitMesh = new THREE.Mesh(exitGeo, exitMat);
       exitMesh.rotation.x = -Math.PI / 2;
@@ -278,7 +343,12 @@ function spawnVerbVisuals(vs: DiveVerbData): void {
     case 'gamble': {
       mkCube(vs.altarX, vs.altarZ, 0xc46bff, 0.8, 1.0);
       const coGeo = new THREE.CircleGeometry(1.5, 24);
-      const coMat = new THREE.MeshBasicMaterial({ color: 0x00ff88, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+      const coMat = new THREE.MeshBasicMaterial({
+        color: 0x00ff88,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.5,
+      });
       const coMesh = new THREE.Mesh(coGeo, coMat);
       coMesh.rotation.x = -Math.PI / 2;
       coMesh.position.set(vs.cashOutX, 0.1, vs.cashOutZ);
@@ -291,7 +361,7 @@ function spawnVerbVisuals(vs: DiveVerbData): void {
 
 /** Spawn ICE constructs into the dive scene. */
 function spawnICEWave(count: number, security: number): void {
-  if (!diveScene) return;
+  if (!diveScene || !diveNode) return;
   for (let i = 0; i < count; i++) {
     const angle = Math.random() * Math.PI * 2;
     const r = 18 + Math.random() * 16;
@@ -302,7 +372,66 @@ function spawnICEWave(count: number, security: number): void {
     const e = spawnEnemy(diveScene, x, z, type, hpMult, 0.9);
     e.isICE = true;
     e.moveSpeed = ICE_STEER_SPEED + security * 0.4 + Math.random() * 0.5;
+    const mesh = makeIceMesh(e, diveNode.kind, diveSecurity);
+    mesh.position.set(x, 0.6, z);
+    diveScene.add(mesh);
+    diveMeshes.push(mesh);
+    iceMeshes.set(e, mesh);
   }
+}
+
+/**
+ * Build a per-ICE ghost mesh. The arena's InstancedMesh flow is frozen
+ * during the dive (RenderSystem does not run), so the enemy entities
+ * spawnEnemy produces would be invisible without an attached mesh.
+ * Geometry depends on enemyType; color matches the dive theme.
+ */
+function makeIceMesh(entity: Entity, kind: BreachKind, security: number): THREE.Object3D {
+  const theme = THEME[kind] ?? THEME.depot;
+  const color = theme.accent;
+  const scale = 0.9 + security * 0.18;
+  const type = entity.enemyType;
+  const wireMat = new THREE.MeshBasicMaterial({
+    color,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.9,
+  });
+  const fillMat = new THREE.MeshBasicMaterial({
+    color: theme.gridAccent,
+    transparent: true,
+    opacity: 0.45,
+  });
+  let mesh: THREE.Object3D;
+  if (type === EnemyType.FIREWALL) {
+    // Boxy firewall: chunky cube, bigger than a virus
+    const geo = new THREE.BoxGeometry(1.3 * scale, 1.3 * scale, 1.3 * scale);
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(geo, fillMat));
+    g.add(new THREE.Mesh(geo, wireMat));
+    mesh = g;
+  } else if (type === EnemyType.WARDEN) {
+    // Warden: tall crowned icosahedron (crown = small box on top)
+    const g = new THREE.Group();
+    const body = new THREE.IcosahedronGeometry(0.9 * scale, 0);
+    g.add(new THREE.Mesh(body, fillMat));
+    g.add(new THREE.Mesh(body, wireMat));
+    const crown = new THREE.Mesh(
+      new THREE.BoxGeometry(0.4 * scale, 0.4 * scale, 0.4 * scale),
+      wireMat,
+    );
+    crown.position.y = 0.9 * scale;
+    g.add(crown);
+    mesh = g;
+  } else {
+    // Virus: spiky small icosahedron
+    const geo = new THREE.IcosahedronGeometry(0.6 * scale, 0);
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(geo, fillMat));
+    g.add(new THREE.Mesh(geo, wireMat));
+    mesh = g;
+  }
+  return mesh;
 }
 
 /** Compute ambush horde size from dive state. */
@@ -310,7 +439,8 @@ function computeAmbushSize(): number {
   const overclock = diveOverclock;
   const trace = uiState.dive?.trace ?? 0;
   const elapsed = diveElapsed;
-  let count = AMBUSH_BASE + Math.floor(trace / AMBUSH_TRACE_DIV) + Math.floor(elapsed / AMBUSH_TIME_DIV) * 2;
+  let count =
+    AMBUSH_BASE + Math.floor(trace / AMBUSH_TRACE_DIV) + Math.floor(elapsed / AMBUSH_TIME_DIV) * 2;
   count = Math.min(count, AMBUSH_CAP);
   if (overclock) count *= 2;
   count = Math.round(count * partySpawnMultiplier());
@@ -333,7 +463,8 @@ function spawnAmbush(scene: THREE.Scene): void {
     const ang = (i / count) * Math.PI * 2;
     const x = clampToArena(cx + Math.cos(ang) * AMBUSH_RADIUS, halfW);
     const z = clampToArena(cz + Math.sin(ang) * AMBUSH_RADIUS, halfH);
-    const type = i % 5 === 0 && uiState.dive && uiState.dive.trace > 60 ? EnemyType.WARDEN : EnemyType.VIRUS;
+    const type =
+      i % 5 === 0 && uiState.dive && uiState.dive.trace > 60 ? EnemyType.WARDEN : EnemyType.VIRUS;
     const hpMult = 0.6;
     const speedMult = 1.0;
     const e = spawnEnemy(scene, x, z, type, hpMult, speedMult);
@@ -414,7 +545,7 @@ function tickVerbState(dt: number, playerPos: THREE.Vector3 | null): 'win' | 'fa
           const dist = Math.sqrt((px - pad.x) ** 2 + (pz - pad.z) ** 2);
           if (dist < 1.5) {
             pad.charged = true;
-            announce(`PAD CHARGED ${vs.pads.filter(p => p.charged).length}/${vs.padCount}`);
+            announce(`PAD CHARGED ${vs.pads.filter((p) => p.charged).length}/${vs.padCount}`);
           }
           allCharged = false;
         }
@@ -427,12 +558,14 @@ function tickVerbState(dt: number, playerPos: THREE.Vector3 | null): 'win' | 'fa
         vs.capacitorProgress = Math.min(vs.capacitorMax, vs.capacitorProgress + dt * 8);
       }
       if (uiState.dive) {
-        uiState.dive.progress = vs.overloadActive ? vs.capacitorProgress : vs.pads.filter(p => p.charged).length;
+        uiState.dive.progress = vs.overloadActive
+          ? vs.capacitorProgress
+          : vs.pads.filter((p) => p.charged).length;
         uiState.dive.progressMax = vs.overloadActive ? vs.capacitorMax : vs.padCount;
         uiState.dive.verbStage = vs.overloadActive ? 'OVERLOADING' : 'CHARGING PADS';
         uiState.dive.objectiveText = vs.overloadActive
           ? `Overload ${Math.floor(vs.capacitorProgress)}%`
-          : `Charge pads ${vs.pads.filter(p => p.charged).length}/${vs.padCount}`;
+          : `Charge pads ${vs.pads.filter((p) => p.charged).length}/${vs.padCount}`;
       }
       if (vs.capacitorProgress >= vs.capacitorMax) return 'win';
       if (vs.timer >= vs.timerMax) return 'fail';
@@ -469,7 +602,9 @@ function tickVerbState(dt: number, playerPos: THREE.Vector3 | null): 'win' | 'fa
         uiState.dive.progress = vs.collectedCount;
         uiState.dive.progressMax = vs.totalCount;
         uiState.dive.verbStage = vs.exitActive ? 'GET TO EXIT' : 'COLLECT GEAR';
-        uiState.dive.objectiveText = vs.exitActive ? 'Reach exit pad' : `Collect ${vs.collectedCount}/${vs.totalCount}`;
+        uiState.dive.objectiveText = vs.exitActive
+          ? 'Reach exit pad'
+          : `Collect ${vs.collectedCount}/${vs.totalCount}`;
       }
       if (vs.timer >= vs.timerMax) return 'fail';
       return null;
@@ -534,7 +669,8 @@ function tickVerbState(dt: number, playerPos: THREE.Vector3 | null): 'win' | 'fa
         uiState.dive.progress = vs.stack;
         uiState.dive.progressMax = 10;
         uiState.dive.verbStage = vs.stack === 0 ? 'PUSH AT ALTAR' : `STACK ${vs.stack}`;
-        uiState.dive.objectiveText = vs.stack === 0 ? 'Approach altar to push' : `Stack ${vs.stack} — cash out at green pad`;
+        uiState.dive.objectiveText =
+          vs.stack === 0 ? 'Approach altar to push' : `Stack ${vs.stack} — cash out at green pad`;
       }
       if (vs.timer >= vs.timerMax && vs.stack === 0) return 'fail';
       // If timer expires with stack > 0, auto-cash at half value (still a win)
@@ -559,7 +695,7 @@ function tickVerbState(dt: number, playerPos: THREE.Vector3 | null): 'win' | 'fa
 export function enterDive(node: BreachNode, overclock: boolean, security: number): void {
   if (uiState.dive) return;
 
-  const built = buildGenericDiveScene();
+  const built = buildDiveSceneFor(node.kind);
   diveScene = built.scene;
   diveMeshes = built.meshes;
   diveNode = node;
@@ -598,6 +734,10 @@ export function enterDive(node: BreachNode, overclock: boolean, security: number
     progressMax: 100,
     verbStage: 'INITIATING',
   };
+  uiState.diveTransition = 'enter';
+  setTimeout(() => {
+    if (uiState.diveTransition === 'enter') uiState.diveTransition = null;
+  }, 450);
   bindKeys();
 }
 
@@ -662,6 +802,12 @@ export function BreachDiveSystem(
       }
       ice.position.x += ice.velocity.x * dt;
       ice.position.z += ice.velocity.z * dt;
+      // Sync ghost mesh to steered position (no separate per-frame world.with)
+      const mesh = iceMeshes.get(ice);
+      if (mesh) {
+        mesh.position.set(ice.position.x, 0.6, ice.position.z);
+        if (dist > 0.01) mesh.rotation.y = Math.atan2(dx, dz);
+      }
       // Contact damage
       if (dist < ICE_CONTACT_DIST && iceContactTimer <= 0) {
         diveHealth -= ICE_CONTACT_DAMAGE;
@@ -736,6 +882,12 @@ export function exitDive(outcome: 'win' | 'fail' | 'abort'): void {
     // so announcement still has dive context if needed.
   }
 
+  // Brief exit flash, then clear
+  uiState.diveTransition = 'exit';
+  setTimeout(() => {
+    if (uiState.diveTransition === 'exit') uiState.diveTransition = null;
+  }, 450);
+
   teardownDiveScene();
 
   if (outcome !== 'win' && arenaSceneRef) {
@@ -747,11 +899,23 @@ export function exitDive(outcome: 'win' | 'fail' | 'abort'): void {
 }
 
 function teardownDiveScene(): void {
+  // Bug B: ICE entities are dive-local illusions. Remove them from the world
+  // BEFORE nulling diveScene so they don't bleed back into the arena (where
+  // RenderSystem would draw them and EnemySystem would steer them). Use a
+  // plain world.remove — these are NOT deaths, just cleanups (no death side
+  // effects, no XP/loot, no score). The swap-remove in world.remove is O(1)
+  // and never triggers handleEnemyDeath.
+  for (const ice of [...world.with('isEnemy', 'isICE')]) {
+    world.remove(ice);
+  }
+
   if (diveScene) {
     disposeDiveScene(diveScene, diveMeshes);
     diveScene = null;
     diveMeshes = [];
   }
+  // WeakMap has no .clear(), but the keys are dead entity references that
+  // the GC will reap. No leak.
   diveNode = null;
   diveOverclock = false;
   diveSecurity = 0;
@@ -764,8 +928,49 @@ function teardownDiveScene(): void {
 
 // Debug hook
 if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debug')) {
+  const params = new URLSearchParams(window.location.search);
   (window as unknown as { __dive: object }).__dive = {
     enterDive,
     exitDive,
+    // Debug helper: synthesize a stub BreachNode of a given kind and enter
+    // a dive. Useful for testing each themed scene in isolation. Combine
+    // with `?dive-k=<kind>` in the URL to auto-enter on load (see below).
+    enterDiveForKind: (kind: BreachKind) => {
+      const node: BreachNode = {
+        id: 'debug_' + kind,
+        kind,
+        name: kind.toUpperCase(),
+        icon: '◆',
+        color: 0xffffff,
+        x: 0,
+        z: 0,
+        signY: 5,
+        doorX: 0,
+        doorZ: 0,
+        dirX: 0,
+        dirZ: 1,
+        doorH: 3,
+        cooldown: 0,
+        doorMat: null,
+        ringMat: null,
+        sign: null,
+        opened: false,
+      };
+      enterDive(node, false, 0);
+    },
   };
+  // Auto-enter a dive on load when `?dive-k=<kind>` is present. Gated by
+  // `?debug` so it's invisible in normal play. Used for visual QA of each
+  // themed scene without having to complete a full mini-game first.
+  const diveKind = params.get('dive-k') as BreachKind | null;
+  if (
+    diveKind &&
+    ['depot', 'armory', 'bank', 'relay', 'substation', 'stashden'].includes(diveKind)
+  ) {
+    setTimeout(() => {
+      (
+        window as unknown as { __dive: { enterDiveForKind: (k: BreachKind) => void } }
+      ).__dive.enterDiveForKind(diveKind);
+    }, 1500);
+  }
 }

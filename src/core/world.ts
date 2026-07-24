@@ -47,6 +47,9 @@ export type Entity = {
   isCredit?: boolean;
   creditValue?: number;
   isLashTear?: boolean;
+  // Breach-dive ICE construct: enemy entity spawned inside the dive sub-scene
+  // and cleaned up on teardown (Bug B). True only for dive-local illusions.
+  isICE?: boolean;
   hitList?: number[];
   isAnomaly?: boolean;
   anomalyType?: 'overclock' | 'defrag' | 'leak';
@@ -222,6 +225,7 @@ function createECS() {
     'isPlayer',
     'isLocalPlayer',
     'isBossShockwave',
+    'isICE',
     'lifeTimer',
     'transform',
     'abilityKind',

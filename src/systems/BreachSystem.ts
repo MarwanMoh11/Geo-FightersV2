@@ -379,8 +379,29 @@ function initDressing(scene: THREE.Scene): void {
 }
 
 function setNodeReadyLook(node: BreachNode, ready: boolean): void {
-  if (node.doorMat) node.doorMat.opacity = ready ? 0.8 : 0.1;
-  if (node.ringMat) node.ringMat.opacity = ready ? 0.45 : 0.06;
+  // BREACHED scar: a permanently-breached node never pulses again. The
+  // door tints toward charred red and the ready-ring is killed. The
+  // sign is also dimmed (it's no longer interactive).
+  if (node.opened) {
+    if (node.doorMat) {
+      node.doorMat.color.setHex(0x440a14);
+      node.doorMat.opacity = ready ? 0.55 : 0.18;
+    }
+    if (node.ringMat) {
+      node.ringMat.color.setHex(0x6a0a14);
+      node.ringMat.opacity = ready ? 0.25 : 0.1;
+    }
+    if (node.sign) node.sign.material.opacity = 0.3;
+    return;
+  }
+  if (node.doorMat) {
+    node.doorMat.color.setHex(node.color);
+    node.doorMat.opacity = ready ? 0.8 : 0.1;
+  }
+  if (node.ringMat) {
+    node.ringMat.color.setHex(node.color);
+    node.ringMat.opacity = ready ? 0.45 : 0.06;
+  }
   if (node.sign) node.sign.material.opacity = ready ? 1 : 0.3;
   if (node.shrineKind) setShrineReadyByKind(node.shrineKind, ready);
 }
@@ -525,10 +546,8 @@ export function resolveBreach(outcome: 'win' | 'fail' | 'abort'): void {
 function computeDiveQuality(outcome: DiveOutcome): number {
   const TARGET_TIME = 30;
   const traceRatio = 1 - outcome.trace / outcome.traceMax;
-  const timePenalty = Math.max(0, outcome.elapsed - TARGET_TIME) / TARGET_TIME * 0.25;
-  return clamp01(
-    0.5 + traceRatio * 0.5 - timePenalty + (outcome.overclock ? 0.1 : 0),
-  );
+  const timePenalty = (Math.max(0, outcome.elapsed - TARGET_TIME) / TARGET_TIME) * 0.25;
+  return clamp01(0.5 + traceRatio * 0.5 - timePenalty + (outcome.overclock ? 0.1 : 0));
 }
 
 /**
@@ -560,12 +579,12 @@ export function completeBreachWin(node: BreachNode, outcome: DiveOutcome): void 
       const mod = await getExploitModule();
       if (!mod?.tryGrantRootkit) return;
       if (
-        outcome.security >= 3
-        && outcome.trace <= outcome.traceMax * 0.35
-        && (node.kind === 'bank' || node.kind === 'armory' || node.kind === 'stashden')
-        && !node.opened
-        && outcome.overclock
-        && quality >= 0.7
+        outcome.security >= 3 &&
+        outcome.trace <= outcome.traceMax * 0.35 &&
+        (node.kind === 'bank' || node.kind === 'armory' || node.kind === 'stashden') &&
+        !node.opened &&
+        outcome.overclock &&
+        quality >= 0.7
       ) {
         const player = world.with('isLocalPlayer', 'position').first;
         if (player && mod.tryGrantRootkit(player, node.kind, outcome.overclock)) {
@@ -669,7 +688,7 @@ function grantReward(node: BreachNode, overclock: boolean, quality: number = 0.5
       break;
     }
     case 'bank': {
-      const bankRarity: 'rare' | 'epic' = (overclock || quality >= 0.85) ? 'epic' : 'rare';
+      const bankRarity: 'rare' | 'epic' = overclock || quality >= 0.85 ? 'epic' : 'rare';
       spawnChest(scene, dropX, dropZ, bankRarity);
       const credits = scaleQty(overclock ? 20 : 10, quality);
       for (let i = 0; i < credits; i++) {
@@ -817,7 +836,9 @@ export function BreachSystem(dt: number, scene: THREE.Scene): void {
     if (node.cooldown > 0) {
       node.cooldown -= dt;
       if (node.cooldown <= 0) setNodeReadyLook(node, true);
-    } else if (node.ringMat) {
+    } else if (node.ringMat && !node.opened) {
+      // Skip the per-frame pulse for BREACHED nodes — their ring is a
+      // permanent red scar, not a "ready to jack in" beacon.
       node.ringMat.opacity = 0.35 + 0.18 * Math.sin(now * 3 + i * 1.7);
     }
   }
@@ -879,7 +900,13 @@ export function BreachSystem(dt: number, scene: THREE.Scene): void {
     const security = computeSecurity();
     const hasKey = uiState.skeletonKeys > 0;
     const p = uiState.breachPrompt;
-    if (!p || p.nodeId !== best.id || p.security !== security || p.hasKey !== hasKey) {
+    if (
+      !p ||
+      p.nodeId !== best.id ||
+      p.security !== security ||
+      p.hasKey !== hasKey ||
+      p.opened !== best.opened
+    ) {
       uiState.breachPrompt = {
         nodeId: best.id,
         name: best.name,
@@ -887,6 +914,7 @@ export function BreachSystem(dt: number, scene: THREE.Scene): void {
         color: cssColor(best.color),
         security,
         hasKey,
+        opened: best.opened,
       };
     }
   } else if (uiState.breachPrompt) {
