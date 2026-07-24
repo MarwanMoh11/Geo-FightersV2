@@ -41,8 +41,8 @@ export const PASSIVES: Record<string, PassiveDef> = {
   power_cell: {
     id: 'power_cell',
     name: 'POWER CELL',
-    description: '+10% Output Wattage (Might)',
-    statBonuses: { might: 0.1 },
+    description: '+10% Might, -0.5 Armor per level (Glass Cannon trade)',
+    statBonuses: { might: 0.1, armor: -0.5 },
     maxLevel: 5,
     evolvesWeapon: 'pulse_repeater', // → omega_pulse
   },
@@ -59,8 +59,8 @@ export const PASSIVES: Record<string, PassiveDef> = {
   capacitor: {
     id: 'capacitor',
     name: 'CAPACITOR',
-    description: '+10% Signal Radius (Area)',
-    statBonuses: { area: 0.1 },
+    description: '+10% Area, -3% Move Speed per level (Heavy Caliber trade)',
+    statBonuses: { area: 0.1, moveSpeed: -0.03 },
     maxLevel: 5,
     evolvesWeapon: 'emp_pulse_node', // → blackout_field
   },
@@ -115,8 +115,8 @@ export const PASSIVES: Record<string, PassiveDef> = {
   speed_boosters: {
     id: 'speed_boosters',
     name: 'SPEED BOOSTERS',
-    description: '+10% Movement Speed',
-    statBonuses: { moveSpeed: 0.1 },
+    description: '+10% Move Speed, -0.5 Armor per level (Featherweight trade)',
+    statBonuses: { moveSpeed: 0.1, armor: -0.5 },
     maxLevel: 5,
   },
 

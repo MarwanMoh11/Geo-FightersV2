@@ -6,6 +6,7 @@
     banishUpgradeOption,
     type UpgradeOption,
   } from '../../systems/UpgradeSystem';
+  import { formatBehaviourTag, getExploitById } from '../../core/ExploitRegistry';
   import { fade, fly } from 'svelte/transition';
   import { playUpgradeSelect } from '../../core/audio';
   import { haptics } from '../../core/haptics';
@@ -78,6 +79,16 @@
         return 'var(--color-text-dim)';
     }
   }
+
+  // Exploit offers need a behaviour tag or stat breakdown rendered below the
+  // description. The upgrade payload only carries the def id (see
+  // UpgradeSystem.ts:260-280), so look the def up here — the registry is tiny
+  // and lookup is O(N=7).
+  function getExploitExtra(option: UpgradeOption): string {
+    if (option.type !== 'exploit_new') return '';
+    const def = getExploitById(option.id);
+    return def ? formatBehaviourTag(def) : '';
+  }
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -95,11 +106,14 @@
       <div class="cards-container">
         {#each uiState.upgradeChoices as option, i}
           {@const color = getRarityColor(option.rarity)}
+          {@const isExploit = option.type === 'exploit_new'}
+          {@const exploitExtra = isExploit ? getExploitExtra(option) : ''}
           <!-- svelte-ignore a11y_click_events_have_key_events -->
           <div
             role="button"
             tabindex="0"
             class="upgrade-card glass"
+            class:exploit-card={isExploit}
             class:selected={selectedId === option.id}
             class:dimmed={selectedId !== null && selectedId !== option.id}
             class:key-focused={focusIndex === i && !selectedId}
@@ -110,7 +124,7 @@
             <span class="hotkey-badge">{i + 1}</span>
             <div class="rarity-tag">{option.rarity || 'COMMON'}</div>
 
-            <div class="item-icon">
+            <div class="item-icon" class:exploit-icon={isExploit}>
               {#if option.icon && option.icon.startsWith('<svg')}
                 {@html option.icon}
               {:else if option.icon && option.icon.endsWith('.png')}
@@ -122,10 +136,16 @@
 
             <div class="item-info">
               <h3 class="item-name">{option.name}</h3>
+              {#if isExploit}
+                <div class="kind-tag">EXPLOIT</div>
+              {/if}
               {#if option.nextLevel}
                 <div class="level-step">LV {option.currentLevel} → {option.nextLevel}</div>
               {/if}
               <p class="item-desc">{option.description}</p>
+              {#if isExploit && exploitExtra}
+                <div class="rule-tag">{exploitExtra}</div>
+              {/if}
               {#if uiState.runBanishes > 0 && option.type !== 'health'}
                 <button
                   class="banish-card-btn"
@@ -425,6 +445,46 @@
     .item-info {
       padding-right: 0;
     }
+  }
+
+  .kind-tag {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 0.55rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    color: var(--color-secondary);
+    background: rgba(255, 61, 119, 0.12);
+    border: 1px solid rgba(255, 61, 119, 0.3);
+    border-radius: 3px;
+    padding: 1px 5px;
+    margin-bottom: 0.25rem;
+  }
+
+  .rule-tag {
+    margin-top: 0.4rem;
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: var(--color-secondary);
+    text-transform: uppercase;
+  }
+
+  .upgrade-card.exploit-card {
+    background: linear-gradient(
+      135deg,
+      rgba(255, 61, 119, 0.08) 0%,
+      rgba(170, 102, 255, 0.04) 100%
+    );
+    border-left-color: var(--color-secondary);
+    box-shadow: inset 0 0 0 1px rgba(255, 61, 119, 0.18);
+  }
+
+  .upgrade-card.exploit-card .exploit-icon {
+    background: rgba(255, 61, 119, 0.15);
+    border: 1px solid rgba(255, 61, 119, 0.3);
+    border-radius: 8px;
   }
 
   .banish-card-btn {
