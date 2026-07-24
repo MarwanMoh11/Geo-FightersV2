@@ -193,18 +193,33 @@ export const uiState = $state({
     nodeId: string;
     kind: 'depot' | 'armory' | 'bank' | 'relay' | 'substation' | 'stashden';
     name: string;
+    verb: string; // verb name, e.g. "EXTRACTION"
+    brief: string; // one-line briefing shown on entry
     icon: string;
     color: string;
     security: number; // 0-3
     overclock: boolean;
-    trace: number; // 0..traceMax, climbs during the dive
+    // TRACE IS THE CLOCK: it fills over the verb's time budget, so `trace` and
+    // `secondsLeft` are two views of the same number. `traceFloor` is the
+    // scrub floor — trace can be pushed back by kills, but never below this.
+    trace: number;
     traceMax: number;
-    objectiveText: string; // HUD label for the current verb
+    traceFloor: number;
+    secondsLeft: number;
+    stage: string; // big directive, e.g. "CONTESTED"
+    objectiveText: string; // supporting line, e.g. "Crates 3/6"
+    note: string; // optional third line, e.g. "NEXT PUSH — 35% BUST"
     health: number;
     healthMax: number;
-    progress: number; // generic progress bar (0..progressMax)
+    progress: number; // objective progress bar (0..progressMax)
     progressMax: number;
-    verbStage: string; // short label for the current verb phase (e.g. "CHARGING", "COLLECT")
+    iceCount: number;
+    hurt: number; // >0 while the damage vignette plays
+    banner: string; // centre-screen callout (the arena HUD is hidden mid-dive)
+    bannerSeq: number;
+    // Packed radar frame: [nx, nz, kind, ...] with kind
+    // 0 = objective, 1 = active objective, 2 = exit, 3 = ICE.
+    radar: number[];
   },
   // Brief enter/exit transition overlay (driven by DiveHUD CSS animation)
   diveTransition: null as null | 'enter' | 'exit',

@@ -60,6 +60,8 @@ export interface DiveOutcome {
   traceMax: number;
   elapsed: number;
   verb: BreachKind;
+  /** 0..1 verb-specific payout bonus (the stash den's banked stack). */
+  bonus: number;
 }
 
 interface NodeDef {
@@ -529,8 +531,7 @@ export function resolveBreach(outcome: 'win' | 'fail' | 'abort'): void {
     // completeBreachWin() (grantReward + cooldown + opened=true); on a
     // dive FAIL/abort exit it calls completeBreachFail(). We therefore
     // return early without touching cooldown/reward here.
-    // TODO(chunk3): the dive's verb state machine decides win/fail/abort.
-    enterDive(node, breach.overclock, breach.security);
+    enterDive(node, breach.overclock, breach.security, sceneRef);
     return;
   } else if (outcome === 'fail') {
     node.cooldown = COOLDOWN_FAIL;
@@ -545,14 +546,17 @@ export function resolveBreach(outcome: 'win' | 'fail' | 'abort'): void {
 }
 
 /**
- * Compute a 0..1 quality score from the dive outcome. Closer to 1 = cleaner
- * and faster clear. Used to scale loot quantities and gate rootkit grants.
+ * Compute a 0..1 quality score from the dive outcome. Closer to 1 = a cleaner
+ * clear. Used to scale loot quantities and gate rootkit grants.
+ *
+ * Trace is the dive's only clock, so `1 - trace/traceMax` already IS "how much
+ * of the budget you had left" — there is no separate elapsed-time term to add
+ * (the old version double-counted, penalising slow clears twice, and the
+ * penalty was calibrated against a 30s target that no verb could hit).
  */
 function computeDiveQuality(outcome: DiveOutcome): number {
-  const TARGET_TIME = 30;
-  const traceRatio = 1 - outcome.trace / outcome.traceMax;
-  const timePenalty = (Math.max(0, outcome.elapsed - TARGET_TIME) / TARGET_TIME) * 0.25;
-  return clamp01(0.5 + traceRatio * 0.5 - timePenalty + (outcome.overclock ? 0.1 : 0));
+  const headroom = 1 - outcome.trace / outcome.traceMax;
+  return clamp01(0.35 + headroom * 0.55 + outcome.bonus * 0.2 + (outcome.overclock ? 0.1 : 0));
 }
 
 /**
@@ -573,7 +577,7 @@ export function completeBreachWin(node: BreachNode, outcome: DiveOutcome): void 
     announce('BREACHED — ' + node.name);
   }
 
-  grantReward(node, outcome.overclock, quality);
+  grantReward(node, outcome.overclock, quality, outcome.bonus);
 
   // Rootkit grant: fire-and-forget async. Never awaited, never throws.
   // Skeleton-key bypassed wins skip this entirely (useSkeletonKey calls
@@ -583,26 +587,28 @@ export function completeBreachWin(node: BreachNode, outcome: DiveOutcome): void 
     try {
       const mod = await getExploitModule();
       if (!mod?.tryGrantRootkit) return;
-      // ROOTKIT GATE — deliberately very hard. Exploits are the only reward
-      // gated this tightly, and this is their ONLY source in the whole game.
-      // Every clause has to hold on the same dive:
-      //   • security >= 3   → only reachable after ~5.5min (late-game only)
-      //   • trace <= 35%    → a clean, low-detection clear
+      // ROOTKIT GATE — hard, but reachable. This is the ONLY source of
+      // exploits in the whole game, so an unreachable gate means the build
+      // system silently loses an entire mechanic.
+      //   • security >= 2   → mid-run onward (~2.5min+)
+      //   • trace <= 60%    → finished with real budget left over, which now
+      //                       means scrubbing trace by clearing ICE, not just
+      //                       walking fast
       //   • bank/armory/stashden → the three high-value "vault" buildings
       //   • overclock       → the player opted into the harder breach (Q)
-      //   • quality >= 0.7  → fast + clean per computeDiveQuality
-      // Note: first-breach is intentionally NOT required. It used to be, but
-      // (a) it read node.opened AFTER the await, when it was already true, so
-      // the grant never fired, and (b) requiring it made rootkits silently
-      // MISSABLE — breach a vault early and you'd lose the chance forever.
-      // Exploit slots already hard-cap the total at 3 (tryGrantRootkit returns
-      // false when full), so re-hackable vaults can't be farmed for more.
+      //
+      // The previous gate required security 3 AND trace <= 35%. Under the old
+      // trace curve, security-3 trace filled in 10-17 SECONDS depending on the
+      // building, so 35% was 4-6 seconds — less time than any verb's objective
+      // physically took. The gate could never fire once, for anyone.
+      // First-breach is intentionally NOT required: exploit slots already
+      // hard-cap the total at 3 (tryGrantRootkit returns false when full), so
+      // re-hackable vaults can't be farmed for more.
       if (
-        outcome.security >= 3 &&
-        outcome.trace <= outcome.traceMax * 0.35 &&
+        outcome.security >= 2 &&
+        outcome.trace <= outcome.traceMax * 0.6 &&
         (node.kind === 'bank' || node.kind === 'armory' || node.kind === 'stashden') &&
-        outcome.overclock &&
-        quality >= 0.7
+        outcome.overclock
       ) {
         const player = world.with('isLocalPlayer', 'position').first;
         if (player && mod.tryGrantRootkit(player, node.kind, outcome.overclock)) {
@@ -669,7 +675,12 @@ function scaleQty(base: number, quality: number): number {
   return Math.max(1, Math.round(base * (0.6 + quality)));
 }
 
-function grantReward(node: BreachNode, overclock: boolean, quality: number = 0.5): void {
+function grantReward(
+  node: BreachNode,
+  overclock: boolean,
+  quality: number = 0.5,
+  bonus: number = 0,
+): void {
   const scene = sceneRef;
   const player = world.with('isLocalPlayer', 'position').first;
   if (!scene || !player) return;
@@ -711,8 +722,7 @@ function grantReward(node: BreachNode, overclock: boolean, quality: number = 0.5
         );
       } else {
         // Everything maxed — the armory pays out in kind instead
-        const rarity: 'epic' = quality >= 0.85 ? 'epic' : 'epic';
-        spawnChest(scene, dropX, dropZ, rarity);
+        spawnChest(scene, dropX, dropZ, 'epic');
         announce('ARMORY: ARSENAL MAXED — VAULT CHEST RELEASED');
       }
       break;
@@ -745,11 +755,16 @@ function grantReward(node: BreachNode, overclock: boolean, quality: number = 0.5
         announce('SCAVENGER CHIP ACQUIRED — SLUMS EXCLUSIVE');
         playLevelUp();
       } else {
-        const stashRarity: 'epic' = quality >= 0.85 ? 'epic' : 'epic';
-        spawnChest(scene, dropX, dropZ, stashRarity);
+        spawnChest(scene, dropX, dropZ, 'epic');
         announce('STASH DEN LOOTED');
       }
-      const credits = scaleQty(overclock ? 16 : 8, quality);
+      // The banked stack is the whole point of the gamble verb — a deep stack
+      // pays a second chest on top of the scaled credit shower.
+      if (bonus >= 0.66) {
+        spawnChest(scene, dropX + 2.5, dropZ + 2.5, 'epic');
+        announce('DEEP STACK BANKED — DOUBLE PAYOUT');
+      }
+      const credits = scaleQty(Math.round((overclock ? 16 : 8) * (1 + bonus)), quality);
       for (let i = 0; i < credits; i++) {
         const a = (i / credits) * Math.PI * 2;
         spawnCredit(scene, dropX + Math.cos(a) * 2.6, dropZ + Math.sin(a) * 2.6, 4);
