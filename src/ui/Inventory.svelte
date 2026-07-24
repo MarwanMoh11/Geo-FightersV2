@@ -2,14 +2,26 @@
   import { uiState } from '../core/UIState.svelte.ts';
   import { WEAPONS } from '../core/WeaponRegistry';
   import { PASSIVES } from '../core/PassiveRegistry';
+  import { formatBehaviourTag, type ExploitDef } from '../core/ExploitRegistry';
   import { getWeaponIcon, getPassiveIcon } from './icons';
 
   let weapons = $derived(uiState.weaponSlots);
   let passives = $derived(uiState.passiveSlots);
+  // 3 fixed slots (null = empty) so the player can always see the limit and
+  // which slots are open, not just the ones currently filled.
+  let exploitSlots = $derived<(ExploitDef | null)[]>(
+    Array.from({ length: 3 }, (_, i) => uiState.exploitSlots?.[i] ?? null),
+  );
 
   function getName(id: string, type: 'weapon' | 'passive') {
     if (type === 'weapon') return WEAPONS[id]?.name || id;
     return PASSIVES[id]?.name || id;
+  }
+
+  function getRarityColor(rarity: 'rare' | 'epic' | undefined): string {
+    if (rarity === 'epic') return 'var(--color-secondary)';
+    if (rarity === 'rare') return 'var(--color-primary)';
+    return 'var(--color-text-dim)';
   }
 </script>
 
@@ -56,6 +68,30 @@
           {/if}
         </div>
         <span class="lvl tnum">{slot.level}</span>
+      </div>
+    {/each}
+
+    {#if exploitSlots.length > 0}
+      <div class="row-break"></div>
+      <div class="group-label">EXPLOITS</div>
+    {/if}
+
+    {#each exploitSlots as def}
+      {@const tag = def ? formatBehaviourTag(def) : ''}
+      {@const color = def ? getRarityColor(def.rarity) : 'var(--color-text-dim)'}
+      <div
+        class="slot exploit"
+        class:empty={!def}
+        title={def ? (tag ? `${def.name} — ${tag}` : def.name) : 'Empty exploit slot'}
+        style="--rarity-color: {color};"
+      >
+        <div class="art">
+          {#if def}
+            <div class="icon-emoji">{def.icon}</div>
+          {:else}
+            <div class="empty-mark">—</div>
+          {/if}
+        </div>
       </div>
     {/each}
   </div>
@@ -137,6 +173,24 @@
   .passive .art {
     background: rgba(56, 245, 168, 0.1);
   }
+  .exploit .art {
+    background: rgba(255, 61, 119, 0.12);
+    border: 1px solid var(--rarity-color, rgba(255, 61, 119, 0.35));
+  }
+  /* Empty placeholder: drop the tinted fill, switch to a dashed dim border so
+     the gap reads as "open" instead of "missing". */
+  .exploit.empty .art {
+    background: transparent;
+    border-style: dashed;
+    border-color: var(--color-text-dim);
+    opacity: 0.6;
+  }
+  .empty-mark {
+    font-size: 1.1rem;
+    font-weight: 300;
+    line-height: 1;
+    color: var(--color-text-dim);
+  }
 
   .art :global(svg) {
     width: 22px;
@@ -185,6 +239,26 @@
   .passive .lvl {
     background: var(--color-accent);
   }
+  .exploit .lvl {
+    background: var(--color-secondary);
+  }
+
+  /* Inline label that sits between rows (EXPLOITS heading). The pill style
+     keeps it aligned to the slot bar's vertical centre without competing
+     with the icon tiles for visual weight. */
+  .group-label {
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: 0.52rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    color: var(--color-secondary);
+    padding: 0 0.4rem;
+    align-self: center;
+    height: 18px;
+    line-height: 18px;
+    border-left: 1px solid rgba(255, 61, 119, 0.35);
+  }
 
   /* Phones: smaller still so a full kit fits in 1–2 tidy rows without ever
      needing to scroll or bleeding off the edges. */
@@ -201,6 +275,9 @@
       height: 19px;
     }
     .icon-emoji {
+      font-size: 0.95rem;
+    }
+    .empty-mark {
       font-size: 0.95rem;
     }
     .lvl {

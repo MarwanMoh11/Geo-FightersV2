@@ -14,6 +14,7 @@ import { uiState } from '../core/UIState.svelte.ts';
 import { broadcastShoot } from '../core/network';
 import { WEAPONS, getWeaponStatsAtLevel } from '../core/WeaponRegistry';
 import { createCustomProjectileMesh, updateProjectileVisual } from '../core/projectileVisuals';
+import { getActiveExploitBehaviours } from '../core/ExploitRegistry';
 
 const muzzleGeo = new THREE.SphereGeometry(0.4, 8, 8);
 const muzzleMaterials = new Map<number, THREE.MeshBasicMaterial>();
@@ -46,9 +47,24 @@ const _weaponPlayers: any[] = [];
  * @param {THREE.Scene} scene - the Three.js scene to add projectiles to
  */
 export function WeaponSystem(dt: number, scene: THREE.Scene) {
+  // 0. STAT-CAP OVERFLOW CONVERSION: fold accumulated credits into stats once per frame.
+  for (const p of world.with('isLocalPlayer', 'stats', 'overflowAccumulator')) {
+    const acc = p.overflowAccumulator;
+    if (acc && p.stats) {
+      if (acc.might) { p.stats.might += acc.might; acc.might = 0; }
+      if (acc.cooldown) { p.stats.cooldown += acc.cooldown; acc.cooldown = 0; }
+      if (acc.area) { p.stats.area += acc.area; acc.area = 0; }
+      if (acc.amount) { p.stats.amount += acc.amount; acc.amount = 0; }
+    }
+  }
+
   // 1. PROJECTILE VISUALS & ANIMATIONS
   for (const p of world.with('isProjectile', 'transform', 'projectile')) {
     updateProjectileVisual(p, dt, scene);
+    if (!p.projectile) continue;
+    if (p.projectile.procEvery && p.projectile.procEvery > 0) {
+      p.projectile.procTimer = (p.projectile.procTimer || 0) + dt;
+    }
   }
 
   // 2. PLAYER WEAPONS
@@ -88,6 +104,14 @@ export function WeaponSystem(dt: number, scene: THREE.Scene) {
       if (uiState.insideOverclockZone && player.isLocalPlayer) {
         tickDt *= 2.0;
       }
+      // Cypher Reboot Surge: weapons tick 2× during overload
+      if (
+        uiState.overloadActive &&
+        uiState.selectedCharacter === 'cypher' &&
+        player.isLocalPlayer
+      ) {
+        tickDt *= 2.0;
+      }
       // Map 1 Pulse Shrine: weapons tick 1.5x for the buff window
       if (uiState.shrineFireTimer > 0 && player.isLocalPlayer) {
         tickDt *= 1.5;
@@ -110,7 +134,7 @@ export function WeaponSystem(dt: number, scene: THREE.Scene) {
         }
         // Apply the player's Cooldown stat (Clock Skipper / debug_suite passives,
         // Ghost's CDR quirk) — shorter base cooldown between shots.
-        const cdMult = getEffectiveCooldown(player.stats || getDefaultStats());
+        const cdMult = getEffectiveCooldown(player.stats || getDefaultStats(), player.overflowAccumulator);
         entity.weapon.cooldownTimer = entity.weapon.fireRate * cdMult;
 
         // If local player in multiplayer, broadcast shoot event to other clients
@@ -208,12 +232,12 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
 
   // Spawn Projectiles - Apply global stats
   const baseCount = weaponStats.bulletCount || 1;
-  const count = getEffectiveAmount(baseCount, playerStats);
+  const count = getEffectiveAmount(baseCount, playerStats, owner.overflowAccumulator);
   const spread = weaponStats.bulletSpread || 0;
 
   // Apply might multiplier to damage
   const baseDamage = weaponStats.damage || 1;
-  const finalDamage = getEffectiveDamage(baseDamage, playerStats);
+  const finalDamage = getEffectiveDamage(baseDamage, playerStats, owner.overflowAccumulator);
 
   let finalSpeed = weaponStats.bulletSpeed * playerStats.projectileSpeed;
   if (uiState.insideOverclockZone && owner.isLocalPlayer) {
@@ -225,12 +249,15 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
   // Apply Area stat (Capacitor / Targeting OS passives, Nova's +25% quirk) to
   // hitbox size + blast radius, and Duration stat (Cooling System / Optics
   // Suite) to how long projectiles live. Both were previously never read.
-  const areaMult = getEffectiveArea(1, playerStats);
+  const areaMult = getEffectiveArea(1, playerStats, owner.overflowAccumulator);
   const durationMult = playerStats.duration || 1.0;
   const finalWidth = (weaponStats.bulletWidth || 0.2) * areaMult;
   const finalLength = (weaponStats.bulletLength || 1.0) * areaMult;
   const finalExplodeRadius = (weaponStats.bulletExplodeRadius || 0) * areaMult;
   const finalLifetime = (weaponStats.bulletLifetime || 1.0) * durationMult;
+
+  // Exploit behaviours: aggregate equipped exploit slots into projectile mods
+  const behaviours = getActiveExploitBehaviours(owner.exploitSlots ?? []);
 
   // ORBITAL WEAPONS: Spawn orbiting projectiles instead of regular projectiles
   if (weaponStats.category === 'orbit') {
@@ -299,6 +326,18 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
         spinSpeed: spin,
         // Signal Hijacker: 0 damage + AoE = confusion weapon (3 second duration)
         confusionDuration: finalDamage === 0 && finalExplodeRadius > 0 ? 3.0 : 0,
+        // exploit-driven mods
+        ricochetLeft: behaviours.ricochet?.bounces ?? 0,
+        ricochetDamageMult: behaviours.ricochet?.damageMult ?? 1,
+        chainLeft: behaviours.chain?.chains ?? 0,
+        chainRange: behaviours.chain?.range ?? 8,
+        poolOnKill: behaviours.poolOnKill?.dps ?? 0,
+        poolRadius: behaviours.poolOnKill?.radius ?? 3,
+        poolDuration: behaviours.poolOnKill?.duration ?? 2,
+        procEvery: behaviours.critProc?.every ?? behaviours.pierceProc?.every ?? 0,
+        procTimer: 0,
+        critProc: !!behaviours.critProc,
+        pierceProcOnProc: !!behaviours.pierceProc,
       },
     });
   }
@@ -405,6 +444,18 @@ export function fireWeaponRemote(
         knockback: mockWeapon.weapon.knockback || 5,
         hitList: [],
         spinSpeed: 0,
+        // TODO(@grunt): sync exploit slots over network
+        ricochetLeft: 0,
+        ricochetDamageMult: 1,
+        chainLeft: 0,
+        chainRange: 8,
+        poolOnKill: 0,
+        poolRadius: 3,
+        poolDuration: 2,
+        procEvery: 0,
+        procTimer: 0,
+        critProc: false,
+        pierceProcOnProc: false,
       },
     });
   }

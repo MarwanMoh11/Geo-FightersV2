@@ -85,44 +85,79 @@ export function getDefaultStats(): PlayerStats {
 
 // --- STAT APPLICATION HELPERS ---
 
+// --- STAT CAP OVERFLOW TYPE ---
+type OverflowAcc = Partial<Record<'cooldown' | 'might' | 'area' | 'amount', number>>;
+
 /**
- * Calculate effective cooldown multiplier with hard cap
+ * Calculate effective cooldown multiplier with hard cap.
+ * Excess cooldown (beyond the 0.7 internal cap) converts to a might credit.
  */
-export function getEffectiveCooldown(stats: PlayerStats): number {
-  // cooldown stat is reduction (0.5 = 50% faster)
-  // result is multiplier (0.5 = half the time)
-  const mult = 1.0 - Math.min(stats.cooldown, 0.7);
+export function getEffectiveCooldown(stats: PlayerStats, overflowAccumulator?: OverflowAcc): number {
+  const acc = overflowAccumulator ?? {};
+  const cooldownBonus = acc.cooldown || 0;
+  const total = stats.cooldown + cooldownBonus;
+  const capped = Math.min(total, 0.7);
+  const over = total - capped;
+  if (over > 0) {
+    acc.might = (acc.might || 0) + over * 0.5;
+  }
+  const mult = 1.0 - capped;
   return Math.max(STAT_CAPS.MIN_COOLDOWN_MULT, mult);
 }
 
 /**
- * Calculate effective damage with might multiplier
+ * Calculate effective damage with might multiplier.
+ * Excess might converts to a cooldown credit.
  */
-export function getEffectiveDamage(baseDamage: number, stats: PlayerStats): number {
-  const might = Math.min(stats.might, STAT_CAPS.MAX_MIGHT);
-  return Math.floor(baseDamage * might);
+export function getEffectiveDamage(baseDamage: number, stats: PlayerStats, overflowAccumulator?: OverflowAcc): number {
+  const acc = overflowAccumulator ?? {};
+  const mightBonus = acc.might || 0;
+  const total = stats.might + mightBonus;
+  const capped = Math.min(total, STAT_CAPS.MAX_MIGHT);
+  const over = total - capped;
+  if (over > 0) {
+    acc.cooldown = (acc.cooldown || 0) + over * 0.1;
+  }
+  return Math.floor(baseDamage * capped);
 }
 
 /**
- * Calculate effective area with cap
+ * Calculate effective area with cap.
+ * Excess area converts to an amount credit.
  */
-export function getEffectiveArea(baseArea: number, stats: PlayerStats): number {
-  const areaMult = Math.min(stats.area, STAT_CAPS.MAX_AREA);
-  return baseArea * areaMult;
+export function getEffectiveArea(baseArea: number, stats: PlayerStats, overflowAccumulator?: OverflowAcc): number {
+  const acc = overflowAccumulator ?? {};
+  const areaBonus = acc.area || 0;
+  const total = stats.area + areaBonus;
+  const capped = Math.min(total, STAT_CAPS.MAX_AREA);
+  const over = total - capped;
+  if (over > 0) {
+    acc.amount = (acc.amount || 0) + Math.floor(over / 0.5);
+  }
+  return baseArea * capped;
 }
 
 /**
- * Calculate effective projectile count
+ * Calculate effective projectile count.
+ * Excess amount converts to an area credit.
  */
-export function getEffectiveAmount(baseCount: number, stats: PlayerStats): number {
-  const extra = Math.min(stats.amount, STAT_CAPS.MAX_AMOUNT);
-  return baseCount + extra;
+export function getEffectiveAmount(baseCount: number, stats: PlayerStats, overflowAccumulator?: OverflowAcc): number {
+  const acc = overflowAccumulator ?? {};
+  const amtBonus = acc.amount || 0;
+  const total = stats.amount + amtBonus;
+  const capped = Math.min(total, STAT_CAPS.MAX_AMOUNT);
+  const over = total - capped;
+  if (over > 0) {
+    acc.area = (acc.area || 0) + over * 0.2;
+  }
+  return baseCount + capped;
 }
 
 /**
- * Calculate damage after armor reduction
+ * Calculate damage after armor reduction.
  */
-export function getDamageAfterArmor(incomingDamage: number, stats: PlayerStats): number {
+export function getDamageAfterArmor(incomingDamage: number, stats: PlayerStats, _overflowAccumulator?: OverflowAcc): number {
+  // TODO(@algo): armor overflow doesn't have a clean target
   const reduced = incomingDamage - stats.armor;
   return Math.max(STAT_CAPS.MIN_DAMAGE_AFTER_ARMOR, reduced);
 }
