@@ -71,6 +71,7 @@ import { DestructibleSystem } from './systems/DestructibleSystem';
 import { PickupSystem } from './systems/PickupSystem';
 import { MapEventSystem } from './systems/MapEventSystem';
 import { BreachSystem } from './systems/BreachSystem';
+import { BreachDiveSystem } from './systems/BreachDiveSystem';
 import { ClientCombatFxSystem } from './systems/ClientCombatFxSystem';
 
 // --- GAME-LOOP ERROR RESILIENCE ---
@@ -358,13 +359,30 @@ function startGameLoop(
       updateDynamicResolution(rawDt);
     }
 
+    // --- BREACH DIVE (scene-transition spine, chunk2) ---
+    // While a dive is active, the dive system owns the frame: it ticks the
+    // dive sub-scene and renders it itself (bypassing renderFrame/bloom), so
+    // none of the arena systems below run. Placed BEFORE shouldRunGame so the
+    // dive runs even if other modal flags (e.g. showVictoryChoice) are set,
+    // and so we never render the arena scene while a dive is showing.
+    if (uiState.dive) {
+      try {
+        BreachDiveSystem(dt, scene, camera, renderer);
+      } catch (e) {
+        logLoopError(e);
+      }
+      return;
+    }
+
     const isMultiplayer = uiState.isMultiplayer;
 
     // Check if game should run (not in menu, not paused by upgrade modal, not game over)
     let shouldRunGame = false;
     if (isMultiplayer) {
       shouldRunGame =
-        (uiState.gameState === 'PLAYING' || uiState.gameState === 'PAUSED') && !isGameOver;
+        (uiState.gameState === 'PLAYING' || uiState.gameState === 'PAUSED') &&
+        !isGameOver &&
+        !uiState.dive;
     } else {
       shouldRunGame =
         isPlaying() &&
@@ -373,7 +391,8 @@ function startGameLoop(
         !uiState.showVictoryChoice &&
         !uiState.showChestCeremony &&
         !uiState.showProtocolChoice &&
-        !uiState.showSecondChance;
+        !uiState.showSecondChance &&
+        !uiState.dive;
     }
 
     if (!shouldRunGame) {
