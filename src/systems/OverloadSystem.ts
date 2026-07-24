@@ -17,6 +17,7 @@
 
 import { world } from '../core/world';
 import { uiState, announce } from '../core/UIState.svelte.ts';
+import { getCharacter } from '../core/CharacterRegistry';
 import * as THREE from 'three';
 import { addTrauma } from './CameraSystem';
 import { playExplosion, playCollect } from '../core/audio';
@@ -249,6 +250,10 @@ export function OverloadSystem(dt: number, scene: THREE.Scene) {
         break;
       }
     }
+    const activeChar = getCharacter(uiState.selectedCharacter);
+    if (activeChar?.mechanic?.onOverloadActivate) {
+      activeChar.mechanic.onOverloadActivate({ player, scene, dt });
+    }
   }
 
   // 2. Continuous updates while active
@@ -259,6 +264,10 @@ export function OverloadSystem(dt: number, scene: THREE.Scene) {
       uiState.overloadActive = false;
       deactivateOverload(scene, player);
     } else {
+      const activeChar = getCharacter(uiState.selectedCharacter);
+      if (activeChar?.mechanic?.onOverloadTick) {
+        activeChar.mechanic.onOverloadTick({ player, scene, dt });
+      }
       switch (char) {
         case 'rail': {
           if (railBubbleMesh) {

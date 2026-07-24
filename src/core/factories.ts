@@ -123,6 +123,8 @@ export function spawnPlayer(
     weaponSlots: [{ weaponId: 'pulse_repeater', level: 1 }],
     passiveSlots: [],
     stats: getDefaultStats(),
+    exploitSlots: [null, null, null],
+    overflowAccumulator: {},
   });
 
   // 1b. CREATE RAPIER RIGID BODY for player (only if local player)

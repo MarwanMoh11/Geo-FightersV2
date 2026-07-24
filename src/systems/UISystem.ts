@@ -9,6 +9,7 @@ import { isGameOver as _isGameOverGlobal } from './GameManager';
 // when a weapon/passive is actually gained or leveled
 let _lastWeaponSig = '';
 let _lastPassiveSig = '';
+let _lastExploitSig = '';
 
 /**
  * Per-frame UI sync: read the local player's stats and inventory, then push
@@ -46,7 +47,10 @@ export function UISystem() {
   tickCombo();
 
   // Safety Check for player
-  if (!player || !player.health) return;
+  if (!player || !player.health) {
+    if (typeof console !== 'undefined') console.log('[UISystemDBG] no player');
+    return;
+  }
 
   // 3. Sync Player Stats
   uiState.health.current = player.health.current;
@@ -74,6 +78,14 @@ export function UISystem() {
   if (passiveSig !== _lastPassiveSig) {
     _lastPassiveSig = passiveSig;
     uiState.passiveSlots = [...passiveSlots];
+  }
+
+  const exploitSlots = (player.exploitSlots || []).map((s) => s ?? null);
+  let exploitSig = '';
+  for (const s of exploitSlots) exploitSig += `${s ? s.id : '_'};`;
+  if (exploitSig !== _lastExploitSig) {
+    _lastExploitSig = exploitSig;
+    uiState.exploitSlots = [...exploitSlots];
   }
 
   // 4b. Weapon readiness (0 = just fired, 1 = ready) for cooldown sweeps.

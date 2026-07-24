@@ -1,4 +1,5 @@
 import type { WeaponSlot, PassiveSlot } from './world';
+import type { ExploitDef } from './ExploitRegistry';
 import type { UpgradeOption } from '../systems/UpgradeSystem';
 import { CORRUPTION_DEFAULT } from './corruption';
 
@@ -77,6 +78,7 @@ export const uiState = $state({
   // Inventory
   weaponSlots: [] as WeaponSlot[],
   passiveSlots: [] as PassiveSlot[],
+  exploitSlots: [] as (ExploitDef | null)[],
   // Weapon readiness (0 = just fired, 1 = ready), parallel to weaponSlots
   weaponReadiness: [] as number[],
 

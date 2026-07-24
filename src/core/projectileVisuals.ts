@@ -434,6 +434,22 @@ export function createCustomProjectileMesh(
       break;
     }
 
+    case 'flux_echo': {
+      // Echo projectiles from flux's chaos surge: bright core + thin outer
+      // ring so they read as distinct from the player's normal bullets.
+      const core = new THREE.Mesh(sphereGeo, glowMat);
+      core.scale.setScalar(width * 1.6);
+      group.add(core);
+
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(width * 1.1, width * 0.18, 4, 16),
+        wireMat,
+      );
+      ring.name = 'flux_ring';
+      group.add(ring);
+      break;
+    }
+
     case 'memory_leak': {
       // Fragmented data cube
       const coreCube = new THREE.Mesh(boxGeo, glowMat);
@@ -603,6 +619,15 @@ export function updateProjectileVisual(projectile: any, dt: number, scene: THREE
       const accretion = cache['accretion_disk'];
       if (accretion) {
         accretion.rotation.z += 12 * dt;
+      }
+      break;
+    }
+
+    case 'flux_echo': {
+      const ring = cache['flux_ring'];
+      if (ring) {
+        ring.rotation.x += 8 * dt;
+        ring.rotation.y += 12 * dt;
       }
       break;
     }
