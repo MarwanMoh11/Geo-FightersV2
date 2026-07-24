@@ -24,8 +24,15 @@
 
 <div class="game-ui">
   <MainMenu />
-  <HUD />
-  <Inventory />
+  <!-- The dive is a self-contained sub-scene with its own HUD. The arena
+       overlays (run timer, XP bar, combo, weapon rack, wayfinding) describe a
+       world that is frozen off-screen, so leaving them mounted stacked two
+       unrelated HUDs on top of each other. MobileControls stays: the dive
+       reads the same virtual joystick. -->
+  {#if !uiState.dive}
+    <HUD />
+    <Inventory />
+  {/if}
   <MobileControls />
 
   <!-- Phase 1.96 JACK IN: mounted per-breach so the mini-game captures its
