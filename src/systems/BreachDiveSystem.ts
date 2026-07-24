@@ -36,8 +36,13 @@ import { world, type Entity } from '../core/world';
 import { partySpawnMultiplier } from '../core/difficulty';
 import { getCurrentLevel } from '../core/LevelData';
 
-// Minimal structural type for the raw renderer
-type DiveRenderer = { render: (scene: THREE.Scene, camera: THREE.Camera) => void };
+// Minimal structural type for the raw renderer. `setRenderTarget` is optional
+// because the WebGL and WebGPU renderers both expose it, but the dive only
+// needs the two calls and shouldn't depend on the full renderer type.
+type DiveRenderer = {
+  render: (scene: THREE.Scene, camera: THREE.Camera) => void;
+  setRenderTarget?: (target: unknown | null) => void;
+};
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -102,6 +107,13 @@ let diveElapsed = 0;
 // Arena scene ref — stored so exitDive (called from key handler) can spawn ambush
 let arenaSceneRef: THREE.Scene | null = null;
 let keysBound = false;
+
+// Player reparent state: the local player's `transform` (its visible mesh group)
+// normally lives in the arena scene graph. We reparent it into the dive scene
+// on enter so the player is visible during the dive, and move it back on exit.
+// We also stash the arena-space position and reset to the dive origin (0,0).
+let playerTransformParent: THREE.Object3D | null = null;
+let stashedPlayerPosition: THREE.Vector3 | null = null;
 
 // Per-ICE ghost mesh: keyed by entity reference (not id, because network
 // sync overwrites the id). The mesh itself is added to `diveMeshes` so
@@ -495,6 +507,9 @@ function movePlayerInDive(dt: number): THREE.Vector3 | null {
       entity.position.z *= scale;
     }
     entity.position.y = 0.5;
+    // RenderSystem (which normally copies entity.position → transform.position)
+    // is frozen during the dive, so sync the visible mesh here too.
+    if (entity.transform) entity.transform.position.copy(entity.position);
     return entity.position;
   }
   return null;
@@ -714,6 +729,21 @@ export function enterDive(node: BreachNode, overclock: boolean, security: number
   const iceCount = security * 3 + 2;
   spawnICEWave(iceCount, security);
 
+  // Reparent the local player's transform (its mesh group) from the arena
+  // scene into the dive scene so the player is visible while diving. Stash
+  // the arena-space position to restore on exit; reset to the dive origin.
+  {
+    const player = world.with('isLocalPlayer', 'position', 'transform').first;
+    if (player?.transform && player.position) {
+      playerTransformParent = player.transform.parent;
+      stashedPlayerPosition = player.position.clone();
+      if (playerTransformParent) playerTransformParent.remove(player.transform);
+      diveScene.add(player.transform);
+      player.transform.position.set(0, 0.5, 0);
+      player.position.set(0, 0.5, 0);
+    }
+  }
+
   resetVirtualJoystick();
   haptics.select();
   announce('DIVE INITIATED');
@@ -840,6 +870,15 @@ export function BreachDiveSystem(
   setDiveCamera(camera, playerPos);
 
   // --- Render ---
+  // The arena's bloom pipeline (EffectComposer on WebGL2, node PostProcessing
+  // on WebGPU) leaves an offscreen render target bound after its last frame.
+  // On the WebGPU backend that stale target is NOT the screen, so a raw
+  // renderer.render(diveScene) draws into it and the canvas keeps showing the
+  // frozen last arena frame — the dive looks empty ("no enemies, nothing").
+  // WebGL2's composer happens to leave the screen target bound, which is why
+  // the dive rendered there but not under WebGPU. Force the screen target
+  // before drawing so the dive presents on every backend.
+  renderer.setRenderTarget?.(null);
   renderer.render(diveScene, camera);
 }
 
@@ -921,6 +960,29 @@ function teardownDiveScene(): void {
   for (const ice of [...world.with('isEnemy', 'isICE')]) {
     world.remove(ice);
   }
+
+  // Reparent the local player's transform back to the arena scene graph (it
+  // was moved into the dive scene on enter). Restore the stashed arena-space
+  // position so the fighter reappears where it left off. Do this BEFORE
+  // disposing the dive scene so the player's mesh isn't orphaned.
+  if (playerTransformParent) {
+    const player = world.with('isLocalPlayer', 'position', 'transform').first;
+    if (player?.transform) {
+      if (diveScene) diveScene.remove(player.transform);
+      playerTransformParent.add(player.transform);
+      if (stashedPlayerPosition) {
+        player.position.copy(stashedPlayerPosition);
+        player.transform.position.copy(stashedPlayerPosition);
+        stashedPlayerPosition = null;
+        // Re-sync the rigidBody too (PhysicsSystem owns it on the next arena tick).
+        player.rigidBody?.setTranslation(
+          { x: player.position.x, y: 0.5, z: player.position.z },
+          true,
+        );
+      }
+    }
+  }
+  playerTransformParent = null;
 
   if (diveScene) {
     disposeDiveScene(diveScene, diveMeshes);
