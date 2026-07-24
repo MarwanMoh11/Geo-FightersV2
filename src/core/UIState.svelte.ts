@@ -176,6 +176,7 @@ export const uiState = $state({
     color: string;
     security: number;
     hasKey: boolean;
+    opened?: boolean; // true when the node has been permanently breached
   },
   // Co-op defend-the-hacker meter (1 = intact; solo never drains)
   breachShield: 1,
@@ -203,6 +204,8 @@ export const uiState = $state({
     progressMax: number;
     verbStage: string; // short label for the current verb phase (e.g. "CHARGING", "COLLECT")
   },
+  // Brief enter/exit transition overlay (driven by DiveHUD CSS animation)
+  diveTransition: null as null | 'enter' | 'exit',
   // NEON SURGE event: double XP inside this district rect while it ticks
   neonSurge: null as {
     name: string;
