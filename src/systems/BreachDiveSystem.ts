@@ -130,6 +130,31 @@ const iceMeshes: WeakMap<Entity, THREE.Object3D> = new WeakMap();
 // a plain array sidesteps the reactivity gap entirely.
 let iceEntities: Entity[] = [];
 
+// --- Dive-local combat ---
+// The arena's WeaponSystem/CollisionSystem are frozen during a dive, so the
+// dive owns its own auto-fire: the player targets the nearest ICE and lobs
+// dive-local projectiles at it. These are plain THREE meshes + a light struct
+// array (same pattern as the ICE ghost meshes), never touching the arena world
+// beyond reading the player's `stats.might` for damage scaling.
+interface DiveProjectile {
+  mesh: THREE.Object3D;
+  x: number;
+  z: number;
+  vx: number;
+  vz: number;
+  life: number;
+  dmg: number;
+}
+let diveProjectiles: DiveProjectile[] = [];
+let playerFireCooldown = 0;
+
+const DIVE_FIRE_INTERVAL = 0.26; // seconds between shots
+const DIVE_BASE_DAMAGE = 24; // scaled by player might
+const DIVE_PROJECTILE_SPEED = 34; // units/s
+const DIVE_PROJECTILE_LIFE = 1.3; // seconds before despawn
+const DIVE_PROJECTILE_HIT_DIST = 1.0; // hit radius against ICE
+const DIVE_AIM_RANGE = 30; // won't fire at ICE beyond this
+
 // Per-verb state machine (discriminated union)
 type DiveVerbData =
   | {
@@ -265,7 +290,16 @@ function initVerbState(kind: string, security: number): DiveVerbData {
       };
     }
     case 'relay': {
-      return { verb: 'evasion', timer: 0, timerMax };
+      // Evasion is a pure race against the trace meter, so the survive timer
+      // MUST expire before trace maxes out — otherwise the universal trace
+      // backstop ejects you before the timer can ever finish. It used to take
+      // the shared TIMER_BASE (15 + 5/security) against a relay trace rate of
+      // 8 + 2/security, which caps trace in 7.1-12.5s: relay was unwinnable at
+      // EVERY security level. Derive the timer from the real trace rate (win at
+      // ~75% trace) and let ICE density carry the difficulty instead — relay
+      // already spawns 3 + security reinforcements per wave.
+      const rate = getTraceRate('relay', security, null);
+      return { verb: 'evasion', timer: 0, timerMax: (TRACE_MAX / rate) * 0.75 };
     }
     case 'depot': {
       const needed = 5 + security * 2;
@@ -534,6 +568,166 @@ function movePlayerInDive(dt: number): THREE.Vector3 | null {
     return entity.position;
   }
   return null;
+}
+
+/** Nearest ICE to (px,pz) within DIVE_AIM_RANGE, or null. */
+function findNearestICE(px: number, pz: number): Entity | null {
+  let best: Entity | null = null;
+  let bestSq = DIVE_AIM_RANGE * DIVE_AIM_RANGE;
+  for (const ice of iceEntities) {
+    if (!ice.position) continue;
+    const dx = ice.position.x - px;
+    const dz = ice.position.z - pz;
+    const d2 = dx * dx + dz * dz;
+    if (d2 < bestSq) {
+      bestSq = d2;
+      best = ice;
+    }
+  }
+  return best;
+}
+
+/** Remove one ICE from the dive (death): mesh, world entity, and tracking. */
+function killICE(ice: Entity): void {
+  const mesh = iceMeshes.get(ice);
+  if (mesh) {
+    if (diveScene) diveScene.remove(mesh);
+    const idx = diveMeshes.indexOf(mesh);
+    if (idx !== -1) diveMeshes.splice(idx, 1);
+    disposeObject(mesh);
+    iceMeshes.delete(ice);
+  }
+  const ei = iceEntities.indexOf(ice);
+  if (ei !== -1) iceEntities.splice(ei, 1);
+  world.remove(ice);
+}
+
+/** Dispose a mesh (geometry + material[s]) and its children. */
+function disposeObject(obj: THREE.Object3D): void {
+  obj.traverse((child) => {
+    const m = child as THREE.Mesh;
+    if (m.geometry) m.geometry.dispose();
+    const mat = m.material as THREE.Material | THREE.Material[] | undefined;
+    if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
+    else if (mat) mat.dispose();
+  });
+}
+
+/** Auto-fire: on cooldown, launch a projectile at the nearest ICE. */
+function tickDiveFiring(dt: number, player: Entity | null, px: number, pz: number): void {
+  playerFireCooldown = Math.max(0, playerFireCooldown - dt);
+  if (playerFireCooldown > 0 || !diveScene) return;
+  const target = findNearestICE(px, pz);
+  if (!target || !target.position) return;
+
+  const dx = target.position.x - px;
+  const dz = target.position.z - pz;
+  const d = Math.hypot(dx, dz) || 1;
+  const aimAngle = Math.atan2(dx, dz);
+
+  // Face the shot (RenderSystem's facing logic is frozen during the dive).
+  if (player?.transform) player.transform.rotation.y = aimAngle;
+
+  const theme = THEME[diveNode?.kind ?? 'depot'] ?? THEME.depot;
+  const geo = new THREE.SphereGeometry(0.28, 8, 8);
+  const mat = new THREE.MeshBasicMaterial({ color: theme.accent });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(px, 0.6, pz);
+  diveScene.add(mesh);
+  diveMeshes.push(mesh);
+
+  const might = player?.stats?.might ?? 1;
+  diveProjectiles.push({
+    mesh,
+    x: px,
+    z: pz,
+    vx: (dx / d) * DIVE_PROJECTILE_SPEED,
+    vz: (dz / d) * DIVE_PROJECTILE_SPEED,
+    life: DIVE_PROJECTILE_LIFE,
+    dmg: DIVE_BASE_DAMAGE * might,
+  });
+  playerFireCooldown = DIVE_FIRE_INTERVAL;
+}
+
+/** Advance dive projectiles, resolve ICE hits + deaths, expire spent shots. */
+function tickDiveProjectiles(dt: number): void {
+  for (let i = diveProjectiles.length - 1; i >= 0; i--) {
+    const p = diveProjectiles[i];
+    p.x += p.vx * dt;
+    p.z += p.vz * dt;
+    p.life -= dt;
+    p.mesh.position.set(p.x, 0.6, p.z);
+
+    let consumed = p.life <= 0;
+    if (!consumed) {
+      for (const ice of iceEntities) {
+        if (!ice.position || !ice.health) continue;
+        const dx = ice.position.x - p.x;
+        const dz = ice.position.z - p.z;
+        if (dx * dx + dz * dz <= DIVE_PROJECTILE_HIT_DIST * DIVE_PROJECTILE_HIT_DIST) {
+          ice.health.current -= p.dmg;
+          if (ice.health.current <= 0) killICE(ice);
+          consumed = true;
+          break;
+        }
+      }
+    }
+    if (consumed) {
+      if (diveScene) diveScene.remove(p.mesh);
+      const mi = diveMeshes.indexOf(p.mesh);
+      if (mi !== -1) diveMeshes.splice(mi, 1);
+      disposeObject(p.mesh);
+      diveProjectiles.splice(i, 1);
+    }
+  }
+}
+
+/**
+ * Lightweight player-rig "it's alive" animation for the dive. RenderSystem owns
+ * the full rig choreography (banking, recoil, overload, death), but it's frozen
+ * mid-dive, so replicate just the idle life here from the same rig-part cache:
+ * gyro spin, wing bob, thruster flicker, core breathing. Facing is set by the
+ * firing/movement code, not here.
+ */
+function animateDivePlayerRig(entity: Entity, elapsed: number, dt: number): void {
+  const cache = entity.transform?.userData?.cache as Record<string, THREE.Object3D> | undefined;
+  if (!cache) return;
+  const speed = entity.velocity ? entity.velocity.length() : 0;
+
+  const gyroH = cache['gyroHRing'];
+  const gyroV = cache['gyroVRing'];
+  const gyroT = cache['gyroTRing'];
+  if (gyroH) gyroH.rotation.y += dt * 2.5;
+  if (gyroV) gyroV.rotation.x += dt * 3.5;
+  if (gyroT) gyroT.rotation.y += dt * 3.0;
+
+  const maxTilt = Math.min(speed * 0.08, 0.4);
+  const leftWing = cache['leftWing'];
+  const rightWing = cache['rightWing'];
+  if (leftWing) {
+    leftWing.rotation.z = Math.sin(elapsed * 8) * 0.05;
+    leftWing.rotation.y = (leftWing.userData.baseYaw ?? 0) - maxTilt;
+  }
+  if (rightWing) {
+    rightWing.rotation.z = -Math.sin(elapsed * 8) * 0.05;
+    rightWing.rotation.y = (rightWing.userData.baseYaw ?? 0) + maxTilt;
+  }
+
+  const flicker = 0.85 + Math.sin(elapsed * 25) * 0.15;
+  const speedScale = 1 + Math.min(speed * 0.15, 0.5);
+  for (const k of ['leftFireInner', 'leftFireOuter', 'rightFireInner', 'rightFireOuter'] as const) {
+    const flame = cache[k];
+    if (flame) flame.scale.set(flicker, flicker, flicker * speedScale);
+  }
+
+  const core = cache['core'];
+  if (core && core.userData.baseScale === undefined) {
+    core.userData.baseScale = core.scale.x || 1;
+  }
+  if (core) {
+    const base = core.userData.baseScale as number;
+    core.scale.setScalar(base * (1 + 0.04 * Math.sin(elapsed * 3)));
+  }
 }
 
 /** Set the camera for the dive scene (overhead 3/4 follow). */
@@ -886,6 +1080,17 @@ export function BreachDiveSystem(
     spawnICEWave(extra, diveSecurity, 22);
   }
 
+  // --- Player combat + rig life ---
+  // The arena's WeaponSystem (auto-fire) and RenderSystem (rig choreography)
+  // are both frozen during a dive, which is why the player used to sit there
+  // as a static, weaponless snippet while only the ICE did anything. The dive
+  // owns both here: auto-fire at the nearest ICE, advance dive-local
+  // projectiles, and keep the rig visibly alive.
+  const divePlayer = world.with('isLocalPlayer', 'position').first ?? null;
+  if (playerPos) tickDiveFiring(dt, divePlayer, playerPos.x, playerPos.z);
+  tickDiveProjectiles(dt);
+  if (divePlayer) animateDivePlayerRig(divePlayer, diveElapsed, dt);
+
   // --- Update shared HUD fields ---
   if (uiState.dive) {
     uiState.dive.health = diveHealth;
@@ -1028,6 +1233,10 @@ function teardownDiveScene(): void {
   diveHealth = 100;
   diveHealthMax = 100;
   iceContactTimer = 0;
+  // Projectile meshes live in `diveMeshes`, so disposeDiveScene already tore
+  // them down — just drop the tracking structs so a fresh dive starts clean.
+  diveProjectiles = [];
+  playerFireCooldown = 0;
 }
 
 // Debug hook
