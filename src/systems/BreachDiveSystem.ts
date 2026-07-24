@@ -120,6 +120,16 @@ let stashedPlayerPosition: THREE.Vector3 | null = null;
 // disposeDiveScene handles its teardown alongside the themed scene.
 const iceMeshes: WeakMap<Entity, THREE.Object3D> = new WeakMap();
 
+// Explicit list of dive-local ICE entities. We do NOT use
+// `world.with('isEnemy','isICE', ...)` for these: miniplex only re-indexes an
+// entity into a query on add/addComponent/removeComponent, and spawnEnemy
+// creates the entity WITHOUT isICE — we tack `isICE = true` on afterwards by
+// direct assignment, which miniplex never sees. So the query stayed empty and
+// the ICE never got steered (they froze at their spawn ring, off-camera) and
+// never got cleaned up on exit (they leaked into the arena). Tracking them in
+// a plain array sidesteps the reactivity gap entirely.
+let iceEntities: Entity[] = [];
+
 // Per-verb state machine (discriminated union)
 type DiveVerbData =
   | {
@@ -371,12 +381,20 @@ function spawnVerbVisuals(vs: DiveVerbData): void {
   }
 }
 
-/** Spawn ICE constructs into the dive scene. */
-function spawnICEWave(count: number, security: number): void {
+/**
+ * Spawn ICE constructs into the dive scene.
+ *
+ * @param count    how many to spawn
+ * @param security dive security level (scales HP/speed/type)
+ * @param minR     inner spawn radius — the first wave spawns closer so the
+ *                 player has visible enemies immediately instead of an empty
+ *                 arena while the horde walks in from off-camera.
+ */
+function spawnICEWave(count: number, security: number, minR: number = 12): void {
   if (!diveScene || !diveNode) return;
   for (let i = 0; i < count; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const r = 18 + Math.random() * 16;
+    const r = minR + Math.random() * 12;
     const x = Math.cos(angle) * r;
     const z = Math.sin(angle) * r;
     const type = security >= 2 && Math.random() < 0.3 ? EnemyType.FIREWALL : EnemyType.VIRUS;
@@ -384,6 +402,9 @@ function spawnICEWave(count: number, security: number): void {
     const e = spawnEnemy(diveScene, x, z, type, hpMult, 0.9);
     e.isICE = true;
     e.moveSpeed = ICE_STEER_SPEED + security * 0.4 + Math.random() * 0.5;
+    // Track explicitly — see `iceEntities` note above (miniplex won't index the
+    // post-hoc isICE flag, so a world query would miss these).
+    iceEntities.push(e);
     const mesh = makeIceMesh(e, diveNode.kind, diveSecurity);
     mesh.position.set(x, 0.6, z);
     diveScene.add(mesh);
@@ -519,7 +540,10 @@ function movePlayerInDive(dt: number): THREE.Vector3 | null {
 function setDiveCamera(camera: THREE.Camera, playerPos: THREE.Vector3 | null): void {
   const px = playerPos?.x ?? 0;
   const pz = playerPos?.z ?? 0;
-  camera.position.set(px, 28, pz + 18);
+  // Pulled back from (28, +18) so a useful slice of the dive arena is on
+  // screen — the ICE hunt reads as a threat closing in, not enemies teleporting
+  // into frame at melee range.
+  camera.position.set(px, 40, pz + 28);
   camera.lookAt(px, 0, pz);
 }
 
@@ -819,7 +843,8 @@ export function BreachDiveSystem(
   if (playerPos) {
     const px = playerPos.x;
     const pz = playerPos.z;
-    const iceEntities = [...world.with('isEnemy', 'isICE', 'position', 'velocity')];
+    // Iterate the explicit ICE list, not a world query — the isICE flag is set
+    // by direct assignment and miniplex never indexed it (see `iceEntities`).
     for (const ice of iceEntities) {
       if (!ice.position || !ice.velocity) continue;
       const dx = px - ice.position.x;
@@ -857,7 +882,8 @@ export function BreachDiveSystem(
   const prevWaveIdx = Math.floor((diveElapsed - dt) / ICE_WAVE_INTERVAL);
   if (waveIdx > prevWaveIdx) {
     const extra = dive.kind === 'relay' ? 3 + diveSecurity : 1;
-    spawnICEWave(extra, diveSecurity);
+    // Reinforcements enter from the far ring so they visibly close in.
+    spawnICEWave(extra, diveSecurity, 22);
   }
 
   // --- Update shared HUD fields ---
@@ -956,10 +982,13 @@ function teardownDiveScene(): void {
   // RenderSystem would draw them and EnemySystem would steer them). Use a
   // plain world.remove — these are NOT deaths, just cleanups (no death side
   // effects, no XP/loot, no score). The swap-remove in world.remove is O(1)
-  // and never triggers handleEnemyDeath.
-  for (const ice of [...world.with('isEnemy', 'isICE')]) {
+  // and never triggers handleEnemyDeath. Iterate the explicit list, not a
+  // world query: the isICE flag was never indexed (see `iceEntities`), so a
+  // query would miss them and they'd leak into the arena on exit.
+  for (const ice of iceEntities) {
     world.remove(ice);
   }
+  iceEntities = [];
 
   // Reparent the local player's transform back to the arena scene graph (it
   // was moved into the dive scene on enter). Restore the stashed arena-space
