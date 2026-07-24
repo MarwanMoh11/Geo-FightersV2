@@ -35,6 +35,7 @@ import {
 import { upgradeRandomOwnedWeapon, flushDeferredLevelUps } from './UpgradeSystem';
 import { resetVirtualJoystick } from './InputSystem';
 import type { Poi } from './WayfindingSystem';
+import { enterDive } from './BreachDiveSystem';
 
 export type BreachKind = 'depot' | 'armory' | 'bank' | 'relay' | 'substation' | 'stashden';
 
@@ -60,11 +61,14 @@ interface NodeDef {
   shrineKind?: ShrineKind;
 }
 
-interface BreachNode extends NodeDef {
+export interface BreachNode extends NodeDef {
   cooldown: number;
   doorMat: THREE.MeshBasicMaterial | null;
   ringMat: THREE.MeshBasicMaterial | null;
   sign: THREE.Sprite | null;
+  // Permanent "BREACHED" state — flipped true the moment a dive is WON on
+  // this node (set by BreachDiveSystem's exit-win handler, NOT on entry).
+  opened: boolean;
 }
 
 const DOOR_RADIUS = 3.2;
@@ -202,6 +206,7 @@ const nodes: BreachNode[] = buildNodeDefs().map((d) => ({
   doorMat: null,
   ringMat: null,
   sign: null,
+  opened: false,
 }));
 
 let initialized = false;
@@ -463,8 +468,14 @@ export function resolveBreach(outcome: 'win' | 'fail' | 'abort'): void {
   if (!node) return;
 
   if (outcome === 'win') {
-    grantReward(node, breach.overclock);
-    node.cooldown = node.kind === 'depot' ? COOLDOWN_WIN_DEPOT : COOLDOWN_WIN;
+    // Win → jack INTO the breach dive. The dive owns the rest of the
+    // win-resolution flow now: on dive WIN-exit it calls
+    // completeBreachWin() (grantReward + cooldown + opened=true); on a
+    // dive FAIL/abort exit it calls completeBreachFail(). We therefore
+    // return early without touching cooldown/reward here.
+    // TODO(chunk3): the dive's verb state machine decides win/fail/abort.
+    enterDive(node, breach.overclock, breach.security);
+    return;
   } else if (outcome === 'fail') {
     node.cooldown = COOLDOWN_FAIL;
     announce('TRACE DETECTED — LOCKED OUT');
@@ -474,6 +485,31 @@ export function resolveBreach(outcome: 'win' | 'fail' | 'abort'): void {
   } else {
     node.cooldown = COOLDOWN_ABORT;
   }
+  setNodeReadyLook(node, false);
+}
+
+/**
+ * Apply the full breach-WIN resolution (called by BreachDiveSystem on a
+ * dive WIN-exit). Replicates the old resolveBreach win branch (grantReward +
+ * cooldown + setNodeReadyLook) and additionally marks the node permanently
+ * BREACHED. `grantReward` stays module-private; this is the public seam.
+ */
+export function completeBreachWin(node: BreachNode, overclock: boolean): void {
+  grantReward(node, overclock);
+  node.cooldown = node.kind === 'depot' ? COOLDOWN_WIN_DEPOT : COOLDOWN_WIN;
+  node.opened = true;
+  setNodeReadyLook(node, false);
+}
+
+/**
+ * Apply a dive FAIL/abort resolution (called by BreachDiveSystem on a dive
+ * non-win exit). For Chunk 2 this mirrors the old fail cooldown + look; Chunk
+ * 3 will rewire the fail path to spawn an ambush at the dive exit.
+ */
+export function completeBreachFail(node: BreachNode): void {
+  node.cooldown = COOLDOWN_FAIL;
+  announce('DIVE ABORTED — LOCKED OUT');
+  haptics.hit();
   setNodeReadyLook(node, false);
 }
 
@@ -651,6 +687,7 @@ export function resetBreachSystem(): void {
   firstBreachDone = false;
   for (const node of nodes) {
     node.cooldown = 0;
+    node.opened = false;
     setNodeReadyLook(node, true);
   }
   uiState.breach = null;

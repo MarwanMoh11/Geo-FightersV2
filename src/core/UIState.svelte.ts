@@ -183,6 +183,21 @@ export const uiState = $state({
   skeletonKeys: 0,
   // RELAY TOWER reward: all enemies move at half speed while this ticks
   relaySlowTimer: 0,
+  // BREACH DIVE: active dive session (the sub-scene runs in place of the
+  // arena loop while this is non-null). Modeled on `breach` above — the
+  // union literal is inlined to avoid a circular import with BreachSystem.
+  dive: null as null | {
+    nodeId: string;
+    kind: 'depot' | 'armory' | 'bank' | 'relay' | 'substation' | 'stashden';
+    name: string;
+    icon: string;
+    color: string;
+    security: number; // 0-3
+    overclock: boolean;
+    trace: number; // 0..traceMax, climbs during the dive
+    traceMax: number;
+    objectiveText: string; // HUD label for the current verb
+  },
   // NEON SURGE event: double XP inside this district rect while it ticks
   neonSurge: null as {
     name: string;
