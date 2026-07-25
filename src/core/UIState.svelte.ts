@@ -214,6 +214,7 @@ export const uiState = $state({
     progress: number; // objective progress bar (0..progressMax)
     progressMax: number;
     iceCount: number;
+    turretCount: number;
     hurt: number; // >0 while the damage vignette plays
     banner: string; // centre-screen callout (the arena HUD is hidden mid-dive)
     bannerSeq: number;

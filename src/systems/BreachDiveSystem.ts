@@ -26,7 +26,7 @@ import {
   type BreachKind,
   type DiveOutcome,
 } from './BreachSystem';
-import { InputSystem, resetVirtualJoystick } from './InputSystem';
+import { InputSystem, resetVirtualJoystick, updateVirtualJoystick } from './InputSystem';
 import { haptics } from '../core/haptics';
 import { world, type Entity } from '../core/world';
 import { partySpawnMultiplier } from '../core/difficulty';
@@ -48,9 +48,21 @@ import {
   DIVE_ARENA_R,
   VERB_NAME,
   VERB_BRIEF,
+  HORDE,
   type DiveVerb,
   type DiveCtx,
 } from './dive/DiveVerbs';
+import {
+  createHazards,
+  tickHazards,
+  disposeHazards,
+  addTurret,
+  addBarrier,
+  addPool,
+  damageTurretsAt,
+  liveTurretCount,
+  type Hazards,
+} from './dive/DiveHazards';
 import { disposeMarkers, updateMarker, type DiveMarker } from './dive/DiveMarkers';
 import {
   spawnIce,
@@ -60,8 +72,13 @@ import {
   nearestIce,
   countIceNear,
   liveIceCount,
+  createIceRenderer,
+  renderIce,
+  disposeIceRenderer,
+  MAX_DIVE_ICE,
   ICE_HIT_IFRAMES,
   type Ice,
+  type IceRenderer,
 } from './dive/DiveICE';
 
 // Minimal structural type for the raw renderer. Both the WebGL and WebGPU
@@ -79,32 +96,36 @@ const DIVE_PLAYER_SPEED = 7.0;
 /** Trace can never be scrubbed below this fraction of nominal progress. */
 const TRACE_FLOOR_RATIO = 0.45;
 /** Trace scrubbed per construct killed. */
-const TRACE_KILL_SCRUB = 1.6;
+const TRACE_KILL_SCRUB = 0.8;
 
-const HP_BASE = 120;
-const HP_PER_SECURITY = 30;
+const HP_BASE = 200;
+const HP_PER_SECURITY = 55;
 const PLAYER_KNOCKBACK = 5.0;
 
-// Constructs
-const ICE_CAP = 26;
-const ICE_WAVE_INTERVAL = 5.5;
-/** Extra constructs per reinforcement wave, per kind. */
-const WAVE_SIZE: Record<string, number> = {
-  relay: 4,
-  bank: 3,
-  armory: 2,
-  substation: 2,
-  depot: 2,
-  stashden: 2,
-};
+// Constructs. Pressure is a continuous ramping RATE (see HORDE in DiveVerbs),
+// not fixed waves; security multiplies it.
+const HORDE_SECURITY_RATE = 0.12;
+const HORDE_SECURITY_INITIAL = 0.25;
+/** Never spawn a construct closer than this to the player. */
+const SPAWN_CLEARANCE = 9;
 
-// Dive-local auto-fire
-const FIRE_INTERVAL = 0.24;
+// --- Dive-local auto-fire ---
+// The intrusion tool is NOT the arena loadout. It is deliberately short
+// ranged, slower, and single-target-with-a-little-pierce, because the dive
+// weapon used to reach 26 units and fire every 0.24s against constructs that
+// died in one hit — the player out-damaged the entire room from off-screen
+// and never had to engage with the space at all. You still kill plenty; you
+// just cannot kill faster than the grid spawns.
+const FIRE_INTERVAL = 0.3;
 const SHOT_BASE_DAMAGE = 26;
-const PROJECTILE_SPEED = 38;
-const PROJECTILE_LIFE = 1.2;
+const PROJECTILE_SPEED = 32;
+const PROJECTILE_LIFE = 0.62;
 const PROJECTILE_HIT_DIST = 1.05;
-const AIM_RANGE = 26;
+const AIM_RANGE = 14;
+/** Constructs one shot can pass through — makes a dense pack worth shooting into. */
+const SHOT_PIERCE = 1;
+/** Seconds of barrier immunity granted after a throw-back. */
+const BARRIER_IMMUNITY = 1.8;
 
 // Exit ambush (fail path)
 const AMBUSH_RADIUS = 25;
@@ -136,12 +157,32 @@ let keysBound = false;
 let verb: DiveVerb | null = null;
 let markers: DiveMarker[] = [];
 let iceList: Ice[] = [];
+let iceRenderer: IceRenderer | null = null;
+let hazards: Hazards | null = null;
+/** Fractional carry so a sub-1-per-frame spawn rate isn't rounded to nothing. */
+let spawnBudget = 0;
+let hordeCap = 120;
+/** Latest frame delta, so ctx.burnICE can apply a per-second rate. */
+let lastDt = 1 / 60;
+/** Insertion point — where the dive starts and where barriers throw you back to. */
+let entryX = 0;
+let entryZ = 0;
+/** Live player position, mirrored so spawn helpers can respect clearance. */
+let playerX = 0;
+let playerZ = 0;
 
 let traceRate = 1;
 let traceValue = 0;
 let diveHealth = HP_BASE;
 let diveHealthMax = HP_BASE;
 let playerIFrames = 0;
+/**
+ * Grace after a barrier hit. The player is knocked along the wall's normal,
+ * which can still land them inside another sweep's annulus, so a short
+ * immunity window keeps the knockback from chaining into a second hit before
+ * the player can react.
+ */
+let barrierImmunity = 0;
 let hurtFlash = 0;
 let fireCooldown = 0;
 let radarTimer = 0;
@@ -161,6 +202,9 @@ interface DiveProjectile {
   vz: number;
   life: number;
   dmg: number;
+  pierce: number;
+  /** Constructs already hit — a pierce shot must not re-hit the same body. */
+  hits: Ice[];
 }
 let projectiles: DiveProjectile[] = [];
 let projectileGeo: THREE.SphereGeometry | null = null;
@@ -208,22 +252,58 @@ function spikeTrace(points: number): void {
 
 function spawnIceRing(n: number, cx: number, cz: number, minR: number, maxR: number): void {
   if (!diveScene || !diveNode) return;
-  const cap = Math.round(ICE_CAP * (diveOverclock ? 1.4 : 1));
   const dmg = shotDamage();
   for (let i = 0; i < n; i++) {
-    if (liveIceCount(iceList) >= cap) return;
+    if (liveIceCount(iceList) >= hordeCap) return;
     const a = (i / Math.max(1, n)) * Math.PI * 2 + Math.random() * 0.6;
     const r = minR + Math.random() * Math.max(0.001, maxR - minR);
     let x = cx + Math.cos(a) * r;
     let z = cz + Math.sin(a) * r;
+
     // Keep spawns inside the arena so constructs never materialise in the void.
     const d = Math.hypot(x, z);
     if (d > DIVE_ARENA_R - 1) {
       x = (x / d) * (DIVE_ARENA_R - 1);
       z = (z / d) * (DIVE_ARENA_R - 1);
     }
+
+    // Never drop a construct on the player's head — with a horde this dense
+    // that would be an undodgeable hit rather than a threat closing in.
+    const pdx = x - playerX;
+    const pdz = z - playerZ;
+    const pd = Math.hypot(pdx, pdz);
+    if (pd < SPAWN_CLEARANCE) {
+      const k = pd > 0.01 ? SPAWN_CLEARANCE / pd : 1;
+      x = playerX + (pd > 0.01 ? pdx : 1) * k;
+      z = playerZ + (pd > 0.01 ? pdz : 0) * k;
+      const nd = Math.hypot(x, z);
+      if (nd > DIVE_ARENA_R - 1) {
+        x = (x / nd) * (DIVE_ARENA_R - 1);
+        z = (z / nd) * (DIVE_ARENA_R - 1);
+      }
+    }
+
     iceList.push(spawnIce(diveScene, diveNode.kind, diveSecurity, x, z, dmg));
   }
+}
+
+/**
+ * Continuous horde pressure. The spawn rate ramps with elapsed time and is
+ * accumulated in a fractional budget so a 4.5/s rate really produces 4.5
+ * constructs per second rather than rounding away at 60fps.
+ */
+function tickHorde(dt: number): void {
+  const cfg = HORDE[diveNode!.kind] ?? HORDE.depot;
+  const rate =
+    (cfg.rate + cfg.ramp * diveElapsed) *
+    (1 + HORDE_SECURITY_RATE * diveSecurity) *
+    (diveOverclock ? 1.3 : 1);
+  spawnBudget += rate * dt;
+  if (spawnBudget < 1) return;
+  const n = Math.floor(spawnBudget);
+  spawnBudget -= n;
+  // Reinforcements walk in from the rim so the horde visibly closes in.
+  spawnIceRing(n, 0, 0, DIVE_ARENA_R - 7, DIVE_ARENA_R - 1);
 }
 
 function diveSfx(name: 'pickup' | 'step' | 'alarm' | 'bust' | 'reveal'): void {
@@ -264,11 +344,32 @@ function initCtx(): DiveCtx {
     overclock: diveOverclock,
     accent: (THEME[diveNode!.kind] ?? THEME.depot).accent,
     elapsed: 0,
-    px: 0,
-    pz: 0,
+    px: entryX,
+    pz: entryZ,
+    entryX,
+    entryZ,
     iceNear: (x, z, r) => countIceNear(iceList, x, z, r),
     spawnICE: (n, minR = 12, maxR = 18) => spawnIceRing(n, 0, 0, minR, maxR),
     spawnICEAt: (n, x, z, radius) => spawnIceRing(n, x, z, radius * 0.75, radius),
+    addTurret: (x, z) => {
+      if (diveScene && hazards) addTurret(diveScene, hazards, x, z, shotDamage());
+    },
+    addBarrier: (angle, speed, innerR, outerR) => {
+      if (diveScene && hazards) addBarrier(diveScene, hazards, angle, speed, innerR, outerR);
+    },
+    addPool: (x, z, radius) => {
+      if (diveScene && hazards) addPool(diveScene, hazards, x, z, radius);
+    },
+    burnICE: (x, z, radius, dps) => {
+      const amount = dps * lastDt;
+      for (const ice of iceList) {
+        if (ice.deathTimer > 0 || !ice.entity.position) continue;
+        const dx = ice.entity.position.x - x;
+        const dz = ice.entity.position.z - z;
+        if (dx * dx + dz * dz > radius * radius) continue;
+        if (damageIce(ice, amount)) scrubTrace(TRACE_KILL_SCRUB);
+      }
+    },
     scrub: scrubTrace,
     spike: spikeTrace,
     banner,
@@ -278,7 +379,8 @@ function initCtx(): DiveCtx {
 }
 
 /** Refresh the per-frame fields of the shared context. */
-function frameCtx(px: number, pz: number): DiveCtx {
+function frameCtx(px: number, pz: number, dt: number): DiveCtx {
+  lastDt = dt;
   const c = ctx ?? initCtx();
   c.elapsed = diveElapsed;
   c.px = px;
@@ -402,6 +504,8 @@ function tickFiring(dt: number, player: Entity | null, px: number, pz: number): 
     vz: (dz / d) * PROJECTILE_SPEED,
     life: PROJECTILE_LIFE,
     dmg: shotDamage(),
+    pierce: SHOT_PIERCE,
+    hits: [],
   });
   // Cooldown is a multiplier (lower = faster), clamped so a maxed build can't
   // trivialise the dive and a fresh one isn't unplayably slow.
@@ -422,12 +526,31 @@ function tickProjectiles(dt: number): void {
     if (!consumed) {
       for (const ice of iceList) {
         if (ice.deathTimer > 0 || !ice.entity.position) continue;
+        if (p.hits.includes(ice)) continue;
         const dx = ice.entity.position.x - p.x;
         const dz = ice.entity.position.z - p.z;
         if (dx * dx + dz * dz <= PROJECTILE_HIT_DIST * PROJECTILE_HIT_DIST) {
           if (damageIce(ice, p.dmg)) scrubTrace(TRACE_KILL_SCRUB);
+          // Pierce: a shot punches through a couple of bodies, which is what
+          // makes firing into a packed horde feel worth doing at all.
+          p.hits.push(ice);
+          if (p.hits.length > p.pierce) {
+            consumed = true;
+            break;
+          }
+        }
+      }
+      // Turrets share the projectile sweep; a shot that connects with one is
+      // always spent (they are hard cover, not bodies to punch through).
+      if (!consumed && hazards) {
+        const t = damageTurretsAt(hazards, p.x, p.z, PROJECTILE_HIT_DIST + 0.6, p.dmg);
+        if (t.hit) {
+          if (t.killed) {
+            scrubTrace(8);
+            banner('EMPLACEMENT DOWN');
+            playExplosion();
+          }
           consumed = true;
-          break;
         }
       }
     }
@@ -562,9 +685,26 @@ export function enterDive(
   diveHealth = HP_BASE + security * HP_PER_SECURITY;
   diveHealthMax = diveHealth;
   playerIFrames = 0;
+  barrierImmunity = 0;
   hurtFlash = 0;
   fireCooldown = 0;
   radarTimer = 0;
+  spawnBudget = 0;
+
+  // Insertion point out on the rim. Every verb starts here, so reaching the
+  // objective is itself a crossing — and it is where barriers throw you back
+  // to, which would be a reward rather than a setback if it were the origin
+  // (three verbs hold the centre).
+  const entryAngle = Math.random() * Math.PI * 2;
+  entryX = Math.cos(entryAngle) * (DIVE_ARENA_R - 3);
+  entryZ = Math.sin(entryAngle) * (DIVE_ARENA_R - 3);
+  playerX = entryX;
+  playerZ = entryZ;
+
+  const cfg = HORDE[node.kind] ?? HORDE.depot;
+  hordeCap = Math.min(MAX_DIVE_ICE, Math.round(cfg.cap * (1 + 0.08 * security)));
+  hazards = createHazards();
+  iceRenderer = createIceRenderer(diveScene, node.kind);
 
   // Reparent the local player's mesh group into the dive scene and stash its
   // arena-space position for the exit.
@@ -575,8 +715,8 @@ export function enterDive(
       stashedPlayerPosition = player.position.clone();
       if (playerTransformParent) playerTransformParent.remove(player.transform);
       diveScene.add(player.transform);
-      player.transform.position.set(0, 0.5, 0);
-      player.position.set(0, 0.5, 0);
+      player.transform.position.set(entryX, 0.5, entryZ);
+      player.position.set(entryX, 0.5, entryZ);
     }
   }
 
@@ -602,6 +742,7 @@ export function enterDive(
     progress: 0,
     progressMax: 100,
     iceCount: 0,
+    turretCount: 0,
     hurt: 0,
     banner: '',
     bannerSeq: 0,
@@ -617,8 +758,14 @@ export function enterDive(
   uiState.dive.progress = verb.progress;
   uiState.dive.progressMax = verb.progressMax;
 
-  // Opening pressure: enough to matter, spawned away from the player's feet.
-  spawnIceRing(2 + security * 2, 0, 0, 11, 17);
+  // Opening pressure: the room already has a crowd in it when you drop in.
+  spawnIceRing(
+    Math.round(cfg.initial * (1 + HORDE_SECURITY_INITIAL * security)),
+    0,
+    0,
+    10,
+    DIVE_ARENA_R - 1,
+  );
 
   // Arena damage numbers are DOM nodes ticked by a system that is about to be
   // frozen — without this they hang over the dive for its whole duration.
@@ -653,21 +800,27 @@ export function BreachDiveSystem(
   // --- player ---
   const moved = movePlayer(dt);
   const player = moved?.entity ?? null;
-  const px = moved?.pos.x ?? 0;
-  const pz = moved?.pos.z ?? 0;
+  let px = moved?.pos.x ?? 0;
+  let pz = moved?.pos.z ?? 0;
+  playerX = px;
+  playerZ = pz;
 
   // --- trace clock ---
   const mult = verb?.traceMult ?? 1;
   traceValue = Math.min(TRACE_MAX, traceValue + dt * traceRate * mult);
 
+  // --- horde pressure ---
+  tickHorde(dt);
+
   // --- constructs ---
   playerIFrames = Math.max(0, playerIFrames - dt);
+  barrierImmunity = Math.max(0, barrierImmunity - dt);
   hurtFlash = Math.max(0, hurtFlash - dt);
-  const hit = tickIce(iceList, dt, time, px, pz, DIVE_ARENA_R, playerIFrames, diveScene);
+  const armor = player?.stats?.armor ?? 0;
+  const hit = tickIce(iceList, dt, px, pz, DIVE_ARENA_R, playerIFrames);
   if (hit.damage > 0) {
     // Armor is flat reduction, same contract as the arena — a tanky build
     // should survive noticeably longer inside a dive too.
-    const armor = player?.stats?.armor ?? 0;
     diveHealth -= Math.max(1, hit.damage - armor);
     playerIFrames = ICE_HIT_IFRAMES;
     hurtFlash = 0.35;
@@ -678,7 +831,55 @@ export function BreachDiveSystem(
       player.position.x -= hit.knockX * PLAYER_KNOCKBACK * 0.12;
       player.position.z -= hit.knockZ * PLAYER_KNOCKBACK * 0.12;
       if (player.transform) player.transform.position.copy(player.position);
+      px = player.position.x;
+      pz = player.position.z;
     }
+  }
+
+  // --- hazards: turrets, sweeping barriers, corrosion pools ---
+  if (hazards) {
+    const hz = tickHazards(hazards, diveScene, dt, time, px, pz, playerIFrames, barrierImmunity);
+    if (hz.impact > 0) {
+      diveHealth -= Math.max(1, hz.impact - armor);
+      hurtFlash = 0.35;
+      playHurt();
+      haptics.hit();
+    }
+    if (hz.dot > 0) {
+      // Armor is scaled by dt here so it reduces the pool's DPS rather than
+      // being subtracted whole on every one of 60 frames per second.
+      diveHealth -= Math.max(0, hz.dot - armor * dt);
+      hurtFlash = Math.max(hurtFlash, 0.12);
+    }
+    if (hz.reset) {
+      // A barrier is a wall: knock the player off along the wall's normal
+      // rather than teleporting them all the way back to insertion. The
+      // full-arena reset was disorienting and read as an invisible barrier
+      // the player never felt they touched.
+      const KNOCK = 7.5;
+      if (player?.position) {
+        player.position.x += hz.knockX * KNOCK;
+        player.position.z += hz.knockZ * KNOCK;
+        const lim = DIVE_ARENA_R - 2;
+        const r2 = player.position.x * player.position.x + player.position.z * player.position.z;
+        if (r2 > lim * lim) {
+          const k = lim / Math.sqrt(r2);
+          player.position.x *= k;
+          player.position.z *= k;
+        }
+        player.position.y = 0.5;
+        if (player.transform) player.transform.position.copy(player.position);
+        px = player.position.x;
+        pz = player.position.z;
+      }
+      playerIFrames = Math.max(playerIFrames, ICE_HIT_IFRAMES);
+      barrierImmunity = BARRIER_IMMUNITY;
+      spikeTrace(5);
+      banner('BARRIER');
+      playExplosion();
+    }
+    playerX = px;
+    playerZ = pz;
   }
 
   // --- scene dressing ---
@@ -687,7 +888,7 @@ export function BreachDiveSystem(
   // --- verb ---
   let outcome: 'win' | 'fail' | null = null;
   if (verb) {
-    outcome = verb.tick(frameCtx(px, pz), dt);
+    outcome = verb.tick(frameCtx(px, pz, dt), dt);
     for (const m of markers) updateMarker(m, dt, time);
   }
 
@@ -696,13 +897,7 @@ export function BreachDiveSystem(
   tickProjectiles(dt);
   if (player) animateRig(player, time, dt);
 
-  // --- reinforcement waves ---
-  const waveIdx = Math.floor(diveElapsed / ICE_WAVE_INTERVAL);
-  const prevWaveIdx = Math.floor((diveElapsed - dt) / ICE_WAVE_INTERVAL);
-  if (waveIdx > prevWaveIdx) {
-    const n = (WAVE_SIZE[diveNode.kind] ?? 2) + Math.floor(diveSecurity / 2);
-    spawnIceRing(n, 0, 0, 15, DIVE_ARENA_R - 2);
-  }
+  // Reinforcements are continuous now — see tickHorde above.
 
   // --- HUD ---
   dive.trace = traceValue;
@@ -712,6 +907,7 @@ export function BreachDiveSystem(
   dive.healthMax = diveHealthMax;
   dive.hurt = hurtFlash;
   dive.iceCount = liveIceCount(iceList);
+  dive.turretCount = hazards ? liveTurretCount(hazards) : 0;
   if (verb) {
     dive.stage = verb.stage;
     dive.objectiveText = verb.text;
@@ -724,6 +920,9 @@ export function BreachDiveSystem(
     radarTimer = 1 / 15; // 15Hz is plenty for a radar and keeps Svelte quiet
     updateRadar(px, pz);
   }
+
+  // --- horde render: six instanced draw calls for the whole crowd ---
+  if (iceRenderer) renderIce(iceRenderer, iceList, time);
 
   // --- camera ---
   setDiveCamera(camera, px, pz);
@@ -829,13 +1028,18 @@ function teardownDiveScene(): void {
     // Constructs are dive-local illusions — remove them from the world BEFORE
     // the scene goes so they can't bleed back into the arena (where
     // RenderSystem would draw them and EnemySystem would steer them).
-    clearIce(diveScene, iceList);
+    clearIce(iceList);
     clearProjectiles();
     disposeMarkers(diveScene, markers);
+    if (iceRenderer) disposeIceRenderer(diveScene, iceRenderer);
+    if (hazards) disposeHazards(diveScene, hazards);
   }
   iceList = [];
+  iceRenderer = null;
+  hazards = null;
   markers = [];
   verb = null;
+  spawnBudget = 0;
 
   // Reparent the player's mesh group back into the arena scene graph BEFORE
   // disposing the dive scene, so it is never orphaned.
@@ -908,6 +1112,108 @@ if (typeof window !== 'undefined' && new URLSearchParams(window.location.search)
       };
       enterDive(node, overclock, security);
     },
+    /**
+     * HEADLESS BALANCE HARNESS (?debug only).
+     *
+     * Steps the dive at a fixed timestep with a scripted pilot that walks
+     * straight at the current objective, so difficulty can be MEASURED rather
+     * than eyeballed: how full does the room get, how long does the verb take,
+     * does a competent player actually clear it. Steering goes through
+     * `updateVirtualJoystick` — the same seam mobile uses — so the simulated
+     * player is driven exactly like a real one.
+     *
+     * Returns the outcome plus a per-second trace of the horde curve.
+     */
+    sim: (maxSeconds: number = 90, pilot: boolean = true, invuln: boolean = false) => {
+      if (!uiState.dive) return { error: 'no active dive' };
+      const dt = 1 / 60;
+      const cam = new THREE.PerspectiveCamera(35, 16 / 9, 2, 600);
+      const noop = { render: () => {}, setRenderTarget: () => {} };
+      const stubScene = arenaSceneRef ?? new THREE.Scene();
+      const samples: string[] = [];
+      let t = 0;
+      let peakIce = 0;
+      let nextSample = 0;
+
+      while (t < maxSeconds && uiState.dive) {
+        if (pilot) {
+          // Walk at the nearest live objective; fall back to the arena centre.
+          let tx = 0;
+          let tz = 0;
+          let bestD = Infinity;
+          for (const m of verb?.markers ?? []) {
+            if (m.collected || m.hidden || m.popTimer > 0) continue;
+            if (m.state === 'done') continue; // already satisfied
+            // Strictly prefer whatever the verb has lit, the way a player
+            // reading the HUD would; distance only breaks ties within a tier.
+            const d = (m.x - playerX) ** 2 + (m.z - playerZ) ** 2;
+            // An open exit outranks everything: banking what you have is a
+            // real strategy, and the gamble verb has no other stopping rule.
+            const rank = m.shape === 'exit' ? -1e6 : m.state === 'active' ? 0 : 1e6;
+            if (d + rank < bestD) {
+              bestD = d + rank;
+              tx = m.x;
+              tz = m.z;
+            }
+          }
+          let vx = tx - playerX;
+          let vz = tz - playerZ;
+
+          // Minimal barrier competence. A human sees a sweeping wall and waits
+          // a beat or steps around it; a bot that walks straight into one gets
+          // thrown back to insertion over and over, which made measured route
+          // times pure barrier RNG (the same config scored 56s and 84s). Back
+          // away from any barrier segment we are about to touch, then resume.
+          for (const b of hazards?.barriers ?? []) {
+            const ax = Math.cos(b.angle) * b.innerR;
+            const az = Math.sin(b.angle) * b.innerR;
+            const bx = Math.cos(b.angle) * b.outerR;
+            const bz = Math.sin(b.angle) * b.outerR;
+            const dxs = bx - ax;
+            const dzs = bz - az;
+            const lenSq = dxs * dxs + dzs * dzs || 1;
+            let u = ((playerX - ax) * dxs + (playerZ - az) * dzs) / lenSq;
+            u = u < 0 ? 0 : u > 1 ? 1 : u;
+            const cxs = ax + dxs * u;
+            const czs = az + dzs * u;
+            const offX = playerX - cxs;
+            const offZ = playerZ - czs;
+            const off = Math.hypot(offX, offZ);
+            if (off < 3.2) {
+              // Flee perpendicular, biased to the side the sweep is leaving.
+              const sign = b.speed >= 0 ? 1 : -1;
+              vx = -playerZ * sign;
+              vz = playerX * sign;
+              break;
+            }
+          }
+
+          const len = Math.hypot(vx, vz) || 1;
+          updateVirtualJoystick(vx / len, vz / len);
+        }
+        BreachDiveSystem(dt, stubScene, cam, noop);
+        // Invulnerable runs answer "is the route achievable inside the trace
+        // budget" without the damage model masking the result.
+        if (invuln) diveHealth = diveHealthMax;
+        t += dt;
+        peakIce = Math.max(peakIce, liveIceCount(iceList));
+        if (t >= nextSample) {
+          nextSample += 5;
+          samples.push(
+            `t=${t.toFixed(0)}s ice=${liveIceCount(iceList)} hp=${Math.round(diveHealth)} ` +
+              `trace=${Math.round(traceValue)}% prog=${verb?.progress?.toFixed?.(0) ?? '-'}/${verb?.progressMax ?? '-'}`,
+          );
+        }
+      }
+      resetVirtualJoystick();
+      return {
+        resolvedIn: +t.toFixed(1),
+        stillRunning: !!uiState.dive,
+        peakIce,
+        samples,
+      };
+    },
+
     /** Live dive telemetry for balance checks. */
     stats: () => ({
       elapsed: diveElapsed,
