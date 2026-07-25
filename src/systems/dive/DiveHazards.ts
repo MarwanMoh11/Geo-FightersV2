@@ -263,42 +263,13 @@ export function addPool(
 // ---------------------------------------------------------------------------
 
 export interface HazardResult {
-  /**
-   * Discrete hits this frame (a turret shell landing, a barrier connecting).
-   * Flat armor applies once per hit, exactly like an arena hit.
-   */
   impact: number;
-  /**
-   * Continuous damage-over-time from standing in a pool, already scaled by
-   * dt. Flat armor must be scaled by dt too or a modest armor stat would make
-   * pools heal you.
-   */
   dot: number;
-  /** True when a barrier connected — the player is knocked off the wall. */
-  reset: boolean;
-  /** Unit direction to knock the player along when a barrier connects. */
-  knockX: number;
-  knockZ: number;
+  /** Position delta from barrier wall-slide (applied every frame). */
+  slideX: number;
+  slideZ: number;
 }
 
-/** Squared distance from a point to a segment. */
-function distSqToSegment(
-  px: number,
-  pz: number,
-  ax: number,
-  az: number,
-  bx: number,
-  bz: number,
-): number {
-  const dx = bx - ax;
-  const dz = bz - az;
-  const lenSq = dx * dx + dz * dz;
-  let t = lenSq > 1e-6 ? ((px - ax) * dx + (pz - az) * dz) / lenSq : 0;
-  t = t < 0 ? 0 : t > 1 ? 1 : t;
-  const cx = ax + dx * t;
-  const cz = az + dz * t;
-  return (px - cx) * (px - cx) + (pz - cz) * (pz - cz);
-}
 
 /**
  * Advance every hazard and resolve the player against them.
@@ -314,9 +285,8 @@ export function tickHazards(
   px: number,
   pz: number,
   iframes: number,
-  barrierImmunity: number,
 ): HazardResult {
-  const out: HazardResult = { impact: 0, dot: 0, reset: false, knockX: 0, knockZ: 0 };
+  const out: HazardResult = { impact: 0, dot: 0, slideX: 0, slideZ: 0 };
 
   // --- turrets ---
   for (let i = h.turrets.length - 1; i >= 0; i--) {
@@ -382,34 +352,45 @@ export function tickHazards(
     }
   }
 
-  // --- barriers ---
+  // --- barriers (always solid — no immunity gaps) ---
   for (const b of h.barriers) {
     b.angle += b.speed * dt;
     b.group.rotation.y = b.angle;
-    b.graceTimer = Math.max(0, b.graceTimer - dt);
 
-    if (b.graceTimer > 0 || barrierImmunity > 0) continue;
     const ax = Math.cos(b.angle) * b.innerR;
     const az = Math.sin(b.angle) * b.innerR;
     const bx = Math.cos(b.angle) * b.outerR;
     const bz = Math.sin(b.angle) * b.outerR;
-    if (distSqToSegment(px, pz, ax, az, bx, bz) <= BARRIER_HALF_WIDTH * BARRIER_HALF_WIDTH) {
-      out.impact += BARRIER_DAMAGE;
-      out.reset = true;
-      // Push the player away from the closest point on the wall surface.
-      // This sends them back the way they came — not along the sweep tangent.
-      const sdx = bx - ax;
-      const sdz = bz - az;
-      const lenSq = sdx * sdx + sdz * sdz;
-      const t = lenSq > 1e-6 ? ((px - ax) * sdx + (pz - az) * sdz) / lenSq : 0;
-      const cx = ax + sdx * Math.max(0, Math.min(1, t));
-      const cz = az + sdz * Math.max(0, Math.min(1, t));
-      const dx = px - cx;
-      const dz = pz - cz;
-      const dl = Math.hypot(dx, dz) || 1;
-      out.knockX = dx / dl;
-      out.knockZ = dz / dl;
-      b.graceTimer = 1.6;
+    const sdx = bx - ax;
+    const sdz = bz - az;
+    const segLenSq = sdx * sdx + sdz * sdz;
+    const t = segLenSq > 1e-6 ? ((px - ax) * sdx + (pz - az) * sdz) / segLenSq : 0;
+    const ct = Math.max(0, Math.min(1, t));
+    const cx = ax + sdx * ct;
+    const cz = az + sdz * ct;
+    const nx = px - cx;
+    const nz = pz - cz;
+    const dist = Math.hypot(nx, nz);
+
+    if (dist <= BARRIER_HALF_WIDTH) {
+      // Resolve penetration — push player out of the wall
+      const pushDist = BARRIER_HALF_WIDTH - dist + 0.06;
+      const ndx = dist > 1e-6 ? (nx / dist) * pushDist : Math.cos(b.angle) * pushDist;
+      const ndz = dist > 1e-6 ? (nz / dist) * pushDist : Math.sin(b.angle) * pushDist;
+
+      // Slide along the wall in the barrier's rotational direction
+      const slideX = -cz * b.speed * dt;
+      const slideZ = cx * b.speed * dt;
+
+      out.slideX += ndx + slideX;
+      out.slideZ += ndz + slideZ;
+
+      // Damage throttled to once per ~0.5s so it doesn't fire every frame
+      b.graceTimer = Math.max(0, b.graceTimer - dt);
+      if (b.graceTimer <= 0) {
+        out.impact += BARRIER_DAMAGE;
+        b.graceTimer = 0.5;
+      }
     }
   }
 
