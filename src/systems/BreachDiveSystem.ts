@@ -57,7 +57,6 @@ import {
   tickHazards,
   disposeHazards,
   addTurret,
-  addBarrier,
   addPool,
   damageTurretsAt,
   liveTurretCount,
@@ -124,7 +123,7 @@ const PROJECTILE_HIT_DIST = 1.05;
 const AIM_RANGE = 14;
 /** Constructs one shot can pass through — makes a dense pack worth shooting into. */
 const SHOT_PIERCE = 1;
-// (Barrier immunity removed — barriers are always-solid walls, no grace window needed.)
+// (Barrier system removed.)
 
 // Exit ambush (fail path)
 const AMBUSH_RADIUS = 25;
@@ -163,7 +162,7 @@ let spawnBudget = 0;
 let hordeCap = 120;
 /** Latest frame delta, so ctx.burnICE can apply a per-second rate. */
 let lastDt = 1 / 60;
-/** Insertion point — where the dive starts and where barriers throw you back to. */
+/** Insertion point — where the dive starts. */
 let entryX = 0;
 let entryZ = 0;
 /** Live player position, mirrored so spawn helpers can respect clearance. */
@@ -345,9 +344,6 @@ function initCtx(): DiveCtx {
     spawnICEAt: (n, x, z, radius) => spawnIceRing(n, x, z, radius * 0.75, radius),
     addTurret: (x, z) => {
       if (diveScene && hazards) addTurret(diveScene, hazards, x, z, shotDamage());
-    },
-    addBarrier: (angle, speed, innerR, outerR) => {
-      if (diveScene && hazards) addBarrier(diveScene, hazards, angle, speed, innerR, outerR);
     },
     addPool: (x, z, radius) => {
       if (diveScene && hazards) addPool(diveScene, hazards, x, z, radius);
@@ -683,9 +679,7 @@ export function enterDive(
   spawnBudget = 0;
 
   // Insertion point out on the rim. Every verb starts here, so reaching the
-  // objective is itself a crossing — and it is where barriers throw you back
-  // to, which would be a reward rather than a setback if it were the origin
-  // (three verbs hold the centre).
+  // objective requires crossing the full arena.
   const entryAngle = Math.random() * Math.PI * 2;
   entryX = Math.cos(entryAngle) * (DIVE_ARENA_R - 3);
   entryZ = Math.sin(entryAngle) * (DIVE_ARENA_R - 3);
@@ -826,7 +820,7 @@ export function BreachDiveSystem(
     }
   }
 
-  // --- hazards: turrets, sweeping barriers, corrosion pools ---
+  // --- hazards: turrets, corrosion pools ---
   if (hazards) {
     const hz = tickHazards(hazards, diveScene, dt, time, px, pz, playerIFrames);
     if (hz.impact > 0) {
@@ -836,25 +830,8 @@ export function BreachDiveSystem(
       haptics.hit();
     }
     if (hz.dot > 0) {
-      // Armor is scaled by dt here so it reduces the pool's DPS rather than
-      // being subtracted whole on every one of 60 frames per second.
       diveHealth -= Math.max(0, hz.dot - armor * dt);
       hurtFlash = Math.max(hurtFlash, 0.12);
-    }
-    if ((hz.slideX !== 0 || hz.slideZ !== 0) && player?.position) {
-      player.position.x += hz.slideX;
-      player.position.z += hz.slideZ;
-      const lim = DIVE_ARENA_R - 2;
-      const r2 = player.position.x * player.position.x + player.position.z * player.position.z;
-      if (r2 > lim * lim) {
-        const k = lim / Math.sqrt(r2);
-        player.position.x *= k;
-        player.position.z *= k;
-      }
-      player.position.y = 0.5;
-      if (player.transform) player.transform.position.copy(player.position);
-      px = player.position.x;
-      pz = player.position.z;
     }
     playerX = px;
     playerZ = pz;
@@ -1136,35 +1113,6 @@ if (typeof window !== 'undefined' && new URLSearchParams(window.location.search)
           }
           let vx = tx - playerX;
           let vz = tz - playerZ;
-
-          // Minimal barrier competence. A human sees a sweeping wall and waits
-          // a beat or steps around it; a bot that walks straight into one gets
-          // thrown back to insertion over and over, which made measured route
-          // times pure barrier RNG (the same config scored 56s and 84s). Back
-          // away from any barrier segment we are about to touch, then resume.
-          for (const b of hazards?.barriers ?? []) {
-            const ax = Math.cos(b.angle) * b.innerR;
-            const az = Math.sin(b.angle) * b.innerR;
-            const bx = Math.cos(b.angle) * b.outerR;
-            const bz = Math.sin(b.angle) * b.outerR;
-            const dxs = bx - ax;
-            const dzs = bz - az;
-            const lenSq = dxs * dxs + dzs * dzs || 1;
-            let u = ((playerX - ax) * dxs + (playerZ - az) * dzs) / lenSq;
-            u = u < 0 ? 0 : u > 1 ? 1 : u;
-            const cxs = ax + dxs * u;
-            const czs = az + dzs * u;
-            const offX = playerX - cxs;
-            const offZ = playerZ - czs;
-            const off = Math.hypot(offX, offZ);
-            if (off < 3.2) {
-              // Flee perpendicular, biased to the side the sweep is leaving.
-              const sign = b.speed >= 0 ? 1 : -1;
-              vx = -playerZ * sign;
-              vz = playerX * sign;
-              break;
-            }
-          }
 
           const len = Math.hypot(vx, vz) || 1;
           updateVirtualJoystick(vx / len, vz / len);

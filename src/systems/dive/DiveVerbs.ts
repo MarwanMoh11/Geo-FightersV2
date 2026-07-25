@@ -122,13 +122,11 @@ export interface DiveCtx {
   /** Player position this frame. */
   px: number;
   pz: number;
-  /** Insertion point. Barriers throw the player back here. */
+  /** Dive start position on the rim. */
   entryX: number;
   entryZ: number;
   /** Place a destructible turret that shells the player on sight. */
   addTurret(x: number, z: number): void;
-  /** Place a rotating radial barrier; contact resets the player to insertion. */
-  addBarrier(angle: number, speed: number, innerR: number, outerR: number): void;
   /** Place a static damage-over-time pool. */
   addPool(x: number, z: number, radius: number): void;
   /** Live ICE within `r` of a point. */
@@ -256,10 +254,6 @@ function makeExtraction(ctx: DiveCtx): DiveVerb {
   ctx.addTurret(Math.cos(ta) * 7.5, Math.sin(ta) * 7.5);
   ctx.addTurret(Math.cos(ta + Math.PI) * 7.5, Math.sin(ta + Math.PI) * 7.5);
 
-  // Counter-rotating barriers, both starting OUTSIDE the pad radius — the pad
-  // itself is a refuge, but every approach to it has to be timed.
-  ctx.addBarrier(0, 0.42, 5.5, ARENA_R - 1);
-  ctx.addBarrier(Math.PI, -0.34, 5.5, ARENA_R - 1);
 
   return {
     markers: [pad],
@@ -346,7 +340,6 @@ function makeOverload(ctx: DiveCtx): DiveVerb {
 
   // One slow sweep across the whole floor plus pools on the pad ring: the
   // route between pads matters as much as the pads.
-  ctx.addBarrier(Math.random() * Math.PI * 2, 0.38, 4.5, ARENA_R - 1);
   const pa = Math.random() * Math.PI * 2;
   ctx.addPool(Math.cos(pa) * 8, Math.sin(pa) * 8, 3.4);
   ctx.addPool(Math.cos(pa + 2.1) * 11, Math.sin(pa + 2.1) * 11, 3.0);
@@ -380,8 +373,6 @@ function makeOverload(ctx: DiveCtx): DiveVerb {
               c.banner(`PAD CHARGED ${charged}/${padCount}`);
             }
           } else if (pad.fill > 0) {
-            // Partial charge decays, but slowly: a single barrier throw-back
-            // must not erase the whole channel or the verb deadlocks.
             pad.fill = Math.max(0, pad.fill - dt * 0.25);
             pad.state = 'idle';
           }
@@ -457,10 +448,6 @@ function makeGrabAndRun(ctx: DiveCtx): DiveVerb {
     const len = Math.hypot(c.x, c.z) || 1;
     ctx.addTurret(c.x + (c.x / len) * 2.6, c.z + (c.z / len) * 2.6);
   }
-  // Counter-rotating pair reaching all the way to the centre: there is no
-  // safe lane through the middle.
-  ctx.addBarrier(0, 0.34, 3, ARENA_R - 1);
-  ctx.addBarrier(Math.PI, -0.3, 3, ARENA_R - 1);
 
   let got = 0;
   let running = false;
@@ -538,14 +525,7 @@ function makeUplink(ctx: DiveCtx): DiveVerb {
     });
   });
 
-  // THE OBSTACLE COURSE. Two barriers on opposite sides sweeping together, reaching
-  // from the centre to the rim: there is no lane that is safe for long, and
-  // every tower-to-tower crossing is a timing problem. This is the verb where
-  // movement IS the skill, so the geometry carries it rather than the horde
-  // alone. A turret on each tower means the 2s channel is always contested.
-  for (let i = 0; i < 2; i++) {
-    ctx.addBarrier(i * Math.PI, 0.4, 2.5, ARENA_R - 1);
-  }
+  // A turret on each tower means the 2s channel is always contested.
   for (const t of towers) {
     const len = Math.hypot(t.x, t.z) || 1;
     ctx.addTurret(t.x + (t.x / len) * 3.4, t.z + (t.z / len) * 3.4);
@@ -634,7 +614,6 @@ function makeSupplyRun(ctx: DiveCtx): DiveVerb {
 
   // One slow sweep plus corrosion pools in the landing field: the crate is
   // never simply "run straight at it".
-  ctx.addBarrier(Math.random() * Math.PI * 2, 0.45, 4, ARENA_R - 1);
   const qa = Math.random() * Math.PI * 2;
   ctx.addPool(Math.cos(qa) * 9, Math.sin(qa) * 9, 3.2);
   ctx.addPool(Math.cos(qa + 2.4) * 12, Math.sin(qa + 2.4) * 12, 3.0);
@@ -746,8 +725,6 @@ const BUST_STEP = 0.09;
 const BUST_CAP = 0.7;
 /** Trace rate added per stack — pushing costs clock as well as risk. */
 const STACK_HEAT = 0.22;
-/** Ceiling on stack-armed barriers, or a deep stack becomes unbankable. */
-const MAX_ARMED_BARRIERS = 3;
 
 function makeGamble(ctx: DiveCtx): DiveVerb {
   const altar = createMarker(ctx.scene, {
@@ -777,8 +754,6 @@ function makeGamble(ctx: DiveCtx): DiveVerb {
 
   let stack = 0;
   let revealed = false;
-  /** Barriers armed so far. Each push adds one — see the tick. */
-  let armed = 0;
   const bustChance = () => Math.min(BUST_CAP, BUST_BASE + stack * BUST_STEP);
 
   return {
@@ -817,20 +792,6 @@ function makeGamble(ctx: DiveCtx): DiveVerb {
             c.sfx('step');
             c.banner(`STACK ${stack} — SECURITY ESCALATING`);
             c.spawnICEAt(6 + ctx.security * 3, 0, 0, 9);
-            // Greed arms the room. Every push adds another sweep between the
-            // altar and the bank, so the walk you have to make to cash out
-            // gets measurably worse the longer you ride the stack. The altar
-            // itself stays clear (barriers start at 4.5) — the risk is all in
-            // leaving with the money.
-            if (armed < MAX_ARMED_BARRIERS) {
-              c.addBarrier(
-                Math.random() * Math.PI * 2,
-                (armed % 2 === 0 ? 1 : -1) * (0.36 + armed * 0.07),
-                4.5,
-                ARENA_R - 1,
-              );
-              armed++;
-            }
             if (!revealed) {
               revealed = true;
               revealMarker(cashOut);
