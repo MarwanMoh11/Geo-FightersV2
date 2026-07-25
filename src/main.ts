@@ -149,6 +149,40 @@ preloadTextures(updateLoadingProgress).then(async () => {
       applyCharacterModel;
     // Balance harness: scripted bot + metrics sampler (window.__balance)
     import('./core/BalanceHarness').then((m) => m.initBalanceHarness());
+    // Jump straight into a breach dive: __dive('relay', 1). Reaching one
+    // normally costs a full run plus a won mini-game, which makes the dive
+    // effectively untestable in a headless browser.
+    import('./systems/BreachDiveSystem').then((m) => {
+      (window as unknown as { __dive: (k?: string, s?: number) => void }).__dive = (
+        kind = 'relay',
+        security = 1,
+      ) =>
+        m.enterDive(
+          {
+            id: 'debug-node',
+            kind,
+            name: 'DEBUG NODE',
+            icon: '⚡',
+            color: 0x36e6ff,
+            x: 0,
+            z: 0,
+            signY: 4,
+            doorX: 0,
+            doorZ: 0,
+            dirX: 0,
+            dirZ: 1,
+            doorH: 3,
+            cooldown: 0,
+            doorMat: null,
+            ringMat: null,
+            sign: null,
+            opened: false,
+          } as unknown as Parameters<typeof m.enterDive>[0],
+          false,
+          security,
+          scene,
+        );
+    });
   }
 
   // Renderer backend indicator (debug builds only)
