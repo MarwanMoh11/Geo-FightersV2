@@ -124,8 +124,7 @@ const PROJECTILE_HIT_DIST = 1.05;
 const AIM_RANGE = 14;
 /** Constructs one shot can pass through — makes a dense pack worth shooting into. */
 const SHOT_PIERCE = 1;
-/** Seconds of barrier immunity granted after a throw-back. */
-const BARRIER_IMMUNITY = 1.8;
+// (Barrier immunity removed — barriers are always-solid walls, no grace window needed.)
 
 // Exit ambush (fail path)
 const AMBUSH_RADIUS = 25;
@@ -176,13 +175,6 @@ let traceValue = 0;
 let diveHealth = HP_BASE;
 let diveHealthMax = HP_BASE;
 let playerIFrames = 0;
-/**
- * Grace after a barrier hit. The player is knocked along the wall's normal,
- * which can still land them inside another sweep's annulus, so a short
- * immunity window keeps the knockback from chaining into a second hit before
- * the player can react.
- */
-let barrierImmunity = 0;
 let hurtFlash = 0;
 let fireCooldown = 0;
 let radarTimer = 0;
@@ -685,7 +677,6 @@ export function enterDive(
   diveHealth = HP_BASE + security * HP_PER_SECURITY;
   diveHealthMax = diveHealth;
   playerIFrames = 0;
-  barrierImmunity = 0;
   hurtFlash = 0;
   fireCooldown = 0;
   radarTimer = 0;
@@ -814,7 +805,6 @@ export function BreachDiveSystem(
 
   // --- constructs ---
   playerIFrames = Math.max(0, playerIFrames - dt);
-  barrierImmunity = Math.max(0, barrierImmunity - dt);
   hurtFlash = Math.max(0, hurtFlash - dt);
   const armor = player?.stats?.armor ?? 0;
   const hit = tickIce(iceList, dt, px, pz, DIVE_ARENA_R, playerIFrames);
@@ -838,7 +828,7 @@ export function BreachDiveSystem(
 
   // --- hazards: turrets, sweeping barriers, corrosion pools ---
   if (hazards) {
-    const hz = tickHazards(hazards, diveScene, dt, time, px, pz, playerIFrames, barrierImmunity);
+    const hz = tickHazards(hazards, diveScene, dt, time, px, pz, playerIFrames);
     if (hz.impact > 0) {
       diveHealth -= Math.max(1, hz.impact - armor);
       hurtFlash = 0.35;
@@ -851,29 +841,20 @@ export function BreachDiveSystem(
       diveHealth -= Math.max(0, hz.dot - armor * dt);
       hurtFlash = Math.max(hurtFlash, 0.12);
     }
-    if (hz.reset) {
-      // A barrier is a wall: knock the player off along the wall's normal
-      // rather than teleporting them all the way back to insertion. The
-      // full-arena reset was disorienting and read as an invisible barrier
-      // the player never felt they touched.
-      const KNOCK = 7.5;
-      if (player?.position) {
-        player.position.x += hz.knockX * KNOCK;
-        player.position.z += hz.knockZ * KNOCK;
-        const lim = DIVE_ARENA_R - 2;
-        const r2 = player.position.x * player.position.x + player.position.z * player.position.z;
-        if (r2 > lim * lim) {
-          const k = lim / Math.sqrt(r2);
-          player.position.x *= k;
-          player.position.z *= k;
-        }
-        player.position.y = 0.5;
-        if (player.transform) player.transform.position.copy(player.position);
-        px = player.position.x;
-        pz = player.position.z;
+    if ((hz.slideX !== 0 || hz.slideZ !== 0) && player?.position) {
+      player.position.x += hz.slideX;
+      player.position.z += hz.slideZ;
+      const lim = DIVE_ARENA_R - 2;
+      const r2 = player.position.x * player.position.x + player.position.z * player.position.z;
+      if (r2 > lim * lim) {
+        const k = lim / Math.sqrt(r2);
+        player.position.x *= k;
+        player.position.z *= k;
       }
-      playerIFrames = Math.max(playerIFrames, ICE_HIT_IFRAMES);
-      barrierImmunity = BARRIER_IMMUNITY;
+      player.position.y = 0.5;
+      if (player.transform) player.transform.position.copy(player.position);
+      px = player.position.x;
+      pz = player.position.z;
     }
     playerX = px;
     playerZ = pz;
