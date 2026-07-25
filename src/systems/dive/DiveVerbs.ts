@@ -57,8 +57,8 @@ const BUDGET: Record<BreachKind, number> = {
   stashden: 44,
 };
 
-/** Each security level shortens the clock by this fraction. s=3 → 64% budget. */
-const SECURITY_SQUEEZE = 0.12;
+/** Each security level shortens the clock by this fraction. s=3 → 70% budget. */
+const SECURITY_SQUEEZE = 0.1;
 /** Overclock trades a shorter clock for the better payout. */
 const OVERCLOCK_SQUEEZE = 0.15;
 
@@ -76,6 +76,40 @@ export function baseTraceRate(kind: BreachKind, security: number, overclock: boo
 
 export type DiveResult = 'win' | 'fail' | null;
 
+/**
+ * Horde pressure per verb. Constructs arrive as a continuous RATE that ramps
+ * with elapsed time, not as fixed waves.
+ *
+ * The old model spawned 2-4 constructs every 5.5s against a cap of 26 while
+ * the player killed roughly two per second — the grid could never out-produce
+ * the gun, so the room stayed empty and the dive had no horde in it at all.
+ * These rates sit deliberately ABOVE the player's sustained clear rate
+ * (~3.3/s through a dense pack with the dive's weakened, short-range,
+ * two-pierce shot), so the room fills over the dive. That is the second clock:
+ * finish the objective before you are buried.
+ */
+export interface HordeConfig {
+  /** Constructs present the moment the dive opens. */
+  initial: number;
+  /** Constructs per second at t=0. */
+  rate: number;
+  /** Added to `rate` for every second elapsed. */
+  ramp: number;
+  cap: number;
+}
+
+export const HORDE: Record<BreachKind, HordeConfig> = {
+  // Pure chase — the heaviest pressure in the game.
+  relay: { initial: 14, rate: 4.6, ramp: 0.1, cap: 150 },
+  // Hold-the-point: they have to keep coming or the pad is free.
+  bank: { initial: 14, rate: 5.0, ramp: 0.11, cap: 160 },
+  substation: { initial: 12, rate: 4.5, ramp: 0.09, cap: 150 },
+  armory: { initial: 12, rate: 4.5, ramp: 0.09, cap: 150 },
+  depot: { initial: 12, rate: 4.5, ramp: 0.09, cap: 150 },
+  // Starts calm; every push you take spawns its own reinforcements.
+  stashden: { initial: 8, rate: 3.5, ramp: 0.08, cap: 160 },
+};
+
 export interface DiveCtx {
   scene: THREE.Scene;
   kind: BreachKind;
@@ -88,12 +122,26 @@ export interface DiveCtx {
   /** Player position this frame. */
   px: number;
   pz: number;
+  /** Insertion point. Barriers throw the player back here. */
+  entryX: number;
+  entryZ: number;
+  /** Place a destructible turret that shells the player on sight. */
+  addTurret(x: number, z: number): void;
+  /** Place a rotating radial barrier; contact resets the player to insertion. */
+  addBarrier(angle: number, speed: number, innerR: number, outerR: number): void;
+  /** Place a static damage-over-time pool. */
+  addPool(x: number, z: number, radius: number): void;
   /** Live ICE within `r` of a point. */
   iceNear(x: number, z: number, r: number): number;
   /** Spawn `n` ICE on a ring around the arena centre. */
   spawnICE(n: number, minR?: number, maxR?: number): void;
   /** Spawn `n` ICE ringing a specific point — used to defend an objective. */
   spawnICEAt(n: number, x: number, z: number, radius: number): void;
+  /**
+   * Damage every construct in a radius at `dps` (scaled by the frame delta
+   * internally). Lets an objective's own ground fight for you.
+   */
+  burnICE(x: number, z: number, radius: number, dps: number): void;
   /** Push the trace meter back. Floored by the orchestrator. */
   scrub(points: number): void;
   /** Push the trace meter forward (a bust). */
@@ -168,7 +216,26 @@ function furthestFrom(markers: DiveMarker[], px: number, pz: number): DiveMarker
 // ---------------------------------------------------------------------------
 
 const EXTRACT_SECONDS = 10; // clean seconds of hold needed
-const CONTEST_R = 4.2; // ICE this close to the pad stall the download
+const CONTEST_R = 3.6; // ICE this close to the pad stall the download
+/**
+ * Constructs on the pad needed to contest it. This is a COUNT, not "any ICE
+ * at all": once the horde runs to nine figures a single straggler is always
+ * within any radius you pick, so a >=1 test made the download permanently
+ * stalled at high security (measured: 0/100 progress in 55 seconds). Holding
+ * the point now means keeping it mostly clear, which the dive gun can do.
+ */
+const CONTEST_COUNT = 7;
+/**
+ * The core's own defences, which the intruder piggybacks on while standing in
+ * it. Without this the bank verb is unwinnable against a real horde: "hold a
+ * point and keep it clear" cannot work when constructs stream in faster than
+ * any weapon clears them, and the download measured 0/100 progress across a
+ * full 100-second run. The pad now thins the pile itself, so holding it is a
+ * survival problem (which the horde makes hard) rather than a clearing
+ * problem (which the horde makes impossible).
+ */
+const PAD_BURN_DPS = 120;
+const PAD_BURN_R = 4.8;
 /** Rollback while contested. Kept below the fill rate so a 50/50 fight still
  *  nets forward progress — otherwise a security-3 pack stalemates the pad. */
 const CONTEST_ROLLBACK = 6;
@@ -183,6 +250,17 @@ function makeExtraction(ctx: DiveCtx): DiveVerb {
     label: 'DATA CORE',
   });
 
+  // Two turrets flank the core: holding the pad means eating shells, so the
+  // player has to decide whether to spend time silencing them first.
+  const ta = Math.random() * Math.PI * 2;
+  ctx.addTurret(Math.cos(ta) * 7.5, Math.sin(ta) * 7.5);
+  ctx.addTurret(Math.cos(ta + Math.PI) * 7.5, Math.sin(ta + Math.PI) * 7.5);
+
+  // Counter-rotating barriers, both starting OUTSIDE the pad radius — the pad
+  // itself is a refuge, but every approach to it has to be timed.
+  ctx.addBarrier(0, 0.42, 5.5, ARENA_R - 1);
+  ctx.addBarrier(Math.PI, -0.34, 5.5, ARENA_R - 1);
+
   return {
     markers: [pad],
     traceMult: 1,
@@ -195,7 +273,10 @@ function makeExtraction(ctx: DiveCtx): DiveVerb {
 
     tick(c, dt) {
       const on = insideMarker(pad, c.px, c.pz);
-      const contested = c.iceNear(pad.x, pad.z, CONTEST_R) > 0;
+      // Live pad: while you hold it, the core burns what stands on it.
+      if (on) c.burnICE(pad.x, pad.z, PAD_BURN_R, PAD_BURN_DPS);
+      const onPad = c.iceNear(pad.x, pad.z, CONTEST_R);
+      const contested = onPad >= CONTEST_COUNT;
 
       if (on && !contested) {
         this.progress = Math.min(100, this.progress + (100 / EXTRACT_SECONDS) * dt);
@@ -217,7 +298,7 @@ function makeExtraction(ctx: DiveCtx): DiveVerb {
       }
 
       pad.fill = this.progress / 100;
-      this.note = contested ? `${c.iceNear(pad.x, pad.z, CONTEST_R)} ICE ON PAD` : '';
+      this.note = contested ? `${onPad} ICE ON THE PAD — CLEAR IT` : '';
       return this.progress >= 100 ? 'win' : null;
     },
   };
@@ -253,6 +334,23 @@ function makeOverload(ctx: DiveCtx): DiveVerb {
     hidden: true,
   });
 
+  // Every other pad is covered by a turret sitting just outside it, so the
+  // 1.2s channel is never free — you either tank it or spend time clearing.
+  let placed = 0;
+  spots.forEach((p, i) => {
+    if (i % 2 !== 0 || placed >= 2) return;
+    placed++;
+    const len = Math.hypot(p.x, p.z) || 1;
+    ctx.addTurret(p.x + (p.x / len) * 3.2, p.z + (p.z / len) * 3.2);
+  });
+
+  // One slow sweep across the whole floor plus pools on the pad ring: the
+  // route between pads matters as much as the pads.
+  ctx.addBarrier(Math.random() * Math.PI * 2, 0.38, 4.5, ARENA_R - 1);
+  const pa = Math.random() * Math.PI * 2;
+  ctx.addPool(Math.cos(pa) * 8, Math.sin(pa) * 8, 3.4);
+  ctx.addPool(Math.cos(pa + 2.1) * 11, Math.sin(pa + 2.1) * 11, 3.0);
+
   let charged = 0;
   let phase2 = false;
   let cap = 0;
@@ -282,8 +380,9 @@ function makeOverload(ctx: DiveCtx): DiveVerb {
               c.banner(`PAD CHARGED ${charged}/${padCount}`);
             }
           } else if (pad.fill > 0) {
-            // Partial charge decays — you have to commit to a pad.
-            pad.fill = Math.max(0, pad.fill - dt * 0.5);
+            // Partial charge decays, but slowly: a single barrier throw-back
+            // must not erase the whole channel or the verb deadlocks.
+            pad.fill = Math.max(0, pad.fill - dt * 0.25);
             pad.state = 'idle';
           }
         }
@@ -338,7 +437,9 @@ function makeGrabAndRun(ctx: DiveCtx): DiveVerb {
       label: `CRATE ${i + 1}`,
     }),
   );
-  const exitAngle = Math.random() * Math.PI * 2;
+  // Put the exit opposite the insertion point so the escape is a full crossing
+  // of the arena, not a step back out the door you came in.
+  const exitAngle = Math.atan2(ctx.entryZ, ctx.entryX) + Math.PI;
   const exit = createMarker(ctx.scene, {
     x: Math.cos(exitAngle) * EXIT_R,
     z: Math.sin(exitAngle) * EXIT_R,
@@ -348,6 +449,18 @@ function makeGrabAndRun(ctx: DiveCtx): DiveVerb {
     label: 'EXIT',
     hidden: true,
   });
+
+  // Three of the crates are under guard — the sweep has to be fought for.
+  for (let i = 0; i < crates.length; i += 2) {
+    if (i / 2 >= 3) break;
+    const c = crates[i];
+    const len = Math.hypot(c.x, c.z) || 1;
+    ctx.addTurret(c.x + (c.x / len) * 2.6, c.z + (c.z / len) * 2.6);
+  }
+  // Counter-rotating pair reaching all the way to the centre: there is no
+  // safe lane through the middle.
+  ctx.addBarrier(0, 0.34, 3, ARENA_R - 1);
+  ctx.addBarrier(Math.PI, -0.3, 3, ARENA_R - 1);
 
   let got = 0;
   let running = false;
@@ -383,9 +496,13 @@ function makeGrabAndRun(ctx: DiveCtx): DiveVerb {
           exit.state = 'active';
           c.sfx('alarm');
           c.banner('ARSENAL STRIPPED — RUN FOR THE EXIT');
-          // The exit is not a free walk: the alarm drops ICE between you and
-          // the door, so the run leg has to be fought through.
-          c.spawnICEAt(4 + ctx.security * 2, exit.x, exit.z, 8);
+          // The exit is not a free walk. The alarm drops a wall of ICE between
+          // you and the door, arms a third sweep, and posts two turrets on the
+          // pad itself — the run leg is the hardest part of the verb.
+          c.spawnICEAt(10 + ctx.security * 4, exit.x, exit.z, 9);
+          const ex = Math.hypot(exit.x, exit.z) || 1;
+          c.addTurret(exit.x - (exit.z / ex) * 4, exit.z + (exit.x / ex) * 4);
+          c.addTurret(exit.x + (exit.z / ex) * 4, exit.z - (exit.x / ex) * 4);
         }
         return null;
       }
@@ -403,7 +520,7 @@ function makeGrabAndRun(ctx: DiveCtx): DiveVerb {
 // RELAY — UPLINK: lock three towers in sequence while the hunt closes
 // ---------------------------------------------------------------------------
 
-const TOWER_CHANNEL = 2.0;
+const TOWER_CHANNEL = 1.6;
 const LOCKS_NEEDED = 3;
 
 function makeUplink(ctx: DiveCtx): DiveVerb {
@@ -420,6 +537,19 @@ function makeUplink(ctx: DiveCtx): DiveVerb {
       label: `TOWER ${i + 1}`,
     });
   });
+
+  // THE OBSTACLE COURSE. Two barriers on opposite sides sweeping together, reaching
+  // from the centre to the rim: there is no lane that is safe for long, and
+  // every tower-to-tower crossing is a timing problem. This is the verb where
+  // movement IS the skill, so the geometry carries it rather than the horde
+  // alone. A turret on each tower means the 2s channel is always contested.
+  for (let i = 0; i < 2; i++) {
+    ctx.addBarrier(i * Math.PI, 0.4, 2.5, ARENA_R - 1);
+  }
+  for (const t of towers) {
+    const len = Math.hypot(t.x, t.z) || 1;
+    ctx.addTurret(t.x + (t.x / len) * 3.4, t.z + (t.z / len) * 3.4);
+  }
 
   let locks = 0;
   let active: DiveMarker = towers[0];
@@ -441,8 +571,8 @@ function makeUplink(ctx: DiveCtx): DiveVerb {
         this.stage = 'SYNCING';
       } else {
         // Leaving mid-sync bleeds progress — the hunt has to be outrun, not
-        // waited out.
-        active.fill = Math.max(0, active.fill - dt * 0.6);
+        // waited out — but slowly enough that one throw-back isn't a wipe.
+        active.fill = Math.max(0, active.fill - dt * 0.3);
         this.stage = 'REACH THE LIT TOWER';
       }
 
@@ -500,6 +630,15 @@ function makeSupplyRun(ctx: DiveCtx): DiveVerb {
   const drops: Drop[] = [];
   const markers: DiveMarker[] = [];
   let collected = 0;
+  let dropCount = 0;
+
+  // One slow sweep plus corrosion pools in the landing field: the crate is
+  // never simply "run straight at it".
+  ctx.addBarrier(Math.random() * Math.PI * 2, 0.45, 4, ARENA_R - 1);
+  const qa = Math.random() * Math.PI * 2;
+  ctx.addPool(Math.cos(qa) * 9, Math.sin(qa) * 9, 3.2);
+  ctx.addPool(Math.cos(qa + 2.4) * 12, Math.sin(qa + 2.4) * 12, 3.0);
+  ctx.addPool(Math.cos(qa + 4.3) * 7, Math.sin(qa + 4.3) * 7, 2.6);
 
   const liveDrops = () => {
     let n = 0;
@@ -522,6 +661,13 @@ function makeSupplyRun(ctx: DiveCtx): DiveVerb {
     if (marker.body) marker.body.visible = false; // hidden until it lands
     drops.push({ marker, landing: 0, ttl: DROP_TTL, done: false });
     markers.push(marker);
+    // Every other drop lands under guard, so the yard slowly fills with
+    // emplacements exactly where you keep having to go.
+    dropCount++;
+    if (dropCount % 2 === 0) {
+      const len = Math.hypot(marker.x, marker.z) || 1;
+      ctx.addTurret(marker.x + (marker.x / len) * 3, marker.z + (marker.z / len) * 3);
+    }
   };
 
   /** Keep the sky full: never more than MAX_LIVE_DROPS, never fewer than needed. */
@@ -600,6 +746,8 @@ const BUST_STEP = 0.09;
 const BUST_CAP = 0.7;
 /** Trace rate added per stack — pushing costs clock as well as risk. */
 const STACK_HEAT = 0.22;
+/** Ceiling on stack-armed barriers, or a deep stack becomes unbankable. */
+const MAX_ARMED_BARRIERS = 3;
 
 function makeGamble(ctx: DiveCtx): DiveVerb {
   const altar = createMarker(ctx.scene, {
@@ -610,7 +758,7 @@ function makeGamble(ctx: DiveCtx): DiveVerb {
     color: ctx.accent,
     label: 'ALTAR',
   });
-  const cashAngle = Math.random() * Math.PI * 2;
+  const cashAngle = Math.atan2(ctx.entryZ, ctx.entryX) + Math.PI;
   const cashOut = createMarker(ctx.scene, {
     x: Math.cos(cashAngle) * EXIT_R,
     z: Math.sin(cashAngle) * EXIT_R,
@@ -621,8 +769,16 @@ function makeGamble(ctx: DiveCtx): DiveVerb {
     hidden: true,
   });
 
+  // The bank is guarded even before you have anything to bank.
+  const cx = Math.cos(cashAngle);
+  const cz = Math.sin(cashAngle);
+  ctx.addTurret(cashOut.x - cz * 4.5, cashOut.z + cx * 4.5);
+  ctx.addTurret(cashOut.x + cz * 4.5, cashOut.z - cx * 4.5);
+
   let stack = 0;
   let revealed = false;
+  /** Barriers armed so far. Each push adds one — see the tick. */
+  let armed = 0;
   const bustChance = () => Math.min(BUST_CAP, BUST_BASE + stack * BUST_STEP);
 
   return {
@@ -659,8 +815,22 @@ function makeGamble(ctx: DiveCtx): DiveVerb {
             stack++;
             this.traceMult = 1 + stack * STACK_HEAT;
             c.sfx('step');
-            c.banner(`STACK ${stack}`);
-            c.spawnICEAt(2 + ctx.security, 0, 0, 9);
+            c.banner(`STACK ${stack} — SECURITY ESCALATING`);
+            c.spawnICEAt(6 + ctx.security * 3, 0, 0, 9);
+            // Greed arms the room. Every push adds another sweep between the
+            // altar and the bank, so the walk you have to make to cash out
+            // gets measurably worse the longer you ride the stack. The altar
+            // itself stays clear (barriers start at 4.5) — the risk is all in
+            // leaving with the money.
+            if (armed < MAX_ARMED_BARRIERS) {
+              c.addBarrier(
+                Math.random() * Math.PI * 2,
+                (armed % 2 === 0 ? 1 : -1) * (0.36 + armed * 0.07),
+                4.5,
+                ARENA_R - 1,
+              );
+              armed++;
+            }
             if (!revealed) {
               revealed = true;
               revealMarker(cashOut);

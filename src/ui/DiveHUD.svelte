@@ -125,9 +125,17 @@
         <div class="hp-bar" class:low={hpRatio < 0.34}>
           <div class="hp-fill" style={`width:${hpRatio * 100}%;`}></div>
         </div>
-        <div class="ice-count" class:hot={dive.iceCount >= 12}>
-          <span class="ice-dot"></span>
-          {dive.iceCount} ICE
+        <div class="threats">
+          <span class="ice-count" class:hot={dive.iceCount >= 45} class:swarm={dive.iceCount >= 90}>
+            <span class="ice-dot"></span>
+            {dive.iceCount} ICE
+          </span>
+          {#if dive.turretCount > 0}
+            <span class="turret-count">
+              <span class="turret-dot"></span>
+              {dive.turretCount} GUN{dive.turretCount === 1 ? '' : 'S'}
+            </span>
+          {/if}
         </div>
       </div>
 
@@ -463,8 +471,14 @@
     box-shadow: 0 0 11px #ff3d3d;
   }
 
-  .ice-count {
+  .threats {
     margin-top: 0.35rem;
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+  }
+  .ice-count,
+  .turret-count {
     display: flex;
     align-items: center;
     gap: 0.35rem;
@@ -472,16 +486,31 @@
     font-size: 0.58rem;
     letter-spacing: 0.14em;
     color: rgba(255, 255, 255, 0.66);
+    font-variant-numeric: tabular-nums;
   }
-  .ice-dot {
+  .ice-dot,
+  .turret-dot {
     width: 7px;
     height: 7px;
     border-radius: 50%;
     background: #ff3d55;
     box-shadow: 0 0 6px #ff3d55;
   }
+  .turret-dot {
+    border-radius: 1px;
+    background: #ffb84d;
+    box-shadow: 0 0 6px #ffb84d;
+  }
   .ice-count.hot {
     color: #ff8fa3;
+  }
+  /* The room is genuinely full — this should feel alarming. */
+  .ice-count.swarm {
+    color: #ff3d55;
+    animation: crit-pulse 0.7s steps(2) infinite;
+  }
+  .turret-count {
+    color: #ffd9a0;
   }
 
   /* ---------- radar ---------- */
@@ -571,6 +600,7 @@
     .clock.crit,
     .trace-bar.crit,
     .oc,
+    .ice-count.swarm,
     .radar circle.pulse {
       animation: none;
     }
