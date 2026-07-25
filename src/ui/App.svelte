@@ -14,6 +14,8 @@
   import RecordsModal from './modals/RecordsModal.svelte';
   import MobileControls from './MobileControls.svelte';
   import Onboarding from './Onboarding.svelte';
+  import HowToPlayModal from './modals/HowToPlayModal.svelte';
+  import TutorialCoach from './TutorialCoach.svelte';
   import FPSCounter from './FPSCounter.svelte';
   import PwaLayer from './PwaLayer.svelte';
   import Toast from './Toast.svelte';
@@ -59,7 +61,14 @@
   <VictoryChoiceModal />
   <RecordsModal />
 
+  <!-- Teaching layer: the one-time briefing, the always-available reference,
+       and the contextual tips that introduce each system the first time it
+       actually shows up in a run. -->
   <Onboarding />
+  <HowToPlayModal />
+  {#if !uiState.dive}
+    <TutorialCoach />
+  {/if}
 
   <FPSCounter />
   <PwaLayer />
@@ -77,8 +86,30 @@
     z-index: 100;
   }
 
+  /* The UI layer is click-through by default so the HUD never eats a tap
+     meant for the arena. Everything genuinely interactive opts back in
+     here, centrally — the old `button, input` allowlist meant any control
+     that wasn't literally one of those two tags (a role=button card, a
+     label, a scroll container) silently became dead, and each modal had to
+     remember its own `pointer-events: auto` band-aid.
+
+     Scroll containers are included deliberately: a `.menu-scroll` with
+     pointer-events:none cannot be dragged, which reads as "the menu is
+     frozen" on a phone. */
   .game-ui :global(button),
-  .game-ui :global(input) {
+  .game-ui :global(input),
+  .game-ui :global(select),
+  .game-ui :global(textarea),
+  .game-ui :global(a[href]),
+  .game-ui :global(label),
+  .game-ui :global([role='button']),
+  .game-ui :global([role='tab']),
+  .game-ui :global([role='slider']),
+  .game-ui :global([role='dialog']),
+  .game-ui :global([tabindex]:not([tabindex='-1'])),
+  .game-ui :global(.menu-scroll),
+  .game-ui :global(.rail-scroll),
+  .game-ui :global(.interactive) {
     pointer-events: auto;
   }
 </style>

@@ -96,11 +96,13 @@
     <!-- Spacer keeps the vitals centered in the 1fr/auto/1fr grid -->
     <div class="hud-spacer" aria-hidden="true"></div>
 
-    <!-- Vitals -->
+    <!-- Vitals. The whole cluster sits on a soft dark plate: over a bright
+         explosion or a white shockwave the bare text used to wash out
+         completely, and the timer is the one number you always need. -->
     <div class="vitals">
       <div class="timer tnum" class:flash={levelFlash}>{timerText}</div>
 
-      <div class="hp">
+      <div class="hp" class:low={lowHealth}>
         <div class="hp-bar">
           <div class="hp-fill" class:low={lowHealth} style="width: {hpPercent}%"></div>
         </div>
@@ -123,20 +125,24 @@
               : uiState.overloadCharge}%"
           ></div>
         </div>
-        <!-- Label only when it matters — the filling bar speaks for itself -->
-        {#if uiState.overloadActive || uiState.overloadCharge >= 100}
-          <div class="overload-meta">
-            {#if uiState.overloadActive}
-              <span class="overload-text active-pulse"
-                >🔥 OVERLOAD: {Math.ceil(uiState.overloadTimer)}s</span
-              >
-            {:else}
-              <span class="overload-text ready-glow"
-                >⚡ OVERCLOCK READY{isTouchDevice ? '' : ' — SPACE'}</span
-              >
-            {/if}
-          </div>
-        {/if}
+        <!-- Always labelled. Showing the name only once the bar was already
+             full meant players spent their first run never learning what the
+             mystery bar under their health was for. -->
+        <div class="overload-meta">
+          {#if uiState.overloadActive}
+            <span class="overload-text active-pulse"
+              >🔥 OVERCLOCK {Math.ceil(uiState.overloadTimer)}s</span
+            >
+          {:else if uiState.overloadCharge >= 100}
+            <span class="overload-text ready-glow"
+              >⚡ OVERCLOCK READY{isTouchDevice ? ' — TAP ⚡' : ' — SPACE'}</span
+            >
+          {:else}
+            <span class="overload-text charging tnum"
+              >OVERCLOCK {Math.floor(uiState.overloadCharge)}%</span
+            >
+          {/if}
+        </div>
       </div>
 
       <div class="meta tnum">
@@ -231,7 +237,7 @@
     position: fixed;
     inset: 0;
     pointer-events: none;
-    z-index: 120;
+    z-index: var(--z-hud);
     font-family: var(--font-body);
   }
 
@@ -431,6 +437,16 @@
     align-items: center;
     gap: 5px;
     min-width: 0;
+    padding: 6px 14px 8px;
+    border-radius: var(--r-lg);
+    /* Readability plate: a soft radial scrim that fades out at the edges, so
+       the numbers keep their contrast over explosions without drawing a
+       hard-edged panel across the play area. */
+    background: radial-gradient(
+      ellipse 120% 130% at 50% 40%,
+      rgba(3, 6, 14, 0.62),
+      rgba(3, 6, 14, 0) 72%
+    );
   }
   .timer {
     font-size: 2rem;
@@ -438,7 +454,9 @@
     line-height: 1;
     letter-spacing: 0.04em;
     color: var(--color-text-main);
-    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+    text-shadow:
+      0 2px 10px rgba(0, 0, 0, 0.85),
+      0 0 2px rgba(0, 0, 0, 0.9);
     transition: color 0.3s ease;
   }
   .timer.flash {
@@ -515,8 +533,8 @@
   /* Pause (right) */
   .pause-btn {
     justify-self: end;
-    width: 42px;
-    height: 42px;
+    width: var(--tap);
+    height: var(--tap);
     border-radius: var(--r-md);
     display: flex;
     align-items: center;
@@ -611,7 +629,14 @@
     font-size: 0.52rem;
     font-weight: 700;
     letter-spacing: 0.06em;
+    line-height: 1.2;
     color: var(--color-text-dim);
+    /* Reserve the row so the vitals stack doesn't jump 12px every time the
+       meter fills or fires — a shifting HUD is a shifting aim reference. */
+    min-height: 0.75rem;
+  }
+  .overload-text.charging {
+    color: var(--color-text-faint);
   }
   .overload-text {
     display: inline-block;

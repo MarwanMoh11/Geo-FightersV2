@@ -2,140 +2,186 @@
   import { uiState } from '../../core/UIState.svelte.ts';
   import { setGameState } from '../../core/GameState';
   import { resetRun } from '../../core/runReset';
-  import { fade, scale } from 'svelte/transition';
+  import { playMenuClick } from '../../core/audio';
+  import { haptics } from '../../core/haptics';
+  import Modal from '../Modal.svelte';
+
+  /* Quitting a run throws away progress, so it asks once. On a phone the
+     Quit row sits a thumb-width from Resume — a mis-tap used to end the run
+     outright with no way back. */
+  let confirmQuit = $state(false);
 
   function resume() {
     setGameState('PLAYING');
   }
 
   function openSettings() {
+    playMenuClick();
     uiState.showSettings = true;
   }
 
   function openGrimoire() {
+    playMenuClick();
     uiState.showGrimoire = true;
   }
 
+  function openHowTo() {
+    playMenuClick();
+    uiState.showHowTo = true;
+  }
+
   function backToMenu() {
+    haptics.select();
     resetRun(); // abandon the run in place — no page reload
   }
+
+  let open = $derived(
+    uiState.gameState === 'PAUSED' &&
+      !uiState.showSettings &&
+      !uiState.showGrimoire &&
+      !uiState.showHowTo,
+  );
+
+  $effect(() => {
+    if (!open) confirmQuit = false;
+  });
+
+  let timeText = $derived(
+    `${Math.floor(uiState.gameTime / 60)
+      .toString()
+      .padStart(2, '0')}:${Math.floor(uiState.gameTime % 60)
+      .toString()
+      .padStart(2, '0')}`,
+  );
 </script>
 
-{#if uiState.gameState === 'PAUSED' && !uiState.showSettings && !uiState.showGrimoire}
-  <div id="pause-modal" transition:fade={{ duration: 180 }}>
-    <div class="sheet glass" transition:scale={{ duration: 240, start: 0.94 }}>
-      <h2 class="title">Paused</h2>
-      <div class="actions">
-        <button class="action-btn primary" onclick={resume}>
-          <span class="btn-text">Resume</span>
-          <span class="btn-hint">ESC</span>
-        </button>
-        <button class="action-btn" onclick={openGrimoire}>
-          <span class="btn-text">Evolutions</span>
-        </button>
-        <button class="action-btn" onclick={openSettings}>
-          <span class="btn-text">Settings</span>
-        </button>
-        <button class="action-btn danger" onclick={backToMenu}>
-          <span class="btn-text">Quit run</span>
-        </button>
-      </div>
+<Modal
+  {open}
+  eyebrow="Run paused"
+  title="Paused"
+  size="sm"
+  tone="cyan"
+  backdropClose
+  onclose={resume}
+>
+  <!-- A pause screen is the natural place to check how the run is going,
+       so the numbers come to you instead of squinting at the frozen HUD. -->
+  <div class="run-stats">
+    <div class="stat">
+      <span class="stat-val tnum">{timeText}</span>
+      <span class="stat-key">Time</span>
+    </div>
+    <div class="stat">
+      <span class="stat-val tnum">{uiState.level}</span>
+      <span class="stat-key">Level</span>
+    </div>
+    <div class="stat">
+      <span class="stat-val tnum">{uiState.kills}</span>
+      <span class="stat-key">Kills</span>
+    </div>
+    <div class="stat">
+      <span class="stat-val tnum">×{uiState.bestCombo}</span>
+      <span class="stat-key">Best combo</span>
     </div>
   </div>
-{/if}
+
+  <div class="actions">
+    <button class="ui-btn block" onclick={openGrimoire}>
+      <span aria-hidden="true">📖</span> Evolutions
+    </button>
+    <button class="ui-btn block" onclick={openHowTo}>
+      <span aria-hidden="true">❔</span> How to play
+    </button>
+    <button class="ui-btn block" onclick={openSettings}>
+      <span aria-hidden="true">⚙️</span> Settings
+    </button>
+
+    {#if confirmQuit}
+      <div class="confirm">
+        <p class="confirm-text">Quit now and this run's progress is lost.</p>
+        <div class="confirm-row">
+          <button class="ui-btn ghost" onclick={() => (confirmQuit = false)}>Keep playing</button>
+          <button class="ui-btn danger" onclick={backToMenu}>Quit run</button>
+        </div>
+      </div>
+    {:else}
+      <button
+        class="ui-btn block quiet"
+        onclick={() => {
+          playMenuClick();
+          confirmQuit = true;
+        }}>Quit run</button
+      >
+    {/if}
+  </div>
+
+  {#snippet footer()}
+    <button class="ui-btn primary lg" onclick={resume}>
+      Resume <kbd class="kbd pointer-only">ESC</kbd>
+    </button>
+  {/snippet}
+</Modal>
 
 <style>
-  #pause-modal {
-    position: fixed;
-    inset: 0;
-    z-index: 1500;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    background: rgba(4, 6, 15, 0.55);
-    backdrop-filter: blur(10px);
-    padding: 1.5rem;
-    pointer-events: auto;
+  .run-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.4rem;
+    margin-bottom: var(--sp-4);
   }
-
-  .sheet {
-    width: 100%;
-    max-width: 320px;
-    border-radius: var(--r-xl);
-    padding: 2rem 1.5rem;
+  .stat {
     display: flex;
     flex-direction: column;
-    gap: 2rem;
-    text-align: center;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0.55rem 0.25rem;
+    border-radius: var(--r-sm);
+    background: var(--surface-2);
+    border: 1px solid var(--color-border);
+    min-width: 0;
   }
-
-  .title {
-    font-family: var(--font-heading);
-    font-size: 1.4rem;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-    margin: 0;
+  .stat-val {
+    font-size: var(--fs-label);
+    font-weight: 700;
     color: var(--color-text-main);
+  }
+  .stat-key {
+    font-size: 0.55rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-text-dim);
+    text-align: center;
+    line-height: 1.2;
   }
 
   .actions {
     display: flex;
     flex-direction: column;
-    gap: 0.6rem;
+    gap: 0.45rem;
   }
 
-  .action-btn {
-    all: unset;
-    cursor: pointer;
-    padding: 1rem;
+  .confirm {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.7rem;
     border-radius: var(--r-md);
-    background: rgba(255, 255, 255, 0.035);
-    border: 1px solid var(--color-border);
-    transition: all var(--transition-fast);
-    position: relative;
+    border: 1px solid rgba(255, 61, 119, 0.35);
+    background: rgba(255, 61, 119, 0.07);
   }
-  .action-btn:hover {
-    background: rgba(255, 255, 255, 0.06);
-  }
-  .action-btn:active {
-    transform: scale(0.985);
-  }
-
-  .btn-text {
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: var(--color-text-main);
-  }
-
-  .btn-hint {
-    position: absolute;
-    right: 0.9rem;
-    top: 50%;
-    transform: translateY(-50%);
-    font-family: var(--font-mono);
-    font-size: 0.58rem;
-    letter-spacing: 0.1em;
-    color: rgba(4, 6, 15, 0.55);
-    border: 1px solid rgba(4, 6, 15, 0.25);
-    border-radius: 4px;
-    padding: 2px 6px;
-  }
-
-  .action-btn.primary {
-    background: var(--color-primary);
-    border-color: transparent;
-  }
-  .action-btn.primary .btn-text {
-    color: #04060f;
-  }
-  .action-btn.primary:hover {
-    filter: brightness(1.08);
-  }
-
-  .action-btn.danger .btn-text {
+  .confirm-text {
+    margin: 0;
+    font-size: var(--fs-caption);
+    line-height: 1.4;
     color: var(--color-text-dim);
+    text-align: center;
   }
-  .action-btn.danger:hover {
-    border-color: rgba(255, 61, 119, 0.4);
+  .confirm-row {
+    display: flex;
+    gap: 0.5rem;
+  }
+  .confirm-row .ui-btn {
+    flex: 1;
   }
 </style>

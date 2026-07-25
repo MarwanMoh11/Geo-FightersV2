@@ -590,8 +590,9 @@
   }
   .gp-back {
     font-family: var(--font-mono);
-    font-size: 0.55rem;
-    padding: 0.3rem 0.6rem;
+    font-size: var(--fs-micro);
+    min-height: var(--tap);
+    padding: 0.3rem 0.9rem;
     background: none;
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 6px;
@@ -608,8 +609,10 @@
     justify-content: center;
   }
   .dp {
-    width: 3.1rem;
-    height: 2.5rem;
+    /* 40px tall was under the comfortable-touch floor, and a missed step in
+       a chase maze usually means the breach. */
+    width: 3.25rem;
+    height: var(--tap);
     font-size: 1rem;
     border-radius: 9px;
     border: 1px solid color-mix(in srgb, var(--bcolor) 55%, transparent);

@@ -1,12 +1,16 @@
 <script lang="ts">
   import { uiState } from '../../core/UIState.svelte.ts';
-  import { fade, scale } from 'svelte/transition';
   import {
     getSettings,
     setSetting,
     resetSettings,
     type GameSettings,
   } from '../../core/SettingsManager';
+  import Modal from '../Modal.svelte';
+  import Toggle from '../controls/Toggle.svelte';
+  import Segmented from '../controls/Segmented.svelte';
+  import Slider from '../controls/Slider.svelte';
+  import SettingRow from '../controls/SettingRow.svelte';
 
   let settings = $state(getSettings());
 
@@ -23,432 +27,227 @@
     resetSettings();
     settings = getSettings();
   }
+
+  const TABS = [
+    { id: 'audio', label: 'Audio' },
+    { id: 'display', label: 'Display' },
+    { id: 'gameplay', label: 'Controls' },
+  ] as const;
+
+  const QUALITY_HINT: Record<string, string> = {
+    auto: 'Adapts resolution automatically to keep the game smooth on any device.',
+    low: 'Lowest detail — best for older or weaker devices.',
+    medium: 'Balanced visuals and performance.',
+    high: 'Maximum visuals — needs a capable device.',
+  };
+
+  const FPS_HINT: Record<number, string> = {
+    30: 'Best battery life — good for long mobile sessions.',
+    60: 'Smooth and efficient (recommended).',
+    0: "Uncapped — uses your display's full refresh rate. Drains battery.",
+  };
+
+  const isTouch =
+    typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
 </script>
 
-{#if uiState.showSettings}
-  <div id="settings-modal" transition:fade={{ duration: 200 }}>
-    <div class="modal-overlay"></div>
-
-    <div class="settings-content glass" transition:scale={{ duration: 250, start: 0.94 }}>
-      <div class="header">
-        <h2 class="title">Settings</h2>
-        <div class="tabs">
-          <button
-            class="tab-btn"
-            class:active={uiState.activeSettingsTab === 'audio'}
-            onclick={() => (uiState.activeSettingsTab = 'audio')}>AUDIO</button
-          >
-          <button
-            class="tab-btn"
-            class:active={uiState.activeSettingsTab === 'display'}
-            onclick={() => (uiState.activeSettingsTab = 'display')}>DISPLAY</button
-          >
-          <button
-            class="tab-btn"
-            class:active={uiState.activeSettingsTab === 'gameplay'}
-            onclick={() => (uiState.activeSettingsTab = 'gameplay')}>GAMEPLAY</button
-          >
-        </div>
-      </div>
-
-      <div class="scroll-area">
-        {#if uiState.activeSettingsTab === 'audio'}
-          <div class="panel">
-            <div class="setting-item">
-              <div class="info">
-                <label for="masterVol">MASTER VOLUME</label>
-                <span class="val">{settings.masterVolume}%</span>
-              </div>
-              <input
-                id="masterVol"
-                type="range"
-                min="0"
-                max="100"
-                value={settings.masterVolume}
-                oninput={(e) => updateSetting('masterVolume', parseInt(e.currentTarget.value))}
-              />
-            </div>
-            <div class="setting-item">
-              <div class="info">
-                <label for="musicVol">MUSIC VOLUME</label>
-                <span class="val">{settings.musicVolume}%</span>
-              </div>
-              <input
-                id="musicVol"
-                type="range"
-                min="0"
-                max="100"
-                value={settings.musicVolume}
-                oninput={(e) => updateSetting('musicVolume', parseInt(e.currentTarget.value))}
-              />
-            </div>
-            <div class="setting-item">
-              <div class="info">
-                <label for="musicToggle">MUSIC ENABLED</label>
-              </div>
-              <button
-                id="musicToggle"
-                class="toggle"
-                class:checked={settings.musicEnabled}
-                onclick={() => updateSetting('musicEnabled', !settings.musicEnabled)}
-                aria-label="Toggle Music"
-              >
-                <div class="thumb"></div>
-              </button>
-            </div>
-          </div>
-        {:else if uiState.activeSettingsTab === 'display'}
-          <div class="panel">
-            <div class="setting-item">
-              <div class="info">
-                <label for="qualitySelect">GRAPHICS QUALITY</label>
-              </div>
-              <div class="segmented" id="qualitySelect">
-                {#each ['auto', 'low', 'medium', 'high'] as level (level)}
-                  <button
-                    class="seg-btn"
-                    class:active={settings.qualityLevel === level}
-                    onclick={() =>
-                      updateSetting('qualityLevel', level as GameSettings['qualityLevel'])}
-                  >
-                    {level.toUpperCase()}
-                  </button>
-                {/each}
-              </div>
-              <p class="hint">
-                {#if settings.qualityLevel === 'auto'}
-                  Adapts resolution automatically to keep the game smooth on any device.
-                {:else if settings.qualityLevel === 'low'}
-                  Low graphics mode — best for very old or weak devices.
-                {:else if settings.qualityLevel === 'medium'}
-                  Balanced visuals and performance.
-                {:else}
-                  Maximum visuals — needs a capable device.
-                {/if}
-              </p>
-            </div>
-            <div class="setting-item">
-              <div class="info">
-                <label for="fpsLimitSelect">FPS LIMIT</label>
-              </div>
-              <div class="segmented" id="fpsLimitSelect">
-                {#each [30, 60, 0] as cap (cap)}
-                  <button
-                    class="seg-btn"
-                    class:active={settings.fpsLimit === cap}
-                    onclick={() => updateSetting('fpsLimit', cap as GameSettings['fpsLimit'])}
-                  >
-                    {cap === 0 ? 'MAX' : cap}
-                  </button>
-                {/each}
-              </div>
-              <p class="hint">
-                {#if settings.fpsLimit === 30}
-                  Best battery life — great for long mobile sessions.
-                {:else if settings.fpsLimit === 60}
-                  Smooth and efficient (recommended).
-                {:else}
-                  Uncapped — uses your display's full refresh rate. Drains battery.
-                {/if}
-              </p>
-            </div>
-            <div class="setting-item">
-              <div class="info">
-                <label for="fpsToggle">SHOW FPS</label>
-              </div>
-              <button
-                id="fpsToggle"
-                class="toggle"
-                class:checked={settings.showFps}
-                onclick={() => updateSetting('showFps', !settings.showFps)}
-                aria-label="Toggle FPS Counter"
-              >
-                <div class="thumb"></div>
-              </button>
-            </div>
-          </div>
-        {:else if uiState.activeSettingsTab === 'gameplay'}
-          <div class="panel">
-            <div class="setting-item">
-              <div class="info">
-                <label for="dmgNumToggle">DAMAGE NUMBERS</label>
-              </div>
-              <button
-                id="dmgNumToggle"
-                class="toggle"
-                class:checked={settings.showDamageNumbers}
-                onclick={() => updateSetting('showDamageNumbers', !settings.showDamageNumbers)}
-                aria-label="Toggle Damage Numbers"
-              >
-                <div class="thumb"></div>
-              </button>
-            </div>
-            <div class="setting-item">
-              <div class="info">
-                <label for="sens">JOYSTICK SENSITIVITY</label>
-                <span class="val">{settings.joystickSensitivity}%</span>
-              </div>
-              <input
-                id="sens"
-                type="range"
-                min="25"
-                max="150"
-                value={settings.joystickSensitivity}
-                oninput={(e) =>
-                  updateSetting('joystickSensitivity', parseInt(e.currentTarget.value))}
-              />
-            </div>
-            <div class="setting-item">
-              <div class="info">
-                <label for="invertToggle">ABILITY BUTTON ON LEFT</label>
-              </div>
-              <button
-                id="invertToggle"
-                class="toggle"
-                class:checked={settings.invertControls}
-                onclick={() => updateSetting('invertControls', !settings.invertControls)}
-                aria-label="Toggle Inverse Controls"
-              >
-                <div class="thumb"></div>
-              </button>
-            </div>
-          </div>
-        {/if}
-      </div>
-
-      <div class="footer">
-        <button class="footer-btn" onclick={reset}>RESET DEFAULTS</button>
-        <button class="footer-btn primary" onclick={close}>CLOSE</button>
-      </div>
-    </div>
+<Modal
+  open={uiState.showSettings}
+  eyebrow="Configuration"
+  title="Settings"
+  size="md"
+  tone="cyan"
+  backdropClose
+  onclose={close}
+>
+  <div class="ui-tabs" role="tablist" aria-label="Settings sections">
+    {#each TABS as tab (tab.id)}
+      <button
+        class="ui-tab"
+        role="tab"
+        aria-selected={uiState.activeSettingsTab === tab.id}
+        onclick={() => (uiState.activeSettingsTab = tab.id)}
+      >
+        {tab.label}
+      </button>
+    {/each}
   </div>
-{/if}
+
+  <div class="tab-body">
+    {#if uiState.activeSettingsTab === 'audio'}
+      <SettingRow layout="stack">
+        <Slider
+          id="masterVol"
+          label="Master volume"
+          value={settings.masterVolume}
+          display={`${settings.masterVolume}%`}
+          oninput={(v) => updateSetting('masterVolume', v)}
+        />
+      </SettingRow>
+      <SettingRow layout="stack">
+        <Slider
+          id="musicVol"
+          label="Music volume"
+          value={settings.musicVolume}
+          display={`${settings.musicVolume}%`}
+          oninput={(v) => updateSetting('musicVolume', v)}
+        />
+      </SettingRow>
+      <SettingRow label="Music" hint="Turn the soundtrack off without muting effects.">
+        <Toggle
+          id="musicToggle"
+          label="Music enabled"
+          checked={settings.musicEnabled}
+          onchange={(v) => updateSetting('musicEnabled', v)}
+        />
+      </SettingRow>
+    {:else if uiState.activeSettingsTab === 'display'}
+      <SettingRow
+        label="Graphics quality"
+        hint={QUALITY_HINT[settings.qualityLevel]}
+        layout="stack"
+      >
+        <Segmented
+          id="qualitySelect"
+          label="Graphics quality"
+          value={settings.qualityLevel}
+          options={[
+            { value: 'auto', label: 'AUTO' },
+            { value: 'low', label: 'LOW' },
+            { value: 'medium', label: 'MED' },
+            { value: 'high', label: 'HIGH' },
+          ]}
+          onchange={(v) => updateSetting('qualityLevel', v as GameSettings['qualityLevel'])}
+        />
+      </SettingRow>
+      <SettingRow label="Frame rate cap" hint={FPS_HINT[settings.fpsLimit]} layout="stack">
+        <Segmented
+          id="fpsLimitSelect"
+          label="Frame rate cap"
+          value={settings.fpsLimit}
+          options={[
+            { value: 30, label: '30' },
+            { value: 60, label: '60' },
+            { value: 0, label: 'MAX' },
+          ]}
+          onchange={(v) => updateSetting('fpsLimit', v as GameSettings['fpsLimit'])}
+        />
+      </SettingRow>
+      <SettingRow label="Show FPS counter" hint="Live frame-rate readout in the corner.">
+        <Toggle
+          id="fpsToggle"
+          label="Show FPS counter"
+          checked={settings.showFps}
+          onchange={(v) => updateSetting('showFps', v)}
+        />
+      </SettingRow>
+    {:else if uiState.activeSettingsTab === 'gameplay'}
+      <SettingRow label="Damage numbers" hint="Show the damage each hit deals.">
+        <Toggle
+          id="dmgNumToggle"
+          label="Damage numbers"
+          checked={settings.showDamageNumbers}
+          onchange={(v) => updateSetting('showDamageNumbers', v)}
+        />
+      </SettingRow>
+
+      {#if isTouch}
+        <SettingRow layout="stack" hint="How far you drag to reach full speed.">
+          <Slider
+            id="sens"
+            label="Joystick sensitivity"
+            min={25}
+            max={150}
+            value={settings.joystickSensitivity}
+            display={`${settings.joystickSensitivity}%`}
+            oninput={(v) => updateSetting('joystickSensitivity', v)}
+          />
+        </SettingRow>
+        <SettingRow
+          label="Left-handed layout"
+          hint="Moves the ability button to the left of the screen."
+        >
+          <Toggle
+            id="invertToggle"
+            label="Left-handed layout"
+            checked={settings.invertControls}
+            onchange={(v) => updateSetting('invertControls', v)}
+          />
+        </SettingRow>
+      {:else}
+        <!-- Keyboard players get the actual key map instead of touch options
+             that do nothing on their device. -->
+        <div class="keymap">
+          <h3 class="keymap-title">Keyboard</h3>
+          <div class="keymap-row">
+            <span class="keys"><kbd class="kbd">W</kbd><kbd class="kbd">A</kbd><kbd class="kbd">S</kbd><kbd class="kbd">D</kbd></span>
+            <span class="keymap-desc">Move (arrow keys also work)</span>
+          </div>
+          <div class="keymap-row">
+            <span class="keys"><kbd class="kbd">SPACE</kbd></span>
+            <span class="keymap-desc">Trigger Overclock when charged</span>
+          </div>
+          <div class="keymap-row">
+            <span class="keys"><kbd class="kbd">E</kbd></span>
+            <span class="keymap-desc">Interact — breach a node you're standing at</span>
+          </div>
+          <div class="keymap-row">
+            <span class="keys"><kbd class="kbd">ESC</kbd></span>
+            <span class="keymap-desc">Pause and resume</span>
+          </div>
+          <p class="keymap-note">Aiming and firing are automatic — you only steer.</p>
+        </div>
+      {/if}
+    {/if}
+  </div>
+
+  {#snippet footer()}
+    <button class="ui-btn ghost" onclick={reset}>Reset defaults</button>
+    <button class="ui-btn primary" onclick={close}>Done</button>
+  {/snippet}
+</Modal>
 
 <style>
-  #settings-modal {
-    position: fixed;
-    inset: 0;
-    z-index: 2100;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    background: rgba(4, 6, 15, 0.55);
-    backdrop-filter: blur(10px);
-    padding: 1.5rem;
-    pointer-events: auto;
-  }
-
-  .modal-overlay {
-    display: none;
-  }
-
-  .settings-content {
-    width: 100%;
-    max-width: 380px;
-    border-radius: var(--r-xl);
-    padding: 1.75rem 1.5rem;
-    z-index: 1;
+  .tab-body {
+    margin-top: var(--sp-4);
     display: flex;
     flex-direction: column;
-    gap: 1.75rem;
+    /* A fixed floor stops the sheet resizing as you switch tabs, which
+       otherwise makes the footer buttons jump under your thumb. */
+    min-height: 15rem;
   }
 
-  .header {
+  .keymap {
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
+    gap: 0.55rem;
+    padding-top: 0.4rem;
   }
-
-  .title {
-    font-family: var(--font-heading);
-    font-size: 1.3rem;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-    text-align: center;
+  .keymap-title {
     margin: 0;
+    font-size: var(--fs-label);
+    font-weight: 700;
     color: var(--color-text-main);
   }
-
-  .tabs {
+  .keymap-row {
     display: flex;
-    background: rgba(0, 0, 0, 0.2);
-    padding: 0.25rem;
-    border-radius: 10px;
-  }
-
-  .tab-btn {
-    all: unset;
-    flex: 1;
-    text-align: center;
-    padding: 0.6rem;
-    font-size: 0.65rem;
-    font-family: var(--font-mono);
-    letter-spacing: 0.1em;
-    cursor: pointer;
-    border-radius: 8px;
-    transition: all var(--transition-smooth);
-    color: var(--color-text-dim);
-  }
-
-  .tab-btn.active {
-    background: rgba(255, 255, 255, 0.05);
-    color: var(--color-primary);
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-  }
-
-  .scroll-area {
-    min-height: 200px;
-  }
-
-  .panel {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-  }
-
-  .setting-item {
-    display: flex;
-    flex-direction: column;
+    align-items: center;
     gap: 0.75rem;
   }
-
-  .setting-item .info {
+  .keys {
+    flex: 0 0 8.5rem;
     display: flex;
-    justify-content: space-between;
-    align-items: center;
+    gap: 0.2rem;
   }
-
-  .setting-item label {
-    font-size: 0.7rem;
-    letter-spacing: 0.05em;
-    color: var(--color-text-main);
-  }
-
-  .setting-item .val {
-    font-family: var(--font-mono);
-    font-size: 0.8rem;
-    color: var(--color-primary);
-  }
-
-  /* Segmented control (graphics quality) */
-  .segmented {
-    display: flex;
-    background: rgba(0, 0, 0, 0.2);
-    padding: 0.25rem;
-    border-radius: 10px;
-    gap: 0.25rem;
-  }
-
-  .seg-btn {
-    all: unset;
-    flex: 1;
-    text-align: center;
-    padding: 0.55rem 0;
-    font-size: 0.6rem;
-    font-family: var(--font-mono);
-    letter-spacing: 0.08em;
-    cursor: pointer;
-    border-radius: 8px;
-    transition: all var(--transition-fast);
-    color: var(--color-text-dim);
-  }
-
-  .seg-btn.active {
-    background: rgba(255, 255, 255, 0.05);
-    color: var(--color-primary);
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-  }
-
-  .hint {
-    margin: 0;
-    font-size: 0.62rem;
+  .keymap-desc {
+    font-size: var(--fs-caption);
     line-height: 1.4;
     color: var(--color-text-dim);
   }
-
-  /* Slider */
-  input[type='range'] {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 100%;
-    height: 4px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 2px;
-    outline: none;
-  }
-
-  input[type='range']::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 16px;
-    height: 16px;
-    background: var(--color-primary);
-    border-radius: 50%;
-    cursor: pointer;
-    box-shadow: 0 0 10px var(--color-primary);
-  }
-
-  /* Toggle */
-  .toggle {
-    all: unset;
-    width: 44px;
-    height: 22px;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 11px;
-    position: relative;
-    cursor: pointer;
-    transition: background 0.3s ease;
-    border: 1px solid rgba(255, 255, 255, 0.05);
-  }
-
-  .toggle.checked {
-    background: var(--color-primary);
-  }
-
-  .toggle .thumb {
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 18px;
-    height: 18px;
-    background: white;
-    border-radius: 50%;
-    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .toggle.checked .thumb {
-    transform: translateX(22px);
-  }
-
-  .footer {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  .footer-btn {
-    all: unset;
-    cursor: pointer;
-    text-align: center;
-    padding: 1rem;
-    border-radius: 12px;
-    font-family: var(--font-heading);
-    font-size: 0.9rem;
-    font-weight: 700;
-    transition: all var(--transition-fast);
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-  }
-
-  .footer-btn:hover {
-    background: rgba(255, 255, 255, 0.05);
-  }
-
-  .footer-btn.primary {
-    background: var(--color-primary);
-    color: #04060f;
-    border: none;
-  }
-  .footer-btn.primary:hover {
-    filter: brightness(1.08);
+  .keymap-note {
+    margin: 0.3rem 0 0;
+    font-size: var(--fs-caption);
+    line-height: 1.5;
+    color: var(--color-primary);
   }
 </style>

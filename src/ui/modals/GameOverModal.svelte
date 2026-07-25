@@ -2,26 +2,48 @@
   import { uiState } from '../../core/UIState.svelte.ts';
   import { getNearestLocked, ACHIEVEMENTS } from '../../core/ProgressManager';
   import { resetRun } from '../../core/runReset';
+  import { setGameState } from '../../core/GameState';
   import { requestMidgameAd } from '../../core/portal';
-  import { fade, fly } from 'svelte/transition';
+  import { playMenuClick } from '../../core/audio';
+  import { haptics } from '../../core/haptics';
+  import Modal from '../Modal.svelte';
 
   let leaving = $state(false);
 
-  function restart() {
+  /**
+   * End of a run is the portal's natural interstitial break. Requested HERE
+   * (player-initiated tap-through) instead of on GAME_OVER entry so it can
+   * never collide with the rewarded SECOND CHANCE offer. Without an SDK the
+   * callback runs immediately — identical to the old behavior.
+   */
+  function leave(then: () => void) {
     if (leaving) return;
-    // End of a run is the portal's natural interstitial break. Requested HERE
-    // (player-initiated tap-through) instead of on GAME_OVER entry so it can
-    // never collide with the rewarded SECOND CHANCE offer. Without an SDK the
-    // callback runs immediately — identical to the old behavior.
+    playMenuClick();
+    haptics.select();
     leaving = true;
     requestMidgameAd(() => {
-      // Brief fade-out so the click feels acknowledged, then an IN-PLACE run
+      // Brief fade-out so the tap feels acknowledged, then an IN-PLACE run
       // reset (no page reload — instant, keeps the app alive on mobile wrappers)
       setTimeout(() => {
-        resetRun();
+        then();
         leaving = false;
-      }, 250);
+      }, 220);
     });
+  }
+
+  /* `resetRun()` lands on the menu, so a straight "play again" has to push
+     back into PLAYING afterwards — that's the same MENU→PLAYING transition
+     the menu's Play button makes. Previously the only button said REBOOT
+     but dropped you on the menu, which read as the button not working. */
+  function playAgain() {
+    leave(() => {
+      resetRun();
+      setGameState('PLAYING');
+    });
+  }
+
+  function toMenu() {
+    leave(resetRun);
   }
 
   // The "one more run" tease: what was earned + what's almost earned.
@@ -49,371 +71,301 @@
   );
 </script>
 
-{#if uiState.gameState === 'GAME_OVER'}
-  <div
-    id="game-over-modal"
-    class:victory={uiState.isVictory}
-    class:leaving
-    transition:fade={{ duration: 600 }}
-  >
-    <div class="modal-overlay"></div>
-
-    <div class="game-over-content glass" in:fly={{ y: 40, duration: 600, delay: 250 }}>
-      <div class="header">
-        {#if uiState.isVictory}
-          <h2 class="title win">CORRUPTION PURGED</h2>
-          <div class="subtitle">YOU SURVIVED THE SYSTEM</div>
-        {:else}
-          <h2 class="title">FATAL ERROR</h2>
-          <div class="subtitle">SYSTEM INTEGRITY COMPROMISED</div>
-        {/if}
-      </div>
-
-      <div class="stats-grid">
-        <div class="stat-card">
-          <span class="label">TIME SURVIVED</span>
-          <span class="value gold">{minutes}:{seconds}</span>
-        </div>
-        <div class="stat-card">
-          <span class="label">FINAL LEVEL</span>
-          <span class="value cyan">{uiState.level}</span>
-        </div>
-        <div class="stat-card">
-          <span class="label">THREATS PURGED</span>
-          <span class="value cyan">{uiState.kills}</span>
-        </div>
-        <div class="stat-card">
-          <span class="label">BEST COMBO</span>
-          <span class="value pink">×{uiState.bestCombo}</span>
-        </div>
-      </div>
-
-      {#if uiState.lastRunRank > 0}
-        <div class="rank-badge" class:podium={uiState.lastRunRank <= 3}>
-          🌐 GLOBAL RANK <strong>#{uiState.lastRunRank}</strong>
-          {#if uiState.lastRunRankTotal > 0}<span class="rank-of"
-              >of {uiState.lastRunRankTotal}</span
-            >{/if}
-        </div>
-      {/if}
-
-      {#if scoreboard.length > 0}
-        <div class="squad-board">
-          <div class="squad-heading">SQUAD SCOREBOARD</div>
-          {#each scoreboard as p, i (p.connectionId)}
-            <div class="squad-row" class:me={p.isLocal}>
-              <span class="squad-rank tnum">#{i + 1}</span>
-              <span class="squad-name">{p.name}{p.isLocal ? ' (YOU)' : ''}</span>
-              <span class="squad-kills tnum">☠ {p.kills}</span>
-              <span class="squad-lv tnum">LV{p.level}</span>
-            </div>
-          {/each}
-        </div>
-      {/if}
-
-      {#if earned.length > 0}
-        <div class="unlock-section">
-          {#each earned as a (a.id)}
-            <div class="unlock-row earned">
-              <span class="unlock-icon">🏆</span>
-              <span class="unlock-text"
-                >{a.name}{a.unlock ? ` — ${a.unlock.label} UNLOCKED` : ''}</span
-              >
-            </div>
-          {/each}
-        </div>
-      {/if}
-
-      {#if nearest.length > 0}
-        <div class="unlock-section">
-          <div class="unlock-heading">NEXT UNLOCKS</div>
-          {#each nearest as n (n.def.id)}
-            <div class="unlock-row">
-              <div class="unlock-info">
-                <span class="unlock-text">{n.def.description}</span>
-                {#if n.def.unlock}
-                  <span class="unlock-target">→ {n.def.unlock.label}</span>
-                {/if}
-              </div>
-              <div class="unlock-bar">
-                <div class="unlock-fill" style="width: {Math.round(n.pct * 100)}%"></div>
-              </div>
-            </div>
-          {/each}
-        </div>
-      {/if}
-
-      <button class="reboot-btn" onclick={restart}>
-        <span class="btn-text">{uiState.isVictory ? 'RUN IT BACK' : 'INITIATE REBOOT'}</span>
-        <span class="btn-subtext">RESTORE SYSTEM STATE</span>
-      </button>
+<Modal
+  open={uiState.gameState === 'GAME_OVER'}
+  eyebrow={uiState.isVictory ? 'Run complete' : 'Run ended'}
+  title={uiState.isVictory ? 'Corruption purged' : 'Fatal error'}
+  subtitle={uiState.isVictory
+    ? 'You survived the system.'
+    : 'System integrity compromised.'}
+  size="md"
+  tone={uiState.isVictory ? 'green' : 'pink'}
+  dismissible={false}
+  class={leaving ? 'leaving' : ''}
+>
+  <div class="stats-grid">
+    <div class="stat-card">
+      <span class="value gold tnum">{minutes}:{seconds}</span>
+      <span class="label">Time survived</span>
+    </div>
+    <div class="stat-card">
+      <span class="value cyan tnum">{uiState.level}</span>
+      <span class="label">Final level</span>
+    </div>
+    <div class="stat-card">
+      <span class="value cyan tnum">{uiState.kills}</span>
+      <span class="label">Threats purged</span>
+    </div>
+    <div class="stat-card">
+      <span class="value pink tnum">×{uiState.bestCombo}</span>
+      <span class="label">Best combo</span>
     </div>
   </div>
-{/if}
+
+  {#if uiState.lastRunRank > 0}
+    <div class="rank-badge" class:podium={uiState.lastRunRank <= 3}>
+      <span aria-hidden="true">🌐</span> Global rank
+      <strong class="tnum">#{uiState.lastRunRank}</strong>
+      {#if uiState.lastRunRankTotal > 0}
+        <span class="rank-of tnum">of {uiState.lastRunRankTotal}</span>
+      {/if}
+    </div>
+  {/if}
+
+  {#if scoreboard.length > 0}
+    <section class="block">
+      <h3 class="block-title">Squad scoreboard</h3>
+      <div class="squad-board">
+        {#each scoreboard as p, i (p.connectionId)}
+          <div class="squad-row" class:me={p.isLocal}>
+            <span class="squad-rank tnum">#{i + 1}</span>
+            <span class="squad-name">{p.name}{p.isLocal ? ' (you)' : ''}</span>
+            <span class="squad-kills tnum">☠ {p.kills}</span>
+            <span class="squad-lv tnum">LV{p.level}</span>
+          </div>
+        {/each}
+      </div>
+    </section>
+  {/if}
+
+  {#if earned.length > 0}
+    <section class="block">
+      <h3 class="block-title gold">Unlocked this run</h3>
+      {#each earned as a (a.id)}
+        <div class="unlock-row earned">
+          <span class="unlock-icon" aria-hidden="true">🏆</span>
+          <span class="unlock-text">
+            {a.name}{a.unlock ? ` — ${a.unlock.label} unlocked` : ''}
+          </span>
+        </div>
+      {/each}
+    </section>
+  {/if}
+
+  {#if nearest.length > 0}
+    <section class="block">
+      <h3 class="block-title">Next unlocks</h3>
+      {#each nearest as n (n.def.id)}
+        <div class="unlock-row">
+          <div class="unlock-info">
+            <span class="unlock-text">{n.def.description}</span>
+            {#if n.def.unlock}
+              <span class="unlock-target">→ {n.def.unlock.label}</span>
+            {/if}
+          </div>
+          <div class="unlock-meter">
+            <div class="ui-meter">
+              <div class="ui-meter-fill gold-fill" style="width: {Math.round(n.pct * 100)}%"></div>
+            </div>
+            <span class="unlock-pct tnum">{Math.round(n.pct * 100)}%</span>
+          </div>
+        </div>
+      {/each}
+    </section>
+  {/if}
+
+  {#snippet footer()}
+    <button class="ui-btn ghost" onclick={toMenu} disabled={leaving}>Main menu</button>
+    {#if !uiState.isMultiplayer}
+      <button class="ui-btn primary lg again" onclick={playAgain} disabled={leaving}>
+        {uiState.isVictory ? 'Run it back' : 'Play again'}
+      </button>
+    {/if}
+  {/snippet}
+</Modal>
 
 <style>
-  #game-over-modal {
-    position: fixed;
-    inset: 0;
-    z-index: 3000;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    background: rgba(8, 4, 8, 0.7);
-    backdrop-filter: blur(14px);
-    transition: opacity 0.25s ease;
-    padding: 1.5rem;
-    pointer-events: auto;
-  }
-
-  #game-over-modal.victory {
-    background: rgba(4, 10, 8, 0.7);
-  }
-
-  #game-over-modal.leaving {
-    opacity: 0;
-  }
-
-  .modal-overlay {
-    display: none;
-  }
-
-  .game-over-content {
-    width: 100%;
-    max-width: 360px;
-    border-radius: var(--r-xl);
-    padding: 2.25rem 1.5rem;
-    z-index: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 1.75rem;
-    text-align: center;
-  }
-
-  .title {
-    font-family: var(--font-heading);
-    font-size: 1.8rem;
-    font-weight: 800;
-    letter-spacing: 0.06em;
-    margin: 0;
-    color: var(--color-secondary);
-  }
-  .title.win {
-    color: var(--color-accent);
-  }
-
-  .subtitle {
-    font-size: 0.62rem;
-    font-weight: 600;
-    letter-spacing: 0.22em;
-    text-transform: uppercase;
-    color: var(--color-text-dim);
-    margin-top: 0.5rem;
-  }
-
+  /* ---- Headline stats ---- */
   .stats-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: 1fr 1fr;
     gap: 0.5rem;
+    margin-bottom: var(--sp-4);
   }
-
   .stat-card {
-    background: rgba(255, 255, 255, 0.035);
-    padding: 0.9rem 0.5rem;
-    border-radius: var(--r-md);
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0.85rem 0.5rem;
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+    border: 1px solid var(--color-border);
   }
-
-  .stat-card .label {
-    font-size: 0.5rem;
+  .value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .label {
+    font-size: var(--fs-micro);
     font-weight: 600;
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--color-text-dim);
+    text-align: center;
   }
-
-  .stat-card .value {
-    font-family: var(--font-mono);
-    font-variant-numeric: tabular-nums;
-    font-size: 1.3rem;
-    font-weight: 700;
+  .gold {
+    color: var(--color-gold);
   }
-
   .cyan {
     color: var(--color-primary);
   }
   .pink {
     color: var(--color-secondary);
   }
-  .gold {
+
+  /* ---- Global rank ---- */
+  .rank-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    margin-bottom: var(--sp-4);
+    padding: 0.6rem 1rem;
+    border-radius: var(--r-md);
+    border: 1px solid var(--color-border-bright);
+    background: rgba(54, 230, 255, 0.08);
+    font-size: var(--fs-caption);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-primary);
+  }
+  .rank-badge strong {
+    font-size: var(--fs-heading);
+  }
+  .rank-badge.podium {
+    border-color: rgba(255, 216, 77, 0.5);
+    background: rgba(255, 216, 77, 0.1);
+    color: var(--color-gold);
+  }
+  .rank-of {
+    font-weight: 500;
+    color: var(--color-text-dim);
+  }
+
+  /* ---- Sections ---- */
+  .block {
+    margin-bottom: var(--sp-4);
+  }
+  .block-title {
+    margin: 0 0 0.45rem;
+    font-family: var(--font-mono);
+    font-size: var(--fs-micro);
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--color-text-dim);
+  }
+  .block-title.gold {
     color: var(--color-gold);
   }
 
-  .reboot-btn {
-    all: unset;
-    cursor: pointer;
-    padding: 1.1rem;
-    border-radius: var(--r-md);
-    background: var(--color-secondary);
-    color: #fff;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.2rem;
-    transition: all var(--transition-fast);
-  }
-  .victory .reboot-btn {
-    background: var(--color-accent);
-    color: #04130d;
-  }
-  .reboot-btn:hover {
-    filter: brightness(1.08);
-  }
-  .reboot-btn:active {
-    transform: scale(0.985);
-  }
-  .reboot-btn .btn-text {
-    font-size: 1rem;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-  }
-  .reboot-btn .btn-subtext {
-    font-size: 0.55rem;
-    font-weight: 600;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    opacity: 0.7;
-  }
-
-  /* --- Global rank badge --- */
-  .rank-badge {
-    text-align: center;
-    padding: 0.6rem;
-    border-radius: 10px;
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    color: var(--color-text-dim);
-    border: 1px solid var(--color-border);
-    background: rgba(255, 255, 255, 0.02);
-  }
-  .rank-badge strong {
-    color: var(--color-primary);
-    font-size: 0.95rem;
-  }
-  .rank-badge.podium {
-    border-color: rgba(255, 215, 94, 0.4);
-    background: rgba(255, 215, 94, 0.06);
-  }
-  .rank-badge.podium strong {
-    color: #ffd75e;
-  }
-  .rank-of {
-    opacity: 0.7;
-    margin-left: 0.2rem;
-  }
-
-  /* --- Squad scoreboard (co-op) --- */
   .squad-board {
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
-    text-align: left;
-  }
-  .squad-heading {
-    font-size: 0.58rem;
-    font-weight: 700;
-    letter-spacing: 0.18em;
-    color: var(--color-text-dim);
+    gap: 0.3rem;
   }
   .squad-row {
     display: flex;
     align-items: center;
     gap: 0.6rem;
-    padding: 0.45rem 0.7rem;
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    font-size: 0.72rem;
+    padding: 0.5rem 0.7rem;
+    border-radius: var(--r-sm);
+    background: var(--surface-2);
+    border: 1px solid var(--color-border);
+    font-size: var(--fs-caption);
   }
   .squad-row.me {
     border-color: var(--color-border-bright);
-    background: rgba(54, 230, 255, 0.07);
+    background: rgba(54, 230, 255, 0.08);
   }
   .squad-rank {
     flex: 0 0 auto;
-    font-weight: 800;
+    font-weight: 700;
     color: var(--color-text-dim);
   }
   .squad-name {
     flex: 1;
+    min-width: 0;
     font-weight: 700;
     color: var(--color-text-main);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .squad-kills {
-    flex: 0 0 auto;
-    font-weight: 700;
-    color: var(--color-primary);
-  }
+  .squad-kills,
   .squad-lv {
     flex: 0 0 auto;
+    font-size: var(--fs-micro);
     color: var(--color-text-dim);
   }
 
-  /* --- Unlock teases --- */
-  .unlock-section {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    text-align: left;
-  }
-  .unlock-heading {
-    font-size: 0.58rem;
-    font-weight: 700;
-    letter-spacing: 0.18em;
-    color: var(--color-text-dim);
-  }
   .unlock-row {
     display: flex;
     flex-direction: column;
-    gap: 0.3rem;
+    gap: 0.35rem;
+    padding: 0.55rem 0.7rem;
+    margin-bottom: 0.3rem;
+    border-radius: var(--r-sm);
+    background: var(--surface-2);
+    border: 1px solid var(--color-border);
   }
   .unlock-row.earned {
     flex-direction: row;
     align-items: center;
-    gap: 0.5rem;
-    color: #ffd75e;
+    gap: 0.55rem;
+    border-color: rgba(255, 216, 77, 0.4);
+    background: rgba(255, 216, 77, 0.08);
+  }
+  .unlock-icon {
+    flex: 0 0 auto;
+    font-size: 1rem;
   }
   .unlock-info {
     display: flex;
-    justify-content: space-between;
-    gap: 0.5rem;
+    flex-direction: column;
+    gap: 0.1rem;
   }
   .unlock-text {
-    font-size: 0.68rem;
-    font-weight: 600;
+    font-size: var(--fs-caption);
+    line-height: 1.4;
     color: var(--color-text-main);
   }
   .unlock-target {
-    font-size: 0.62rem;
+    font-size: var(--fs-micro);
     font-weight: 700;
+    letter-spacing: 0.06em;
     color: var(--color-primary);
-    white-space: nowrap;
   }
-  .unlock-bar {
+  .unlock-meter {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .unlock-meter .ui-meter {
+    flex: 1;
     height: 4px;
-    border-radius: 2px;
-    background: rgba(255, 255, 255, 0.08);
-    overflow: hidden;
   }
-  .unlock-fill {
-    height: 100%;
-    border-radius: 2px;
-    background: var(--color-primary);
+  .gold-fill {
+    background: linear-gradient(90deg, #8a6b1f, var(--color-gold));
+  }
+  .unlock-pct {
+    flex: 0 0 auto;
+    font-size: var(--fs-micro);
+    font-weight: 700;
+    color: var(--color-gold);
+  }
+
+  /* The rematch is the action players want; the menu is the escape hatch. */
+  .ui-btn.again {
+    flex: 2;
+  }
+
+  @media (min-width: 641px) {
+    .stats-grid {
+      grid-template-columns: repeat(4, 1fr);
+    }
   }
 </style>

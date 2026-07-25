@@ -17,8 +17,9 @@
   let knobY = $state(0);
   let isDragging = $state(false);
   let touchId: number | null = null;
-  // Scale the stick throw with screen size: tiny on phones, roomier on tablets
-  let maxRadius = 50;
+  // Scale the stick throw with screen size: tiny on phones, roomier on tablets.
+  // Reactive because the travel ring is drawn from it.
+  let maxRadius = $state(50);
 
   function computeMaxRadius() {
     return Math.min(70, Math.max(44, window.innerWidth * 0.07));
@@ -115,7 +116,15 @@
     onmousedown={handleStart}
   >
     {#if isDragging}
-      <div class="joystick-base" style="left: {joyCenterX}px; top: {joyCenterY}px;">
+      <!-- The ring is drawn at the real `maxRadius`, so "knob touching the
+           edge" genuinely means full speed. It used to be a fixed 58px ring
+           over a 44–70px throw, which made the stick read as unresponsive on
+           small screens and over-sensitive on large ones. -->
+      <div
+        class="joystick-base"
+        style="left: {joyCenterX}px; top: {joyCenterY}px; --joy-r: {maxRadius}px"
+      >
+        <div class="joystick-track"></div>
         <div class="joystick-knob" style="transform: translate({knobX}px, {knobY}px);"></div>
       </div>
     {/if}
@@ -131,9 +140,12 @@
         triggerOverload();
       }}
       onclick={triggerOverload}
-      aria-label="Activate overload"
+      aria-label="Activate Overclock"
     >
-      <span class="overload-bolt">⚡</span>
+      <span class="overload-bolt" aria-hidden="true">⚡</span>
+      <!-- Named, not just a glowing circle: a bare icon left first-time
+           players guessing what the button in the corner does. -->
+      <span class="overload-label">OVERCLOCK</span>
     </button>
   {/if}
 </div>
@@ -142,7 +154,7 @@
   .mobile-controls-layer {
     position: fixed;
     inset: 0;
-    z-index: 80;
+    z-index: var(--z-controls);
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.3s ease;
@@ -171,26 +183,45 @@
 
   .joystick-base {
     position: fixed;
-    width: 116px;
-    height: 116px;
-    margin-left: -58px;
-    margin-top: -58px;
+    width: calc(var(--joy-r) * 2);
+    height: calc(var(--joy-r) * 2);
+    margin-left: calc(var(--joy-r) * -1);
+    margin-top: calc(var(--joy-r) * -1);
     border-radius: 50%;
     display: flex;
     justify-content: center;
     align-items: center;
     pointer-events: none;
+    animation: joy-in 0.16s var(--ease-out-expo);
+  }
+  @keyframes joy-in {
+    from {
+      opacity: 0;
+      transform: scale(0.82);
+    }
+  }
+
+  /* Travel ring — the outer edge is exactly max throw */
+  .joystick-track {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
     background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1.5px solid rgba(255, 255, 255, 0.16);
+    box-shadow: inset 0 0 22px rgba(54, 230, 255, 0.08);
     backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
   }
 
   .joystick-knob {
-    width: 48px;
-    height: 48px;
-    background: var(--color-primary);
+    position: relative;
+    width: 46px;
+    height: 46px;
+    background: radial-gradient(circle at 34% 30%, #8df6ff, var(--color-primary) 62%, #12a7bd);
     border-radius: 50%;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+    box-shadow:
+      0 2px 12px rgba(0, 0, 0, 0.45),
+      0 0 20px -4px rgba(54, 230, 255, 0.8);
   }
 
   /* --- Overload trigger (appears only when charged) --- */
@@ -227,9 +258,24 @@
     transform: scale(0.92);
   }
 
+  .overload-btn {
+    flex-direction: column;
+    gap: 1px;
+  }
+
   .overload-bolt {
-    font-size: 1.7rem;
+    font-size: 1.55rem;
+    line-height: 1;
     filter: drop-shadow(0 0 8px rgba(255, 170, 0, 0.9));
+  }
+
+  .overload-label {
+    font-family: var(--font-mono);
+    font-size: 0.42rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    color: #ffd75e;
+    text-shadow: 0 0 6px rgba(255, 170, 0, 0.8);
   }
 
   /* Glow-only throb — animating transform would jitter the tap target */

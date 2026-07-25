@@ -20,6 +20,7 @@
     corruptionDamage,
     corruptionSpeed,
     corruptionXp,
+    corruptionCredits,
   } from '../core/corruption';
   import {
     isCharacterUnlocked,
@@ -32,50 +33,66 @@
     getDailyState,
     beginDailyRun,
   } from '../core/DailyManager';
-  import { fade } from 'svelte/transition';
+  import Modal from './Modal.svelte';
+  import Slider from './controls/Slider.svelte';
 
+  /** Which full-screen sub-panel is open. */
+  let panel = $state<'none' | 'roster' | 'shop'>('none');
   let showMpOptions = $state(false);
   let roomCodeInput = $state('');
-  let showCharacterSelect = $state(false);
-  let showShop = $state(false);
+
+  /* The roster previews a fighter before committing, so a mis-tap can't
+     drop you into a run with the wrong build. `focusedChar` is the preview;
+     `uiState.selectedCharacter` only changes on START RUN. */
+  let focusedChar = $state(uiState.selectedCharacter);
 
   const UPGRADES_LIST = [
     {
       id: 'might',
-      name: 'Output Wattage (Might)',
-      desc: '+10% Damage Output per level',
+      name: 'Output Wattage',
+      short: 'MIGHT',
+      icon: '⚔️',
+      desc: '+10% damage output per level',
       max: 5,
       baseCost: 150,
       costScale: 2.0,
     },
     {
       id: 'maxHealth',
-      name: 'Armor Shell (HP)',
-      desc: '+10 Max HP per level',
+      name: 'Armor Shell',
+      short: 'HP',
+      icon: '❤️',
+      desc: '+10 max HP per level',
       max: 5,
       baseCost: 100,
       costScale: 1.8,
     },
     {
       id: 'armor',
-      name: 'Reinforced Core (Armor)',
-      desc: '+1 Damage Reduction per level',
+      name: 'Reinforced Core',
+      short: 'ARMOR',
+      icon: '🛡️',
+      desc: '+1 damage reduction per level',
       max: 5,
       baseCost: 200,
       costScale: 2.2,
     },
     {
       id: 'moveSpeed',
-      name: 'Overclocked Thrusters (Speed)',
-      desc: '+5% Speed per level',
+      name: 'Overclocked Thrusters',
+      short: 'SPEED',
+      icon: '💨',
+      desc: '+5% move speed per level',
       max: 5,
       baseCost: 120,
       costScale: 1.9,
     },
     {
       id: 'magnet',
-      name: 'Tractor Beam (Magnet)',
-      desc: '+20% Magnet Range per level',
+      name: 'Tractor Beam',
+      short: 'MAGNET',
+      icon: '🧲',
+      desc: '+20% pickup range per level',
       max: 5,
       baseCost: 80,
       costScale: 1.7,
@@ -83,7 +100,9 @@
     {
       id: 'luck',
       name: 'Precision Luck',
-      desc: '+10% Critical & Rarity Chance',
+      short: 'LUCK',
+      icon: '🎲',
+      desc: '+10% crit and rarity chance',
       max: 5,
       baseCost: 150,
       costScale: 2.0,
@@ -91,7 +110,9 @@
     {
       id: 'rerolls',
       name: 'Defrag Reroll',
-      desc: '+1 Level-Up Reroll per run',
+      short: 'REROLL',
+      icon: '🔄',
+      desc: '+1 level-up reroll per run',
       max: 3,
       baseCost: 200,
       costScale: 2.2,
@@ -99,7 +120,9 @@
     {
       id: 'banishes',
       name: 'System Banish',
-      desc: '+1 Level-Up Banish per run',
+      short: 'BANISH',
+      icon: '🚫',
+      desc: '+1 level-up banish per run',
       max: 3,
       baseCost: 250,
       costScale: 2.5,
@@ -117,17 +140,16 @@
     if (currentLvl >= up.max) return;
 
     const cost = getUpgradeCost(up, currentLvl);
-    if (uiState.credits >= cost) {
-      uiState.credits -= cost;
-      uiState.permanentUpgrades[upId] = currentLvl + 1;
-
-      // Save to localStorage
-      saveLocal('geo_credits', JSON.stringify(uiState.credits));
-      saveLocal('geo_permanent_upgrades', JSON.stringify(uiState.permanentUpgrades));
-
-      playMenuBuy();
-      haptics.select();
+    if (uiState.credits < cost) {
+      showToast(`Need ${cost - uiState.credits} more credits`);
+      return;
     }
+    uiState.credits -= cost;
+    uiState.permanentUpgrades[upId] = currentLvl + 1;
+    saveLocal('geo_credits', JSON.stringify(uiState.credits));
+    saveLocal('geo_permanent_upgrades', JSON.stringify(uiState.permanentUpgrades));
+    playMenuBuy();
+    haptics.reward();
   }
 
   async function handleInstall() {
@@ -136,26 +158,36 @@
     await promptInstall();
   }
 
-  function handlePlaySolo() {
+  /* One tap to play: the primary CTA starts a run with the fighter and
+     threat level already chosen. Depth lives behind the roster tile, so
+     the fastest path to gameplay is never gated behind a config screen. */
+  async function handlePlay() {
     playMenuClick();
     haptics.select();
-    showCharacterSelect = true;
+    await startSinglePlayer();
   }
 
-  function selectCharacter(charId: string) {
-    if (!isCharacterUnlocked(charId)) {
-      const gate = getUnlockCondition('character', charId);
-      if (gate) {
-        const pct = Math.floor(Math.min(1, gate.progress(getLifetimeStats()) / gate.target) * 100);
-        showToast(`🔒 ${gate.description} (${pct}%)`);
-      }
-      return;
-    }
+  function openRoster() {
     playMenuClick();
-    uiState.selectedCharacter = charId;
-    saveLocal('geo_selected_character', JSON.stringify(charId));
-    showCharacterSelect = false;
-    startSinglePlayer();
+    haptics.select();
+    focusedChar = uiState.selectedCharacter;
+    panel = 'roster';
+  }
+
+  function focusCharacter(charId: string) {
+    playMenuClick();
+    haptics.select();
+    focusedChar = charId;
+  }
+
+  async function confirmRoster() {
+    if (!isCharacterUnlocked(focusedChar)) return;
+    playMenuClick();
+    haptics.select();
+    uiState.selectedCharacter = focusedChar;
+    saveLocal('geo_selected_character', JSON.stringify(focusedChar));
+    panel = 'none';
+    await startSinglePlayer();
   }
 
   async function startSinglePlayer() {
@@ -166,12 +198,14 @@
   }
 
   // --- Corruption dial (0-10 risk/reward, 5 = standard, persisted) ---
-  function setCorruption(delta: number) {
-    playMenuClick();
-    haptics.select();
-    uiState.corruption = Math.max(0, Math.min(CORRUPTION_MAX, uiState.corruption + delta));
+  function setCorruption(next: number) {
+    uiState.corruption = Math.max(0, Math.min(CORRUPTION_MAX, Math.round(next)));
     saveLocal('geo_corruption_v2', JSON.stringify(uiState.corruption));
   }
+
+  let corruptionTone = $derived(
+    uiState.corruption > 5 ? 'brutal' : uiState.corruption < 5 ? 'relaxed' : 'standard',
+  );
 
   // --- Daily run ---
   const dailyConfig = getDailyConfig();
@@ -202,6 +236,12 @@
     uiState.showRecords = true;
   }
 
+  function openHowTo() {
+    playMenuClick();
+    haptics.select();
+    uiState.showHowTo = true;
+  }
+
   async function handleHost() {
     playMenuClick();
     await resumeAudioContext();
@@ -210,7 +250,7 @@
 
   async function handleJoin() {
     if (!roomCodeInput.trim()) {
-      showToast('Please enter a room code.');
+      showToast('Enter a 4-character room code first.');
       return;
     }
     playMenuClick();
@@ -240,10 +280,11 @@
 
   function pickLobbyCharacter(charId: string) {
     if (!isCharacterUnlocked(charId)) {
-      showToast('🔒 Character locked');
+      showToast('🔒 Locked — check Records for the unlock condition');
       return;
     }
     playMenuClick();
+    haptics.select();
     saveLocal('geo_selected_character', JSON.stringify(charId));
     setLobbyState({ character: charId });
   }
@@ -257,15 +298,10 @@
   async function copyRoomCode() {
     try {
       await navigator.clipboard.writeText(uiState.roomCode);
-      showToast('Room code copied');
+      showToast('Room code copied — send it to your squad');
     } catch {
       showToast(uiState.roomCode);
     }
-  }
-
-  function openSettings() {
-    playMenuClick();
-    uiState.showSettings = true;
   }
 
   function saveName() {
@@ -276,6 +312,32 @@
   function charColor(c: number): string {
     return `#${c.toString(16).padStart(6, '0')}`;
   }
+
+  /* statPreview entries look like "HP: 120", "SPD: 115%", "Armor: +1".
+     Absolute values get a bar against a 150 ceiling so builds are visually
+     comparable; relative modifiers ("+1", "+25%") stay as plain readouts,
+     because a bar would imply a scale they don't live on. */
+  function parseStat(entry: string) {
+    const [label, raw = ''] = entry.split(':').map((t) => t.trim());
+    const num = parseFloat(raw);
+    const relative = raw.startsWith('+') || raw.startsWith('-');
+    const pct =
+      !relative && Number.isFinite(num) ? Math.max(4, Math.min(100, (num / 150) * 100)) : null;
+    return { label, raw, pct };
+  }
+
+  let focused = $derived(getCharacter(focusedChar));
+  let focusedLocked = $derived(!isCharacterUnlocked(focusedChar));
+  let focusedGate = $derived(focusedLocked ? getUnlockCondition('character', focusedChar) : null);
+  let focusedGatePct = $derived(
+    focusedGate
+      ? Math.floor(
+          Math.min(1, focusedGate.progress(getLifetimeStats()) / focusedGate.target) * 100,
+        )
+      : 0,
+  );
+  let unlockedCount = $derived(CHARACTERS.filter((c) => isCharacterUnlocked(c.id)).length);
+  let selectedName = $derived(getCharacter(uiState.selectedCharacter).name);
 </script>
 
 <div id="main-menu" class:hidden={uiState.gameState !== 'MENU'}>
@@ -283,316 +345,431 @@
   <div class="ambient" aria-hidden="true">
     <div class="glow g1"></div>
     <div class="glow g2"></div>
+    <div class="grid-floor"></div>
   </div>
 
-  <div class="menu-content">
-    <header class="brand">
-      <h1 class="wordmark">GEO<span class="accent">FIGHTERS</span></h1>
-      <div class="tagline">SURVIVE THE HORDE</div>
-    </header>
+  <div class="menu-viewport menu-scroll">
+    <div class="menu-content">
+      <!-- Status strip: everything persistent at a glance, above the fold -->
+      <div class="status-strip">
+        <span class="ui-chip gold" title="Credits earned across all runs">
+          🪙 <span class="tnum">{uiState.credits}</span>
+        </span>
+        <span class="ui-chip" title="Fighters unlocked">
+          👤 <span class="tnum">{unlockedCount}/{CHARACTERS.length}</span>
+        </span>
+        <span class="spacer"></span>
+        <span class="ui-chip" class:green={dailyAvailable} title="Daily run availability">
+          {dailyAvailable ? '● DAILY READY' : '○ DAILY DONE'}
+        </span>
+      </div>
 
-    <div class="menu-actions">
-      {#if !showMpOptions && uiState.networkStatus === 'disconnected'}
-        <button class="btn primary" onclick={handlePlaySolo}>
-          <span class="label">Play</span>
-          <span class="sub">Solo run</span>
-        </button>
+      <div class="hero-split">
+        <header class="brand">
+          <h1 class="wordmark">GEO<span class="accent">FIGHTERS</span></h1>
+          <div class="tagline">SURVIVE THE HORDE</div>
+        </header>
 
-        <button class="btn daily" class:used={!dailyAvailable} onclick={handleDaily}>
-          <span class="label">Daily Run</span>
-          <span class="sub">
-            {#if dailyAvailable}
-              {getCharacter(dailyConfig.characterId).name} · CORRUPTION {dailyConfig.corruption}
-            {:else}
-              Done — best {dailyBest}
-            {/if}
-          </span>
-        </button>
-
-        <!-- Secondary destinations: compact two-column grid keeps the menu short -->
-        <div class="menu-grid">
-          <button class="btn compact" onclick={() => (showShop = true)}>
-            <span class="label">Shop</span>
-          </button>
-          <button class="btn compact" onclick={openRecords}>
-            <span class="label">Records</span>
-          </button>
-          <button class="btn compact" onclick={() => (uiState.showGrimoire = true)}>
-            <span class="label">Evolutions</span>
-          </button>
-          <button class="btn compact" onclick={() => { playMenuClick(); showMpOptions = true; }}>
-            <span class="label">Co-op</span>
-          </button>
-        </div>
-
-        <button class="btn slim" onclick={openSettings}>
-          <span class="label">Settings</span>
-        </button>
-
-        {#if uiState.canInstall}
-          <button class="btn ghost slim" onclick={handleInstall}>
-            <span class="label install">Install app</span>
-          </button>
-        {/if}
-      {:else if showMpOptions && uiState.networkStatus === 'disconnected'}
-        <label class="name-config">
-          <span class="eyebrow">Call sign</span>
-          <input
-            type="text"
-            maxlength="12"
-            placeholder="PLAYER"
-            class="name-input"
-            bind:value={uiState.playerName}
-            oninput={saveName}
-          />
-        </label>
-
-        <button class="btn primary" onclick={handleHost}>
-          <span class="label">Host lobby</span>
-          <span class="sub">Create beacon</span>
-        </button>
-
-        <div class="join-row">
-          <input
-            type="text"
-            maxlength="4"
-            placeholder="CODE"
-            class="code-input tnum"
-            bind:value={roomCodeInput}
-          />
-          <button class="btn join" onclick={handleJoin}>
-            <span class="label">Join</span>
-          </button>
-        </div>
-
-        <button class="btn ghost danger" onclick={handleCancelMp}>
-          <span class="label">Back</span>
-        </button>
-
-        <label class="server-config">
-          <span class="eyebrow">Signaling beacon</span>
-          <input
-            type="text"
-            placeholder="auto"
-            class="server-input"
-            bind:value={uiState.customServerUrl}
-            oninput={() => saveLocal('geo_server_url', uiState.customServerUrl)}
-          />
-        </label>
-      {:else if uiState.networkStatus === 'connecting'}
-        <div class="status-panel">
-          <div class="spinner"></div>
-          <p class="status-heading">Connecting</p>
-          <p class="status-detail">Pinging beacon…</p>
-          <button class="btn ghost danger" onclick={handleCancelMp}>
-            <span class="label">Abort</span>
-          </button>
-        </div>
-      {:else if uiState.networkStatus === 'in_lobby'}
-        <!-- PARTY LOBBY: roster, ready-up, character pick, host start -->
-        <div class="lobby-panel">
-          <button class="code-box clickable" onclick={copyRoomCode} title="Copy room code">
-            <p class="lobby-code tnum">{uiState.roomCode}</p>
-            <span class="copy-hint">TAP TO COPY · SHARE WITH FRIENDS</span>
-          </button>
-
-          <div class="lobby-roster">
-            {#each uiState.lobby.players as p (p.connectionId)}
-              {@const ch = getCharacter(p.character)}
-              <div class="lobby-row" class:ready={p.ready}>
-                <span class="lobby-char">{ch.icon}</span>
-                <span class="lobby-name"
-                  >{p.name}{#if p.isHost}<span class="host-tag">HOST</span>{/if}</span
+        <div class="menu-actions">
+          {#if !showMpOptions && uiState.networkStatus === 'disconnected'}
+            <button class="play-cta" onclick={handlePlay}>
+              <span class="play-glyph" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="20" height="20">
+                  <path d="M8 5.5v13l11-6.5z" fill="currentColor" />
+                </svg>
+              </span>
+              <span class="play-text">
+                <span class="play-label">PLAY</span>
+                <span class="play-sub tnum"
+                  >{selectedName} · CORRUPTION {uiState.corruption}</span
                 >
-                <span class="lobby-ready">{p.ready ? '✓ READY' : '· · ·'}</span>
-              </div>
-            {/each}
-            {#each Array(Math.max(0, 4 - uiState.lobby.players.length)) as _, i (i)}
-              <div class="lobby-row empty"><span class="lobby-name">— open slot —</span></div>
-            {/each}
-          </div>
-
-          <!-- Own character pick (unlocked roster only) -->
-          <div class="lobby-chars">
-            {#each CHARACTERS as char (char.id)}
-              {@const locked = !isCharacterUnlocked(char.id)}
-              <button
-                class="lobby-char-btn"
-                class:selected={lobbyMe?.character === char.id}
-                class:locked
-                title={char.name}
-                style={locked ? undefined : `--char-color: ${charColor(char.color)}`}
-                onclick={() => pickLobbyCharacter(char.id)}
-              >
-                {locked ? '🔒' : char.icon}
-              </button>
-            {/each}
-          </div>
-
-          {#if uiState.isHost}
-            <button
-              class="btn primary"
-              disabled={!allReady || uiState.lobby.players.length < 2}
-              onclick={handleStartParty}
-            >
-              <span class="label">START RUN</span>
-              <span class="sub">
-                {uiState.lobby.players.length < 2
-                  ? 'Waiting for teammates…'
-                  : allReady
-                    ? `${uiState.lobby.players.length} fighters ready`
-                    : 'Waiting for ready-up…'}
               </span>
             </button>
-          {:else}
-            <button class="btn primary" class:ghosted={lobbyMe?.ready} onclick={toggleReady}>
-              <span class="label">{lobbyMe?.ready ? 'UNREADY' : 'READY UP'}</span>
-              <span class="sub">Host starts when everyone is ready</span>
+
+            <button class="ui-btn block daily" class:used={!dailyAvailable} onclick={handleDaily}>
+              <span class="daily-dot" class:on={dailyAvailable} aria-hidden="true"></span>
+              <span class="daily-text">
+                <span class="daily-label">Daily Run</span>
+                <span class="daily-sub">
+                  {#if dailyAvailable}
+                    {getCharacter(dailyConfig.characterId).name} · Corruption {dailyConfig.corruption}
+                  {:else}
+                    Best {dailyBest} · resets in {hoursToReset()}h
+                  {/if}
+                </span>
+              </span>
             </button>
-          {/if}
 
-          <button class="btn ghost danger" onclick={handleCancelMp}>
-            <span class="label">Leave party</span>
-          </button>
-        </div>
-      {/if}
-    </div>
-
-    <footer class="menu-footer">
-      <span class="online">● ONLINE</span>
-      <span class="version tnum">v{__APP_VERSION__}</span>
-    </footer>
-  </div>
-
-  <!-- Shop Overlay -->
-  {#if showShop}
-    <div class="sub-panel glass" transition:fade={{ duration: 180 }}>
-      <header class="panel-header">
-        <h2 class="panel-title">Cybernetic Shop</h2>
-        <div class="panel-credits">🪙 {uiState.credits} Credits</div>
-      </header>
-
-      <div class="scroll-area">
-        <div class="shop-grid">
-          {#each UPGRADES_LIST as up}
-            {@const level = uiState.permanentUpgrades[up.id] || 0}
-            {@const cost = getUpgradeCost(up, level)}
-            {@const maxed = level >= up.max}
-            <div class="shop-card" class:maxed>
-              <div class="card-details">
-                <h3 class="card-name">{up.name}</h3>
-                <p class="card-desc">{up.desc}</p>
-                <div class="level-indicator">
-                  {#each Array(up.max) as _, i}
-                    <div class="dot-indicator" class:active={i < level}></div>
-                  {/each}
-                  <span class="level-text">LV {level}/{up.max}</span>
-                </div>
-              </div>
+            <!-- Destination tiles: icon + label, big enough to hit blind -->
+            <div class="tile-grid">
+              <button class="tile" onclick={openRoster}>
+                <span class="tile-icon" aria-hidden="true">🎖️</span>
+                <span class="tile-label">Fighters</span>
+                <span class="tile-meta tnum">{unlockedCount}/{CHARACTERS.length}</span>
+              </button>
+              <button class="tile" onclick={() => { playMenuClick(); panel = 'shop'; }}>
+                <span class="tile-icon" aria-hidden="true">🛠️</span>
+                <span class="tile-label">Upgrades</span>
+                <span class="tile-meta tnum">🪙 {uiState.credits}</span>
+              </button>
+              <button class="tile" onclick={openRecords}>
+                <span class="tile-icon" aria-hidden="true">🏆</span>
+                <span class="tile-label">Records</span>
+              </button>
               <button
-                class="buy-btn"
-                class:disabled={maxed || uiState.credits < cost}
-                onclick={() => buyUpgrade(up.id)}
+                class="tile"
+                onclick={() => {
+                  playMenuClick();
+                  uiState.showGrimoire = true;
+                }}
               >
-                {#if maxed}
-                  MAXED
-                {:else}
-                  🪙 {cost}
-                {/if}
+                <span class="tile-icon" aria-hidden="true">📖</span>
+                <span class="tile-label">Evolutions</span>
               </button>
             </div>
-          {/each}
-        </div>
-      </div>
 
-      <button class="btn back-btn" onclick={() => (showShop = false)}>Back to Menu</button>
-    </div>
-  {/if}
-
-  <!-- Character Selection Overlay -->
-  {#if showCharacterSelect}
-    <div class="sub-panel glass" transition:fade={{ duration: 180 }}>
-      <header class="panel-header">
-        <h2 class="panel-title">Select Avatar</h2>
-        <p class="panel-subtitle">Choose your starting configuration</p>
-      </header>
-
-      <!-- Corruption dial: 0-10, 5 = standard. Opt-in risk for opt-in reward. -->
-      <div class="corruption-row">
-        <div class="corruption-info">
-          <span class="corruption-label">
-            ☠️ CORRUPTION {uiState.corruption}
-            <span
-              class="corruption-tier"
-              class:standard={uiState.corruption === 5}
-              class:brutal={uiState.corruption > 5}
-              class:relaxed={uiState.corruption < 5}
+            <button
+              class="ui-btn block coop"
+              onclick={() => {
+                playMenuClick();
+                showMpOptions = true;
+              }}
             >
-              {corruptionTierName(uiState.corruption)}
-            </span>
-          </span>
-          <span class="corruption-desc">
-            {#if uiState.corruption === 0}
-              The gentlest run — easy mode
-            {:else}
-              +{Math.round((corruptionHp(uiState.corruption) - 1) * 100)}% enemy HP{#if uiState.corruption > 5}
-                · +{Math.round((corruptionDamage(uiState.corruption) - 1) * 100)}% damage · +{Math.round(
-                  (corruptionSpeed(uiState.corruption) - 1) * 100,
-                )}% speed{/if} · +{Math.round((corruptionXp(uiState.corruption) - 1) * 100)}% XP
-            {/if}
-          </span>
-        </div>
-        <div class="corruption-controls">
-          <button
-            class="corr-btn"
-            onclick={() => setCorruption(-1)}
-            disabled={uiState.corruption <= 0}>−</button
-          >
-          <button
-            class="corr-btn"
-            onclick={() => setCorruption(1)}
-            disabled={uiState.corruption >= CORRUPTION_MAX}>+</button
-          >
-        </div>
-      </div>
+              <span aria-hidden="true">🌐</span> Play with friends
+            </button>
 
-      <div class="char-grid">
-        {#each CHARACTERS as char (char.id)}
-          {@const locked = !isCharacterUnlocked(char.id)}
-          {@const gate = locked ? getUnlockCondition('character', char.id) : null}
-          <button
-            class="char-card"
-            class:locked
-            style={locked ? undefined : `--char-color: ${charColor(char.color)}`}
-            onclick={() => selectCharacter(char.id)}
-          >
-            {#if locked}
-              <div class="char-icon">🔒</div>
-              <h3 class="char-name">???</h3>
-              <p class="char-weapon">LOCKED</p>
-              <p class="char-desc">{gate ? gate.description : 'Keep playing to unlock.'}</p>
-            {:else}
-              <div class="char-icon">{char.icon}</div>
-              <h3 class="char-name">{char.name}</h3>
-              <p class="char-weapon">{char.weaponName}</p>
-              <p class="char-desc">{char.description}</p>
-              {#if char.quirk}
-                <p class="char-quirk">★ {char.quirk}</p>
+            <div class="quiet-row">
+              <button class="ui-btn quiet" onclick={openHowTo}>How to play</button>
+              <button
+                class="ui-btn quiet"
+                onclick={() => {
+                  playMenuClick();
+                  uiState.showSettings = true;
+                }}>Settings</button
+              >
+              {#if uiState.canInstall}
+                <button class="ui-btn quiet install" onclick={handleInstall}>Install</button>
               {/if}
-              <div class="char-stats">
-                {#each char.statPreview as stat (stat)}
-                  <span>{stat}</span>
+            </div>
+          {:else if showMpOptions && uiState.networkStatus === 'disconnected'}
+            <div class="mp-panel">
+              <p class="mp-hint">
+                Host a lobby and share the code, or join a friend's with theirs.
+              </p>
+
+              <label class="ui-field">
+                <span class="eyebrow">Call sign</span>
+                <input
+                  type="text"
+                  maxlength="12"
+                  placeholder="PLAYER"
+                  class="ui-input centered"
+                  bind:value={uiState.playerName}
+                  oninput={saveName}
+                />
+              </label>
+
+              <button class="ui-btn primary lg block" onclick={handleHost}>Host a lobby</button>
+
+              <div class="join-row">
+                <input
+                  type="text"
+                  maxlength="4"
+                  placeholder="CODE"
+                  class="ui-input code-input tnum"
+                  aria-label="Room code"
+                  bind:value={roomCodeInput}
+                />
+                <button class="ui-btn join" onclick={handleJoin}>Join</button>
+              </div>
+
+              <details class="advanced">
+                <summary>Advanced</summary>
+                <label class="ui-field">
+                  <span class="eyebrow">Signaling beacon</span>
+                  <input
+                    type="text"
+                    placeholder="auto"
+                    class="ui-input server-input"
+                    bind:value={uiState.customServerUrl}
+                    oninput={() => saveLocal('geo_server_url', uiState.customServerUrl)}
+                  />
+                </label>
+              </details>
+
+              <button class="ui-btn ghost block" onclick={handleCancelMp}>Back</button>
+            </div>
+          {:else if uiState.networkStatus === 'connecting'}
+            <div class="status-panel">
+              <div class="spinner"></div>
+              <p class="status-heading">Connecting</p>
+              <p class="status-detail">Pinging beacon…</p>
+              <button class="ui-btn ghost danger block" onclick={handleCancelMp}>Abort</button>
+            </div>
+          {:else if uiState.networkStatus === 'in_lobby'}
+            <!-- PARTY LOBBY: roster, ready-up, character pick, host start -->
+            <div class="lobby-panel">
+              <button class="code-box" onclick={copyRoomCode} title="Copy room code">
+                <span class="eyebrow">Room code</span>
+                <span class="lobby-code tnum">{uiState.roomCode}</span>
+                <span class="copy-hint">TAP TO COPY · SHARE WITH FRIENDS</span>
+              </button>
+
+              <div class="lobby-roster">
+                {#each uiState.lobby.players as p (p.connectionId)}
+                  {@const ch = getCharacter(p.character)}
+                  <div
+                    class="lobby-row"
+                    class:ready={p.ready}
+                    style="--char-color: {charColor(ch.color)}"
+                  >
+                    <span class="lobby-char">{ch.icon}</span>
+                    <span class="lobby-name">
+                      {p.name}{#if p.isHost}<span class="host-tag">HOST</span>{/if}
+                    </span>
+                    <span class="lobby-ready">{p.ready ? '✓ READY' : '· · ·'}</span>
+                  </div>
+                {/each}
+                {#each Array(Math.max(0, 4 - uiState.lobby.players.length)) as _, i (i)}
+                  <div class="lobby-row empty"><span class="lobby-name">Open slot</span></div>
                 {/each}
               </div>
-            {/if}
+
+              <!-- Own character pick (unlocked roster only) -->
+              <div class="lobby-chars">
+                {#each CHARACTERS as char (char.id)}
+                  {@const locked = !isCharacterUnlocked(char.id)}
+                  <button
+                    class="lobby-char-btn"
+                    class:selected={lobbyMe?.character === char.id}
+                    class:locked
+                    title={locked ? 'Locked' : char.name}
+                    aria-label={locked ? 'Locked fighter' : char.name}
+                    style={locked ? undefined : `--char-color: ${charColor(char.color)}`}
+                    onclick={() => pickLobbyCharacter(char.id)}
+                  >
+                    {locked ? '🔒' : char.icon}
+                  </button>
+                {/each}
+              </div>
+
+              {#if uiState.isHost}
+                <button
+                  class="ui-btn primary lg block"
+                  disabled={!allReady || uiState.lobby.players.length < 2}
+                  onclick={handleStartParty}
+                >
+                  {uiState.lobby.players.length < 2
+                    ? 'Waiting for teammates…'
+                    : allReady
+                      ? `Start run · ${uiState.lobby.players.length} ready`
+                      : 'Waiting for ready-up…'}
+                </button>
+              {:else}
+                <button
+                  class="ui-btn lg block"
+                  class:primary={!lobbyMe?.ready}
+                  onclick={toggleReady}
+                >
+                  {lobbyMe?.ready ? 'Cancel ready' : 'Ready up'}
+                </button>
+              {/if}
+
+              <button class="ui-btn ghost danger block" onclick={handleCancelMp}
+                >Leave party</button
+              >
+            </div>
+          {/if}
+        </div>
+      </div>
+
+      <footer class="menu-footer">
+        <span class="online">● ONLINE</span>
+        <span class="version tnum">v{__APP_VERSION__}</span>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ============================ ROSTER ============================ -->
+  {#if panel === 'roster'}
+    <Modal
+      eyebrow="Deployment"
+      title="Choose your fighter"
+      subtitle="Each fighter changes your starting weapon and stat identity."
+      size="lg"
+      tone="cyan"
+      onclose={() => (panel = 'none')}
+    >
+      {#snippet readout()}
+        <span class="ui-chip cyan tnum">{unlockedCount}/{CHARACTERS.length}</span>
+      {/snippet}
+
+      <!-- Featured card: the fighter you're about to take in -->
+      <div
+        class="feature"
+        class:locked={focusedLocked}
+        style="--char-color: {charColor(focused.color)}"
+      >
+        <div class="feature-head">
+          <div class="feature-avatar">{focusedLocked ? '🔒' : focused.icon}</div>
+          <div class="feature-id">
+            <h3 class="feature-name">{focusedLocked ? 'LOCKED' : focused.name}</h3>
+            <p class="feature-weapon">{focusedLocked ? '???' : focused.weaponName}</p>
+          </div>
+        </div>
+
+        {#if focusedLocked}
+          <p class="feature-desc">{focusedGate?.description ?? 'Keep playing to unlock.'}</p>
+          <div class="gate">
+            <div class="ui-meter">
+              <div class="ui-meter-fill gate-fill" style="width: {focusedGatePct}%"></div>
+            </div>
+            <span class="gate-pct tnum">{focusedGatePct}%</span>
+          </div>
+        {:else}
+          <p class="feature-desc">{focused.description}</p>
+          {#if focused.quirk}
+            <p class="feature-quirk"><span aria-hidden="true">★</span> {focused.quirk}</p>
+          {/if}
+          <div class="stat-list">
+            {#each focused.statPreview as entry (entry)}
+              {@const s = parseStat(entry)}
+              <div class="stat">
+                <span class="stat-label">{s.label}</span>
+                {#if s.pct !== null}
+                  <div class="ui-meter stat-track">
+                    <div class="ui-meter-fill stat-fill" style="width: {s.pct}%"></div>
+                  </div>
+                {:else}
+                  <div class="stat-track spacer-track"></div>
+                {/if}
+                <span class="stat-val tnum">{s.raw}</span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+
+      <!-- Thumbnail rail: whole roster, one swipe -->
+      <div class="rail rail-scroll" role="listbox" aria-label="Fighter roster">
+        {#each CHARACTERS as char (char.id)}
+          {@const locked = !isCharacterUnlocked(char.id)}
+          <button
+            class="thumb"
+            class:active={focusedChar === char.id}
+            class:locked
+            role="option"
+            aria-selected={focusedChar === char.id}
+            aria-label={locked ? 'Locked fighter' : char.name}
+            style="--char-color: {charColor(char.color)}"
+            onclick={() => focusCharacter(char.id)}
+          >
+            <span class="thumb-icon">{locked ? '🔒' : char.icon}</span>
+            <span class="thumb-name">{locked ? '???' : char.name}</span>
           </button>
         {/each}
       </div>
 
-      <button class="btn back-btn" onclick={() => (showCharacterSelect = false)}
-        >Back to Menu</button
-      >
-    </div>
+      <!-- Threat level -->
+      <div class="corruption tone-{corruptionTone}">
+        <Slider
+          id="corruption-dial"
+          label="Threat level"
+          value={uiState.corruption}
+          min={0}
+          max={CORRUPTION_MAX}
+          display={`${uiState.corruption} · ${corruptionTierName(uiState.corruption)}`}
+          oninput={setCorruption}
+        />
+        <p class="corruption-desc">
+          {#if uiState.corruption === 0}
+            The gentlest run — learn the arena with the pressure off.
+          {:else}
+            +{Math.round((corruptionHp(uiState.corruption) - 1) * 100)}% enemy HP · +{Math.round(
+              (corruptionXp(uiState.corruption) - 1) * 100,
+            )}% XP · +{Math.round((corruptionCredits(uiState.corruption) - 1) * 100)}% credits{#if uiState.corruption > 5}
+              · +{Math.round((corruptionDamage(uiState.corruption) - 1) * 100)}% enemy damage · +{Math.round(
+                (corruptionSpeed(uiState.corruption) - 1) * 100,
+              )}% enemy speed{/if}
+          {/if}
+        </p>
+      </div>
+
+      {#snippet footer()}
+        <button class="ui-btn ghost back" onclick={() => (panel = 'none')}>Back</button>
+        <button
+          class="ui-btn primary lg deploy"
+          disabled={focusedLocked}
+          onclick={confirmRoster}
+        >
+          {focusedLocked ? 'Locked' : `Deploy ${focused.name}`}
+        </button>
+      {/snippet}
+    </Modal>
+  {/if}
+
+  <!-- ============================= SHOP ============================= -->
+  {#if panel === 'shop'}
+    <Modal
+      eyebrow="Permanent"
+      title="Upgrades"
+      subtitle="Bought once with credits, applied to every future run."
+      size="lg"
+      tone="gold"
+      onclose={() => (panel = 'none')}
+    >
+      {#snippet readout()}
+        <span class="ui-chip gold tnum">🪙 {uiState.credits}</span>
+      {/snippet}
+
+      <div class="shop-grid">
+        {#each UPGRADES_LIST as up (up.id)}
+          {@const level = uiState.permanentUpgrades[up.id] || 0}
+          {@const cost = getUpgradeCost(up, level)}
+          {@const maxed = level >= up.max}
+          {@const affordable = uiState.credits >= cost}
+          <div class="shop-card" class:maxed class:poor={!maxed && !affordable}>
+            <!-- Progress wash: how far this line is built out -->
+            <div
+              class="shop-progress"
+              style="width: {(level / up.max) * 100}%"
+              aria-hidden="true"
+            ></div>
+            <div class="shop-body">
+              <span class="shop-icon" aria-hidden="true">{up.icon}</span>
+              <div class="shop-text">
+                <h3 class="shop-name">{up.name}</h3>
+                <p class="shop-desc">{up.desc}</p>
+                <div class="shop-level">
+                  <span class="ui-pips">
+                    {#each Array(up.max) as _, i (i)}
+                      <span class="ui-pip" class:on={i < level}></span>
+                    {/each}
+                  </span>
+                  <span class="shop-lv tnum">LV {level}/{up.max}</span>
+                </div>
+              </div>
+              <button
+                class="ui-btn buy"
+                class:can-buy={!maxed && affordable}
+                disabled={maxed}
+                onclick={() => buyUpgrade(up.id)}
+              >
+                {#if maxed}
+                  MAX
+                {:else}
+                  <span class="tnum">🪙 {cost}</span>
+                {/if}
+              </button>
+            </div>
+          </div>
+        {/each}
+      </div>
+
+      {#snippet footer()}
+        <button class="ui-btn primary" onclick={() => (panel = 'none')}>Done</button>
+      {/snippet}
+    </Modal>
   {/if}
 </div>
 
@@ -600,31 +777,40 @@
   #main-menu {
     position: fixed;
     inset: 0;
-    z-index: 1000;
-    display: flex;
-    justify-content: center;
-    align-items: center;
+    z-index: var(--z-menu);
     background:
-      radial-gradient(ellipse 80% 50% at 50% 0%, rgba(54, 230, 255, 0.08), transparent 70%),
-      radial-gradient(ellipse 80% 50% at 50% 100%, rgba(255, 61, 119, 0.06), transparent 70%),
+      radial-gradient(ellipse 80% 50% at 50% 0%, rgba(54, 230, 255, 0.09), transparent 70%),
+      radial-gradient(ellipse 80% 50% at 50% 100%, rgba(255, 61, 119, 0.07), transparent 70%),
       var(--color-bg-dark);
-    padding: calc(var(--safe-top) + 2rem) 1.5rem calc(var(--safe-bottom) + 2rem);
+    pointer-events: auto;
   }
 
   #main-menu.hidden {
     display: none;
   }
 
-  .menu-content {
+  /* The scroll column. Centring happens with `margin: auto` on the content
+     inside a scrollable flex column, which — unlike `justify-content:center`
+     — still lets you reach the top when the content is taller than the
+     viewport. That combination previously clipped the wordmark and could
+     push Play under the browser toolbar on short screens. */
+  .menu-viewport {
     position: relative;
     z-index: 1;
-    width: 100%;
-    max-width: 360px;
+    height: 100%;
     display: flex;
     flex-direction: column;
-    align-items: stretch;
-    gap: 2.5rem;
-    animation: menu-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+    padding: var(--pad-top) var(--pad-right) var(--pad-bottom) var(--pad-left);
+  }
+
+  .menu-content {
+    width: 100%;
+    max-width: 24rem;
+    margin: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    animation: menu-in 0.6s var(--ease-out-expo) both;
   }
 
   @keyframes menu-in {
@@ -638,16 +824,35 @@
     }
   }
 
+  /* ---- Status strip ---- */
+  .status-strip {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
+  .status-strip .spacer {
+    flex: 1;
+  }
+
   /* ---- Brand ---- */
   .brand {
+    /* Container context so the wordmark can size itself against the column
+       it actually lives in rather than the viewport — the two diverge hard
+       once the desktop layout splits into brand + actions. */
+    container-type: inline-size;
     text-align: center;
-    margin-top: auto;
   }
   .wordmark {
     margin: 0;
     width: 100%;
     font-family: var(--font-heading);
-    font-size: clamp(36px, 11vw, 58px);
+    /* "FIGHTERS" measures ~6.1em wide in Orbitron 800, so a font-size of
+       15cqw always leaves headroom inside the column. Sizing by vw instead
+       let the word overflow (phones) or break mid-word into "FIGHTER / S"
+       (desktop, where the column is far narrower than the window). */
+    font-size: clamp(1.75rem, 13vw, 3.5rem);
+    font-size: clamp(1.75rem, 15cqw, 3.5rem);
     font-weight: 800;
     letter-spacing: 0.04em;
     /* Compensate the trailing letter-spacing so centered text stays centered */
@@ -655,7 +860,7 @@
     text-align: center;
     line-height: 0.92;
     color: var(--color-text-main);
-    /* Stack GEO / FIGHTERS so the long wordmark never overflows narrow screens */
+    /* Last-resort guard if a fallback font measures much wider than Orbitron */
     overflow-wrap: anywhere;
   }
   .wordmark .accent {
@@ -675,7 +880,7 @@
   }
   .tagline {
     margin-top: 0.85rem;
-    font-size: 0.62rem;
+    font-size: var(--fs-micro);
     font-weight: 600;
     letter-spacing: 0.42em;
     text-indent: 0.42em;
@@ -693,7 +898,7 @@
     }
   }
 
-  /* ---- Ambient drifting glows ---- */
+  /* ---- Ambient background ---- */
   .ambient {
     position: absolute;
     inset: 0;
@@ -721,6 +926,24 @@
     right: -14vmax;
     animation: drift2 32s ease-in-out infinite alternate;
   }
+  /* Perspective grid floor — sells the cyberspace setting without costing
+     a single draw call on the game canvas. */
+  .grid-floor {
+    position: absolute;
+    left: -25%;
+    right: -25%;
+    bottom: -10%;
+    height: 55%;
+    opacity: 0.16;
+    background-image:
+      linear-gradient(rgba(54, 230, 255, 0.5) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(54, 230, 255, 0.5) 1px, transparent 1px);
+    background-size: 46px 46px;
+    transform: perspective(340px) rotateX(66deg);
+    transform-origin: bottom center;
+    mask-image: linear-gradient(to top, #000 0%, transparent 78%);
+    -webkit-mask-image: linear-gradient(to top, #000 0%, transparent 78%);
+  }
   @keyframes drift1 {
     from {
       transform: translate3d(0, 0, 0) scale(1);
@@ -738,144 +961,209 @@
     }
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .glow,
-    .wordmark .accent,
-    .tagline::after {
-      animation: none;
-    }
-  }
-
   /* ---- Actions ---- */
   .menu-actions {
     display: flex;
     flex-direction: column;
-    gap: 0.65rem;
+    gap: 0.6rem;
   }
 
-  .btn {
+  /* The one unmistakable focal point on the screen. */
+  .play-cta {
     all: unset;
     box-sizing: border-box;
     cursor: pointer;
     display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 0.5rem;
-    padding: 1rem 1.25rem;
-    border-radius: var(--r-md);
-    background: rgba(255, 255, 255, 0.035);
-    border: 1px solid var(--color-border);
-    transition: all var(--transition-fast);
+    align-items: center;
+    gap: 0.9rem;
+    min-height: 68px;
+    padding: 0.9rem 1.25rem;
+    border-radius: var(--r-lg);
+    background: linear-gradient(135deg, #5ff2ff, var(--color-primary) 55%, #17c7e6);
+    color: #04060f;
+    box-shadow:
+      0 10px 34px -12px rgba(54, 230, 255, 0.95),
+      inset 0 1px 0 rgba(255, 255, 255, 0.45);
+    transition:
+      transform var(--transition-fast),
+      filter var(--transition-fast),
+      box-shadow var(--transition-fast);
   }
-  .btn:hover {
-    background: rgba(255, 255, 255, 0.06);
-    border-color: rgba(255, 255, 255, 0.16);
-    transform: translateY(-1.5px);
+  .play-cta:hover {
+    filter: brightness(1.06);
+    transform: translateY(-2px);
+    box-shadow:
+      0 16px 42px -12px rgba(54, 230, 255, 1),
+      inset 0 1px 0 rgba(255, 255, 255, 0.45);
   }
-  .btn:active {
+  .play-cta:active {
     transform: scale(0.985);
   }
-
-  .btn .label {
-    font-size: 1rem;
-    font-weight: 700;
-    letter-spacing: 0.01em;
-    color: var(--color-text-main);
-  }
-  .btn .sub {
-    font-size: 0.62rem;
-    font-weight: 500;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--color-text-dim);
-  }
-
-  /* Secondary destinations packed two-up */
-  .menu-grid {
+  .play-glyph {
+    flex: 0 0 auto;
+    width: 40px;
+    height: 40px;
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.65rem;
+    place-items: center;
+    border-radius: 50%;
+    background: rgba(4, 6, 15, 0.16);
   }
-  .btn.compact {
-    justify-content: center;
-    padding: 0.8rem 0.5rem;
+  .play-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
   }
-  .btn.compact .label {
-    font-size: 0.82rem;
-  }
-
-  .btn.compact.soon {
-    position: relative;
-    cursor: not-allowed;
-    opacity: 0.55;
-  }
-  .btn.compact.soon:hover {
-    background: rgba(255, 255, 255, 0.035);
-    border-color: var(--color-border);
-    transform: none;
-  }
-  .soon-badge {
-    position: absolute;
-    top: -6px;
-    right: -6px;
-    font-size: 0.46rem;
+  .play-label {
+    font-family: var(--font-heading);
+    font-size: 1.35rem;
     font-weight: 800;
-    letter-spacing: 0.06em;
-    color: #04060f;
-    background: var(--color-gold, #ffd75e);
-    padding: 0.15rem 0.35rem;
-    border-radius: 999px;
+    letter-spacing: 0.08em;
     line-height: 1;
   }
-
-  /* Tertiary rows (settings/install) stay quiet */
-  .btn.slim {
-    justify-content: center;
-    padding: 0.6rem;
-    background: transparent;
+  .play-sub {
+    font-size: var(--fs-micro);
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: rgba(4, 6, 15, 0.66);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
-  .btn.slim .label {
-    font-size: 0.78rem;
+
+  /* ---- Daily ---- */
+  .ui-btn.daily {
+    justify-content: flex-start;
+    gap: 0.7rem;
+    padding: 0.7rem 1rem;
+    border-color: rgba(255, 216, 77, 0.3);
+    background: rgba(255, 216, 77, 0.05);
+  }
+  .ui-btn.daily.used {
+    opacity: 0.6;
+  }
+  .daily-dot {
+    flex: 0 0 auto;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--color-text-faint);
+  }
+  .daily-dot.on {
+    background: var(--color-gold);
+    box-shadow: 0 0 10px var(--color-gold);
+    animation: text-pulse 2s ease-in-out infinite;
+  }
+  @keyframes text-pulse {
+    50% {
+      opacity: 0.5;
+    }
+  }
+  .daily-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.1rem;
+    min-width: 0;
+  }
+  .daily-label {
+    font-size: var(--fs-label);
+    font-weight: 700;
+    color: var(--color-gold);
+  }
+  .daily-sub {
+    font-size: var(--fs-micro);
     font-weight: 600;
+    letter-spacing: 0.06em;
     color: var(--color-text-dim);
   }
-  .btn.slim:hover .label {
+
+  /* ---- Tiles ---- */
+  .tile-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem;
+  }
+  .tile {
+    all: unset;
+    box-sizing: border-box;
+    cursor: pointer;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.15rem;
+    min-height: 78px;
+    padding: 0.7rem 0.85rem;
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+    border: 1px solid var(--color-border);
+    transition:
+      background var(--transition-fast),
+      border-color var(--transition-fast),
+      transform var(--transition-fast);
+  }
+  .tile:hover {
+    background: var(--surface-3);
+    border-color: var(--color-border-bright);
+    transform: translateY(-2px);
+  }
+  .tile:active {
+    transform: scale(0.98);
+  }
+  .tile-icon {
+    font-size: 1.25rem;
+    line-height: 1.1;
+  }
+  .tile-label {
+    font-size: var(--fs-label);
+    font-weight: 700;
     color: var(--color-text-main);
   }
-
-  .btn.primary {
-    background: var(--color-primary);
-    border-color: transparent;
-  }
-  .btn.primary .label {
-    color: #04060f;
-  }
-  .btn.primary .sub {
-    color: rgba(4, 6, 15, 0.6);
-  }
-  .btn.primary:hover {
-    filter: brightness(1.08);
-  }
-
-  .btn.ghost {
-    background: transparent;
-    justify-content: center;
-  }
-  .btn.ghost .label {
-    font-size: 0.85rem;
+  .tile-meta {
+    font-size: var(--fs-micro);
     font-weight: 600;
-  }
-  .btn.ghost.danger:hover {
-    border-color: rgba(255, 61, 119, 0.4);
-  }
-  .btn.ghost.danger .label {
     color: var(--color-text-dim);
   }
-  .label.install {
+
+  .ui-btn.coop {
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  .quiet-row {
+    display: flex;
+    gap: 0.25rem;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .quiet-row .ui-btn {
+    flex: 1;
+    min-width: 6rem;
+    font-size: var(--fs-caption);
+  }
+  .ui-btn.quiet.install {
     color: var(--color-accent);
   }
 
   /* ---- Multiplayer ---- */
+  .mp-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+  }
+  .mp-hint {
+    margin: 0;
+    font-size: var(--fs-caption);
+    line-height: 1.5;
+    color: var(--color-text-dim);
+    text-align: center;
+  }
+  .ui-input.centered {
+    text-align: center;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
   .join-row {
     display: flex;
     gap: 0.5rem;
@@ -883,76 +1171,46 @@
   .code-input {
     flex: 1;
     min-width: 0;
-    background: rgba(255, 255, 255, 0.035);
-    border: 1px solid var(--color-border);
-    border-radius: var(--r-md);
-    padding: 0 1rem;
+    font-family: var(--font-mono);
     font-size: 1.1rem;
     font-weight: 700;
     color: var(--color-primary);
     text-align: center;
     letter-spacing: 0.3em;
+    text-indent: 0.3em;
     text-transform: uppercase;
-    outline: none;
   }
-  .code-input:focus {
-    border-color: var(--color-border-bright);
-  }
-  .btn.join {
+  .ui-btn.join {
     flex: 0 0 auto;
-    justify-content: center;
-    padding: 1rem 1.4rem;
+    padding: 0 1.4rem;
   }
-
-  .name-config {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-    margin-bottom: 0.25rem;
+  .advanced {
+    border-top: 1px solid var(--color-border);
+    padding-top: 0.6rem;
   }
-  .name-config .eyebrow {
-    padding-left: 0.2rem;
-  }
-  .name-input {
-    background: rgba(255, 255, 255, 0.035);
-    border: 1px solid var(--color-border);
-    border-radius: var(--r-md);
-    padding: 0.7rem 1rem;
-    font-size: 0.95rem;
-    font-weight: 700;
+  .advanced summary {
+    cursor: pointer;
+    font-size: var(--fs-caption);
+    font-weight: 600;
     letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--color-text-main);
-    text-align: center;
-    outline: none;
+    color: var(--color-text-dim);
+    padding: 0.5rem 0;
+    list-style: none;
   }
-  .name-input:focus {
-    border-color: var(--color-border-bright);
+  .advanced summary::-webkit-details-marker {
+    display: none;
   }
-
-  .server-config {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-    margin-top: 0.25rem;
+  .advanced summary::before {
+    content: '▸ ';
+    color: var(--color-primary);
   }
-  .server-config .eyebrow {
-    padding-left: 0.2rem;
+  .advanced[open] summary::before {
+    content: '▾ ';
   }
   .server-input {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px dashed var(--color-border);
-    border-radius: var(--r-sm);
-    padding: 0.55rem 0.8rem;
     font-family: var(--font-mono);
-    font-size: 0.72rem;
-    color: var(--color-text-main);
-    outline: none;
+    font-size: var(--fs-caption);
     text-align: center;
-  }
-  .server-input:focus {
-    border-style: solid;
-    border-color: var(--color-border-bright);
   }
 
   /* ---- Connection status ---- */
@@ -960,34 +1218,23 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 1.25rem;
+    gap: 1rem;
     padding: 1rem 0;
   }
   .status-heading {
     margin: 0;
-    font-size: 0.95rem;
+    font-size: var(--fs-heading);
     font-weight: 700;
     color: var(--color-text-main);
   }
   .status-detail {
     margin: 0;
-    font-size: 0.68rem;
+    font-size: var(--fs-caption);
     letter-spacing: 0.1em;
     color: var(--color-text-dim);
   }
-  .code-box {
-    background: rgba(54, 230, 255, 0.06);
-    border: 1px solid var(--color-border-bright);
-    border-radius: var(--r-md);
-    padding: 0.7rem 1.5rem;
-  }
-  .lobby-code {
-    margin: 0;
-    font-size: 2rem;
-    font-weight: 700;
-    letter-spacing: 0.25em;
-    text-indent: 0.25em;
-    color: var(--color-primary);
+  .status-panel .ui-btn {
+    width: 100%;
   }
   .spinner {
     width: 28px;
@@ -997,71 +1244,94 @@
     border-radius: 50%;
     animation: spin 0.9s linear infinite;
   }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
 
   /* ---- Party lobby ---- */
   .lobby-panel {
     display: flex;
     flex-direction: column;
-    gap: 0.9rem;
+    gap: 0.7rem;
   }
-  .code-box.clickable {
+  .code-box {
     all: unset;
     cursor: pointer;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.3rem;
-    background: rgba(54, 230, 255, 0.06);
+    gap: 0.2rem;
+    padding: 0.8rem 1.5rem;
+    background: rgba(54, 230, 255, 0.07);
     border: 1px solid var(--color-border-bright);
-    border-radius: var(--r-md);
-    padding: 0.7rem 1.5rem;
+    border-radius: var(--r-lg);
     text-align: center;
+    transition: background var(--transition-fast);
   }
-  .code-box.clickable:hover {
-    background: rgba(54, 230, 255, 0.12);
+  .code-box:hover {
+    background: rgba(54, 230, 255, 0.14);
+  }
+  .lobby-code {
+    font-size: 2.1rem;
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: 0.25em;
+    text-indent: 0.25em;
+    color: var(--color-primary);
   }
   .copy-hint {
-    font-size: 0.52rem;
+    font-size: var(--fs-micro);
     letter-spacing: 0.12em;
     color: var(--color-text-dim);
   }
   .lobby-roster {
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
+    gap: 0.35rem;
   }
   .lobby-row {
     display: flex;
     align-items: center;
     gap: 0.6rem;
-    padding: 0.55rem 0.8rem;
+    min-height: 44px;
+    padding: 0.4rem 0.7rem;
     border-radius: var(--r-md);
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    font-size: 0.75rem;
+    background: var(--surface-2);
+    border: 1px solid var(--color-border);
+    border-left: 3px solid var(--char-color, var(--color-border));
+    font-size: var(--fs-caption);
   }
   .lobby-row.ready {
-    border-color: rgba(0, 255, 136, 0.35);
+    border-color: rgba(56, 245, 168, 0.4);
+    border-left-color: var(--color-accent);
+    background: rgba(56, 245, 168, 0.06);
   }
   .lobby-row.empty {
-    opacity: 0.35;
+    opacity: 0.4;
     justify-content: center;
-    font-size: 0.62rem;
-    letter-spacing: 0.1em;
+    border-left-color: transparent;
+    border-style: dashed;
   }
   .lobby-char {
-    font-size: 1rem;
+    font-size: 1.05rem;
   }
   .lobby-name {
     flex: 1;
+    min-width: 0;
     font-weight: 700;
     color: var(--color-text-main);
     display: flex;
     align-items: center;
     gap: 0.45rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .host-tag {
-    font-size: 0.5rem;
+    flex: 0 0 auto;
+    font-size: var(--fs-micro);
     letter-spacing: 0.12em;
     color: var(--color-primary);
     border: 1px solid var(--color-border-bright);
@@ -1069,17 +1339,18 @@
     padding: 0.1rem 0.3rem;
   }
   .lobby-ready {
-    font-size: 0.6rem;
+    flex: 0 0 auto;
+    font-size: var(--fs-micro);
     font-weight: 700;
     letter-spacing: 0.08em;
     color: var(--color-text-dim);
   }
   .lobby-row.ready .lobby-ready {
-    color: #00ff88;
+    color: var(--color-accent);
   }
   .lobby-chars {
     display: flex;
-    gap: 0.4rem;
+    gap: 0.35rem;
     justify-content: center;
     flex-wrap: wrap;
   }
@@ -1087,16 +1358,19 @@
     all: unset;
     cursor: pointer;
     --char-color: var(--color-primary);
-    width: 38px;
-    height: 38px;
+    width: var(--tap);
+    height: var(--tap);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.05rem;
+    font-size: 1.15rem;
     border-radius: var(--r-md);
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    transition: all var(--transition-fast);
+    background: var(--surface-2);
+    border: 1px solid var(--color-border);
+    transition:
+      border-color var(--transition-fast),
+      transform var(--transition-fast),
+      background var(--transition-fast);
   }
   .lobby-char-btn:hover:not(.locked) {
     border-color: var(--char-color);
@@ -1104,34 +1378,20 @@
   }
   .lobby-char-btn.selected {
     border-color: var(--char-color);
-    background: rgba(54, 230, 255, 0.12);
+    background: rgba(54, 230, 255, 0.14);
     box-shadow: 0 0 14px -5px var(--char-color);
   }
   .lobby-char-btn.locked {
     opacity: 0.4;
     cursor: not-allowed;
   }
-  .btn.primary:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-    filter: none;
-  }
-  .btn.primary.ghosted {
-    filter: saturate(0.4) brightness(0.85);
-  }
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
 
   /* ---- Footer ---- */
   .menu-footer {
-    margin-top: auto;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    font-size: 0.58rem;
+    font-size: var(--fs-micro);
     font-weight: 600;
     letter-spacing: 0.18em;
     color: var(--color-text-faint);
@@ -1140,420 +1400,437 @@
     color: var(--color-accent);
   }
 
-  /* ---- Shop and Character Overlays ---- */
-  .sub-panel {
+  /* ================= ROSTER PANEL ================= */
+  .feature {
+    --char-color: var(--color-primary);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    padding: 1rem;
+    border-radius: var(--r-lg);
+    background:
+      radial-gradient(ellipse 70% 90% at 12% 0%, rgba(255, 255, 255, 0.07), transparent 70%),
+      var(--surface-2);
+    border: 1px solid var(--color-border);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+  }
+  .feature::after {
+    content: '';
     position: absolute;
     inset: 0;
-    z-index: 10;
-    display: flex;
-    flex-direction: column;
-    background: rgba(4, 6, 15, 0.85);
-    backdrop-filter: blur(14px);
-    padding: calc(var(--safe-top) + 2rem) 1.5rem calc(var(--safe-bottom) + 2rem);
-    animation: menu-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
-    overflow-y: auto;
-    pointer-events: auto;
+    border-radius: inherit;
+    pointer-events: none;
+    box-shadow: inset 0 0 28px -14px var(--char-color);
   }
-
-  .panel-header {
-    text-align: center;
-    margin-bottom: 1.5rem;
+  .feature.locked {
+    filter: grayscale(0.7);
+  }
+  .feature-head {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.85rem;
   }
-
-  .panel-title {
-    font-family: var(--font-heading);
-    font-size: 1.8rem;
-    font-weight: 800;
-    letter-spacing: 0.08em;
+  .feature-avatar {
+    flex: 0 0 auto;
+    width: 56px;
+    height: 56px;
+    display: grid;
+    place-items: center;
+    font-size: 1.9rem;
+    border-radius: var(--r-md);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--char-color);
+    box-shadow: 0 0 22px -10px var(--char-color);
+  }
+  .feature-id {
+    min-width: 0;
+  }
+  .feature-name {
     margin: 0;
+    font-family: var(--font-heading);
+    font-size: 1.2rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
     color: var(--color-text-main);
   }
-
-  .panel-subtitle {
-    font-size: 0.62rem;
-    font-weight: 600;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: var(--color-text-dim);
-    margin: 0;
-  }
-
-  .panel-credits {
+  .feature-weapon {
+    margin: 0.1rem 0 0;
     font-family: var(--font-mono);
-    font-size: 1.1rem;
+    font-size: var(--fs-micro);
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--char-color);
+  }
+  .feature-desc {
+    margin: 0;
+    font-size: var(--fs-caption);
+    line-height: 1.5;
+    color: var(--color-text-dim);
+  }
+  .feature-quirk {
+    margin: 0;
+    font-size: var(--fs-caption);
+    font-weight: 700;
+    line-height: 1.4;
+    color: var(--color-gold);
+  }
+  .gate {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .gate .ui-meter {
+    flex: 1;
+  }
+  .gate-fill {
+    background: linear-gradient(90deg, #8a6b1f, var(--color-gold));
+  }
+  .gate-pct {
+    font-size: var(--fs-micro);
     font-weight: 700;
     color: var(--color-gold);
-    background: rgba(255, 170, 0, 0.1);
-    border: 1px solid rgba(255, 170, 0, 0.25);
-    border-radius: var(--r-pill);
-    padding: 0.25rem 1rem;
-    margin-top: 0.5rem;
   }
 
-  .scroll-area {
-    flex: 1;
-    overflow-y: auto;
-    width: 100%;
-    max-width: 500px;
-    margin: 0 auto;
-    padding-right: 0.5rem;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .shop-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    margin-bottom: 2rem;
-  }
-
-  .shop-card {
-    background: rgba(255, 255, 255, 0.025);
-    border: 1px solid var(--color-border);
-    border-radius: var(--r-md);
-    padding: 1rem;
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    transition: all var(--transition-fast);
-  }
-  .shop-card:hover {
-    background: rgba(255, 255, 255, 0.04);
-    border-color: rgba(255, 255, 255, 0.12);
-  }
-
-  .shop-card.maxed {
-    border-color: rgba(0, 255, 85, 0.15);
-    background: rgba(0, 255, 85, 0.01);
-  }
-
-  .card-details {
+  .stat-list {
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
-    min-width: 0;
-    text-align: left;
   }
-
-  .card-name {
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: var(--color-text-main);
-    margin: 0;
-  }
-
-  .card-desc {
-    font-size: 0.72rem;
-    color: var(--color-text-dim);
-    margin: 0;
-    line-height: 1.3;
-  }
-
-  .level-indicator {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    margin-top: 0.2rem;
-  }
-
-  .dot-indicator {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.12);
-  }
-  .dot-indicator.active {
-    background: var(--color-primary);
-    box-shadow: 0 0 4px var(--color-primary);
-  }
-  .shop-card.maxed .dot-indicator.active {
-    background: var(--color-accent);
-    box-shadow: 0 0 4px var(--color-accent);
-  }
-
-  .level-text {
-    font-family: var(--font-mono);
-    font-size: 0.58rem;
-    color: var(--color-text-dim);
-    margin-left: 0.4rem;
-  }
-
-  .buy-btn {
-    all: unset;
-    cursor: pointer;
-    background: var(--color-secondary);
-    border: 1px solid transparent;
-    border-radius: var(--r-sm);
-    padding: 0.6rem 0.9rem;
-    font-family: var(--font-mono);
-    font-size: 0.8rem;
-    font-weight: 700;
-    color: #fff;
-    white-space: nowrap;
-    text-align: center;
-    min-width: 70px;
-    transition: all var(--transition-fast);
-  }
-  .buy-btn:hover:not(.disabled) {
-    filter: brightness(1.12);
-  }
-  .buy-btn:active:not(.disabled) {
-    transform: scale(0.96);
-  }
-  .buy-btn.disabled {
-    background: rgba(255, 255, 255, 0.05);
-    border-color: var(--color-border);
-    color: var(--color-text-dim);
-    cursor: not-allowed;
-  }
-  .shop-card.maxed .buy-btn {
-    background: rgba(0, 255, 85, 0.08);
-    border-color: rgba(0, 255, 85, 0.25);
-    color: var(--color-accent);
-    cursor: default;
-  }
-
-  .back-btn {
-    width: 100%;
-    max-width: 260px;
-    margin: 1.5rem auto 0;
-    justify-content: center;
-  }
-
-  /* ---- Character Select ---- */
-  /* Two columns on phones, four on wide screens — cards stay card-shaped
-     instead of stretching into full-width slabs or 8-up slivers. */
-  .char-grid {
+  .stat {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 0.7rem;
-    width: 100%;
-    max-width: 560px;
-    margin: 0 auto;
+    grid-template-columns: 4.5rem 1fr 3.2rem;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .stat-label {
+    font-size: var(--fs-micro);
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-text-dim);
+  }
+  .stat-track {
+    height: 6px;
+  }
+  .spacer-track {
+    border-radius: var(--r-pill);
+    background: repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.08) 0 4px,
+      transparent 4px 8px
+    );
+  }
+  .stat-fill {
+    background: linear-gradient(90deg, color-mix(in srgb, var(--char-color) 45%, #000), var(--char-color));
+  }
+  .stat-val {
+    font-size: var(--fs-micro);
+    font-weight: 700;
+    text-align: right;
+    color: var(--color-text-main);
   }
 
-  .char-card {
+  /* Thumbnail rail */
+  .rail {
+    display: flex;
+    gap: 0.5rem;
+    margin: 0.85rem -0.2rem 0;
+    padding: 0.2rem;
+  }
+  .thumb {
     all: unset;
     box-sizing: border-box;
     cursor: pointer;
-    /* Each card carries its character's color for hover glow + accents */
     --char-color: var(--color-primary);
-    background: rgba(255, 255, 255, 0.025);
-    border: 1px solid var(--color-border);
-    border-radius: var(--r-md);
-    padding: 0.95rem 0.75rem;
+    flex: 0 0 auto;
+    width: 74px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    text-align: center;
-    gap: 0.35rem;
-    transition: all var(--transition-fast);
+    gap: 0.25rem;
+    padding: 0.55rem 0.3rem;
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+    border: 1px solid var(--color-border);
+    transition:
+      border-color var(--transition-fast),
+      background var(--transition-fast),
+      transform var(--transition-fast);
   }
-  .char-card:hover {
-    background: rgba(255, 255, 255, 0.04);
-    border-color: var(--char-color);
-    box-shadow:
-      inset 0 0 0 1px var(--char-color),
-      0 0 24px -8px var(--char-color);
+  .thumb:hover {
     transform: translateY(-2px);
+    border-color: var(--char-color);
   }
-  .char-card:active {
-    transform: scale(0.99);
+  .thumb.active {
+    border-color: var(--char-color);
+    background: rgba(255, 255, 255, 0.07);
+    box-shadow: 0 0 18px -8px var(--char-color);
   }
-
-  .char-icon {
-    font-size: 1.6rem;
-    filter: drop-shadow(0 0 7px var(--char-color));
-    transition: transform var(--transition-smooth);
+  .thumb.locked {
+    opacity: 0.5;
   }
-  .char-card:hover .char-icon {
-    transform: scale(1.18) rotate(-4deg);
+  .thumb-icon {
+    font-size: 1.4rem;
+    line-height: 1.1;
   }
-
-  .char-name {
-    font-family: var(--font-heading);
-    font-size: 0.95rem;
-    font-weight: 800;
-    letter-spacing: 0.05em;
-    color: var(--color-text-main);
-    margin: 0;
-  }
-
-  .char-weapon {
-    font-family: var(--font-mono);
-    font-size: 0.56rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--char-color, var(--color-primary));
-    margin: 0;
-  }
-
-  .char-desc {
-    font-size: 0.62rem;
-    color: var(--color-text-dim);
-    margin: 0;
-    line-height: 1.35;
-  }
-
-  .char-stats {
-    display: flex;
-    flex-direction: row;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 0.3rem;
-    font-family: var(--font-mono);
-    font-size: 0.52rem;
-    font-weight: 600;
-    color: var(--color-text-dim);
-    margin-top: 0.3rem;
-  }
-
-  .char-stats span {
-    background: rgba(255, 255, 255, 0.04);
-    padding: 0.15rem 0.4rem;
-    border-radius: var(--r-sm);
-  }
-
-  .char-card.locked {
-    opacity: 0.55;
-    filter: grayscale(0.6);
-  }
-
-  .char-card.locked:hover {
-    border-color: var(--color-border);
-    box-shadow: none;
-  }
-
-  .char-quirk {
-    font-size: 0.62rem;
+  .thumb-name {
+    font-size: 0.55rem;
     font-weight: 700;
-    color: #ffd75e;
-    margin: 0;
+    letter-spacing: 0.06em;
+    color: var(--color-text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+  .thumb.active .thumb-name {
+    color: var(--color-text-main);
   }
 
-  /* --- Corruption dial --- */
-  .corruption-row {
+  /* Threat level */
+  .corruption {
+    margin-top: 1rem;
+    padding: 0.85rem 1rem;
+    border-radius: var(--r-md);
+    border: 1px solid var(--tier-color);
+    background: color-mix(in srgb, var(--tier-color) 7%, transparent);
+    --tier-color: var(--color-primary);
+  }
+  .corruption.tone-relaxed {
+    --tier-color: var(--color-accent);
+  }
+  .corruption.tone-standard {
+    --tier-color: var(--color-primary);
+  }
+  .corruption.tone-brutal {
+    --tier-color: var(--color-secondary);
+  }
+  .corruption-desc {
+    margin: 0.5rem 0 0;
+    font-size: var(--fs-micro);
+    line-height: 1.55;
+    color: var(--color-text-dim);
+  }
+
+  /* The confirm action carries more weight than the escape hatch, so it
+     takes twice the footer width instead of splitting it 50/50. */
+  .ui-btn.back {
+    flex: 1;
+  }
+  .ui-btn.deploy {
+    flex: 2;
+  }
+
+  /* ================= SHOP PANEL ================= */
+  .shop-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .shop-card {
+    position: relative;
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+    border: 1px solid var(--color-border);
+    overflow: hidden;
+    transition: border-color var(--transition-fast);
+  }
+  .shop-card:hover {
+    border-color: rgba(255, 255, 255, 0.18);
+  }
+  /* Progress wash reads build-out at a glance, before any text is parsed */
+  .shop-progress {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: linear-gradient(90deg, rgba(54, 230, 255, 0.14), rgba(54, 230, 255, 0.03));
+    transition: width var(--transition-smooth);
+  }
+  .shop-card.maxed {
+    border-color: rgba(56, 245, 168, 0.35);
+  }
+  .shop-card.maxed .shop-progress {
+    background: linear-gradient(90deg, rgba(56, 245, 168, 0.16), rgba(56, 245, 168, 0.04));
+  }
+  .shop-card.poor {
+    opacity: 0.72;
+  }
+  .shop-body {
+    position: relative;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 0.8rem;
-    padding: 0.7rem 0.9rem;
-    border-radius: var(--r-md);
-    border: 1px solid rgba(255, 61, 119, 0.35);
-    background: rgba(255, 61, 119, 0.05);
-    margin: 0 auto 0.8rem;
-    width: 100%;
-    max-width: 560px;
+    gap: 0.75rem;
+    padding: 0.75rem 0.85rem;
+  }
+  .shop-icon {
+    flex: 0 0 auto;
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    font-size: 1.15rem;
+    border-radius: var(--r-sm);
+    background: rgba(255, 255, 255, 0.05);
+  }
+  .shop-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+  .shop-name {
+    margin: 0;
+    font-size: var(--fs-label);
+    font-weight: 700;
+    color: var(--color-text-main);
+  }
+  .shop-desc {
+    margin: 0;
+    font-size: var(--fs-micro);
+    line-height: 1.35;
+    color: var(--color-text-dim);
+  }
+  .shop-level {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin-top: 0.15rem;
+  }
+  .shop-card.maxed .ui-pip.on {
+    background: var(--color-accent);
+    box-shadow: 0 0 6px rgba(56, 245, 168, 0.8);
+  }
+  .shop-lv {
+    font-size: var(--fs-micro);
+    color: var(--color-text-faint);
+  }
+  .ui-btn.buy {
+    flex: 0 0 auto;
+    min-width: 5.2rem;
+    padding: 0.6rem 0.7rem;
+    font-family: var(--font-mono);
+    font-size: var(--fs-caption);
+  }
+  .ui-btn.buy.can-buy {
+    background: rgba(255, 216, 77, 0.14);
+    border-color: rgba(255, 216, 77, 0.45);
+    color: var(--color-gold);
+  }
+  .ui-btn.buy.can-buy:hover {
+    background: rgba(255, 216, 77, 0.24);
+  }
+  .shop-card.maxed .ui-btn.buy {
+    background: rgba(56, 245, 168, 0.1);
+    border-color: rgba(56, 245, 168, 0.3);
+    color: var(--color-accent);
+    opacity: 1;
   }
 
-  @media (min-width: 720px) {
-    .corruption-row {
-      max-width: 780px;
+  /* ================= RESPONSIVE ================= */
+
+  /* Desktop: the brand and the actions sit side by side, so the wordmark
+     gets to be big and the button stack stays in one comfortable reading
+     column instead of stretching across the whole window. */
+  @media (min-width: 900px) and (min-height: 560px) {
+    .menu-content {
+      max-width: 62rem;
+      gap: 2rem;
+    }
+    .hero-split {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      align-items: center;
+      gap: 3.5rem;
+    }
+    .brand {
+      text-align: left;
+    }
+    .wordmark {
+      font-size: clamp(2.5rem, 15cqw, 5.5rem);
+      text-align: left;
+      text-indent: 0;
+    }
+    .tagline {
+      margin-top: 1.2rem;
+      font-size: 0.72rem;
+    }
+    .menu-actions {
+      max-width: 26rem;
+      width: 100%;
+      justify-self: end;
+    }
+    .play-cta {
+      min-height: 78px;
+    }
+    .play-label {
+      font-size: 1.6rem;
     }
   }
 
-  .corruption-info {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    text-align: left;
+  /* Short viewports (landscape phones, small laptop windows): shrink the
+     hero so Play stays above the fold. */
+  @media (max-height: 560px) {
+    .menu-content {
+      gap: 1rem;
+    }
+    .wordmark {
+      font-size: clamp(1.6rem, 12cqw, 2.4rem);
+    }
+    .tagline {
+      margin-top: 0.4rem;
+      font-size: 0.55rem;
+      letter-spacing: 0.3em;
+      text-indent: 0.3em;
+    }
+    .play-cta {
+      min-height: 58px;
+    }
+    .tile {
+      min-height: 62px;
+    }
   }
 
-  .corruption-label {
-    font-size: 0.68rem;
-    font-weight: 800;
-    letter-spacing: 0.1em;
-    color: #ff3d77;
-  }
-
-  .corruption-tier {
-    margin-left: 0.35rem;
-    padding: 0.05rem 0.35rem;
-    border-radius: var(--r-pill);
-    font-size: 0.5rem;
-    font-weight: 800;
-    letter-spacing: 0.14em;
-    vertical-align: middle;
-    background: rgba(255, 255, 255, 0.08);
-    color: var(--color-text-dim);
-  }
-  /* Below standard reads calm; standard is the confident default; brutal burns. */
-  .corruption-tier.relaxed {
-    background: rgba(56, 245, 168, 0.14);
-    color: #38f5a8;
-  }
-  .corruption-tier.standard {
-    background: rgba(54, 230, 255, 0.16);
-    color: #36e6ff;
-  }
-  .corruption-tier.brutal {
-    background: rgba(255, 61, 119, 0.18);
-    color: #ff3d77;
-  }
-
-  .corruption-desc {
-    font-size: 0.58rem;
-    color: var(--color-text-dim);
-    line-height: 1.4;
-  }
-
-  .corruption-controls {
-    display: flex;
-    gap: 0.35rem;
-  }
-
-  .corr-btn {
-    all: unset;
-    cursor: pointer;
-    width: 1.9rem;
-    height: 1.9rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--r-sm);
-    border: 1px solid var(--color-border);
-    font-size: 1rem;
-    font-weight: 800;
-    color: var(--color-text-main);
-    transition: all var(--transition-fast);
-  }
-
-  .corr-btn:hover:not(:disabled) {
-    border-color: #ff3d77;
-    color: #ff3d77;
-  }
-
-  .corr-btn:disabled {
-    opacity: 0.3;
-    cursor: default;
-  }
-
-  /* --- Daily run button accent --- */
-  .btn.daily {
-    border-color: rgba(255, 215, 94, 0.4);
-  }
-
-  .btn.daily .label {
-    color: #ffd75e;
-  }
-
-  .btn.daily.used {
-    opacity: 0.6;
-  }
-
-  /* Wide screens: four cards per row */
-  @media (min-width: 720px) {
-    .char-grid {
+  /* Landscape phone: side-by-side is the only way the whole menu fits in
+     ~360px of height. Brand left, actions right, nothing below the fold. */
+  @media (max-height: 560px) and (min-width: 680px) {
+    .menu-content {
+      max-width: 52rem;
+    }
+    .hero-split {
+      display: grid;
+      grid-template-columns: 0.9fr 1.1fr;
+      align-items: center;
+      gap: 2rem;
+    }
+    .brand {
+      text-align: left;
+    }
+    .wordmark {
+      text-align: left;
+      text-indent: 0;
+      font-size: clamp(1.9rem, 14cqw, 3rem);
+    }
+    .tile-grid {
       grid-template-columns: repeat(4, 1fr);
-      max-width: 780px;
+    }
+    .tile {
+      min-height: 56px;
+      align-items: center;
+      text-align: center;
+    }
+    .tile-meta {
+      display: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .glow,
+    .wordmark .accent,
+    .tagline::after,
+    .daily-dot.on {
+      animation: none;
     }
   }
 </style>

@@ -7,9 +7,9 @@
     type UpgradeOption,
   } from '../../systems/UpgradeSystem';
   import { formatBehaviourTag, getExploitById } from '../../core/ExploitRegistry';
-  import { fade, fly } from 'svelte/transition';
-  import { playUpgradeSelect } from '../../core/audio';
+  import { playUpgradeSelect, playMenuClick } from '../../core/audio';
   import { haptics } from '../../core/haptics';
+  import Modal from '../Modal.svelte';
 
   let selectedId: string | null = $state(null);
   let focusIndex = $state(-1); // -1 until the keyboard is used (no phantom highlight on touch)
@@ -33,6 +33,12 @@
       selectUpgrade(option);
       selectedId = null;
     }, 350);
+  }
+
+  function handleBanish(id: string) {
+    playMenuClick();
+    haptics.select();
+    banishUpgradeOption(id);
   }
 
   // VS-style keyboard support: 1-9 quick-pick, arrows browse, Enter/Space confirm
@@ -69,14 +75,16 @@
 
   function getRarityColor(rarity: string = 'common') {
     switch (rarity) {
+      case 'legendary':
+        return 'var(--rarity-legendary)';
       case 'epic':
-        return 'var(--color-secondary)';
+        return 'var(--rarity-epic)';
       case 'rare':
-        return 'var(--color-primary)';
+        return 'var(--rarity-rare)';
       case 'uncommon':
-        return 'var(--color-accent)';
+        return 'var(--rarity-uncommon)';
       default:
-        return 'var(--color-text-dim)';
+        return 'var(--rarity-common)';
     }
   }
 
@@ -89,334 +97,126 @@
     const def = getExploitById(option.id);
     return def ? formatBehaviourTag(def) : '';
   }
+
+  /* Colour the whole sheet by the best thing on offer, so a legendary drop
+     announces itself before a single word is read. */
+  const RANK = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
+  let bestRarity = $derived(
+    uiState.upgradeChoices.reduce(
+      (best, o) =>
+        RANK.indexOf(o.rarity ?? 'common') > RANK.indexOf(best) ? (o.rarity ?? 'common') : best,
+      'common',
+    ),
+  );
+  let tone = $derived(
+    bestRarity === 'epic' ? 'pink' : bestRarity === 'legendary' ? 'gold' : 'cyan',
+  ) as 'cyan' | 'pink' | 'gold';
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
 
-{#if uiState.showUpgrade}
-  <div id="upgrade-modal" transition:fade={{ duration: 250 }}>
-    <div class="modal-overlay"></div>
+<!-- Not dismissible: a level-up must resolve into a pick before the run
+     resumes, so there is deliberately no ✕ and no backdrop escape. -->
+<Modal
+  open={uiState.showUpgrade}
+  eyebrow="Level {uiState.level}"
+  title="Choose an upgrade"
+  size="lg"
+  {tone}
+  dismissible={false}
+>
+  <div class="cards" class:few={uiState.upgradeChoices.length <= 2}>
+    {#each uiState.upgradeChoices as option, i (option.id)}
+      {@const color = getRarityColor(option.rarity)}
+      {@const isExploit = option.type === 'exploit_new'}
+      {@const exploitExtra = isExploit ? getExploitExtra(option) : ''}
+      {@const canBanish = uiState.runBanishes > 0 && option.type !== 'health'}
+      <div class="card-wrap" style="--rarity-color: {color}; animation-delay: {i * 80}ms">
+        <button
+          class="card"
+          class:exploit-card={isExploit}
+          class:selected={selectedId === option.id}
+          class:dimmed={selectedId !== null && selectedId !== option.id}
+          class:key-focused={focusIndex === i && !selectedId}
+          onclick={() => handleSelect(option)}
+          onmouseenter={() => (focusIndex = i)}
+        >
+          <span class="hotkey pointer-only" aria-hidden="true">{i + 1}</span>
+          <span class="rarity-tag">{option.rarity || 'common'}</span>
 
-    <div class="upgrade-content">
-      <div class="header" in:fly={{ y: -24, duration: 400, delay: 100 }}>
-        <h2 class="title">Level Up</h2>
-        <div class="subtitle">Choose an upgrade</div>
-      </div>
+          <span class="icon" class:exploit-icon={isExploit}>
+            {#if option.icon && option.icon.startsWith('<svg')}
+              {@html option.icon}
+            {:else if option.icon && option.icon.endsWith('.png')}
+              <img src={option.icon} alt="" class="icon-img" />
+            {:else}
+              {option.icon || '📦'}
+            {/if}
+          </span>
 
-      <div class="cards-container">
-        {#each uiState.upgradeChoices as option, i}
-          {@const color = getRarityColor(option.rarity)}
-          {@const isExploit = option.type === 'exploit_new'}
-          {@const exploitExtra = isExploit ? getExploitExtra(option) : ''}
-          <!-- svelte-ignore a11y_click_events_have_key_events -->
-          <div
-            role="button"
-            tabindex="0"
-            class="upgrade-card glass"
-            class:exploit-card={isExploit}
-            class:selected={selectedId === option.id}
-            class:dimmed={selectedId !== null && selectedId !== option.id}
-            class:key-focused={focusIndex === i && !selectedId}
-            onclick={() => handleSelect(option)}
-            onmouseenter={() => (focusIndex = i)}
-            style="--rarity-color: {color}; animation-delay: {i * 90}ms"
+          <span class="info">
+            <span class="name">{option.name}</span>
+            {#if isExploit}
+              <span class="kind-tag">EXPLOIT</span>
+            {/if}
+            {#if option.nextLevel}
+              <span class="level-step tnum">LV {option.currentLevel} → {option.nextLevel}</span>
+            {/if}
+            <span class="desc">{option.description}</span>
+            {#if isExploit && exploitExtra}
+              <span class="rule-tag">{exploitExtra}</span>
+            {/if}
+          </span>
+        </button>
+
+        <!-- Sibling, not a child: a button inside a button is invalid and
+             makes the banish tap fight the card tap for the same pixel. -->
+        {#if canBanish && !selectedId}
+          <button
+            class="banish"
+            title="Banish {option.name} from this run"
+            aria-label="Banish {option.name} from this run"
+            onclick={() => handleBanish(option.id)}>🚫</button
           >
-            <span class="hotkey-badge">{i + 1}</span>
-            <div class="rarity-tag">{option.rarity || 'COMMON'}</div>
-
-            <div class="item-icon" class:exploit-icon={isExploit}>
-              {#if option.icon && option.icon.startsWith('<svg')}
-                {@html option.icon}
-              {:else if option.icon && option.icon.endsWith('.png')}
-                <img src={option.icon} alt={option.name} class="icon-img" />
-              {:else}
-                {option.icon || '📦'}
-              {/if}
-            </div>
-
-            <div class="item-info">
-              <h3 class="item-name">{option.name}</h3>
-              {#if isExploit}
-                <div class="kind-tag">EXPLOIT</div>
-              {/if}
-              {#if option.nextLevel}
-                <div class="level-step">LV {option.currentLevel} → {option.nextLevel}</div>
-              {/if}
-              <p class="item-desc">{option.description}</p>
-              {#if isExploit && exploitExtra}
-                <div class="rule-tag">{exploitExtra}</div>
-              {/if}
-              {#if uiState.runBanishes > 0 && option.type !== 'health'}
-                <button
-                  class="banish-card-btn"
-                  onclick={(e) => {
-                    e.stopPropagation();
-                    banishUpgradeOption(option.id);
-                  }}
-                  title="Banish this item from the run"
-                >
-                  🚫 Banish
-                </button>
-              {/if}
-            </div>
-
-            <div class="selection-glow"></div>
-          </div>
-        {/each}
-      </div>
-
-      <div class="defrag-controls" in:fade={{ duration: 400, delay: 200 }}>
-        {#if uiState.runRerolls > 0}
-          <button class="reroll-btn glass" onclick={rerollUpgradeChoices}>
-            🔄 Reroll Choices ({uiState.runRerolls} Left)
-          </button>
-        {/if}
-        {#if uiState.runBanishes > 0}
-          <span class="banish-hint">🚫 {uiState.runBanishes} Banishes Left</span>
         {/if}
       </div>
-
-      <div class="key-hints" in:fade={{ duration: 400, delay: 300 }}>
-        <span><kbd>1</kbd>–<kbd>{uiState.upgradeChoices.length}</kbd> QUICK PICK</span>
-        <span><kbd>←</kbd><kbd>→</kbd> BROWSE</span>
-        <span><kbd>ENTER</kbd> CONFIRM</span>
-      </div>
-    </div>
+    {/each}
   </div>
-{/if}
+
+  {#snippet footer()}
+    <div class="foot-row">
+      {#if uiState.runRerolls > 0}
+        <button class="ui-btn reroll" onclick={rerollUpgradeChoices}>
+          🔄 Reroll <span class="tnum">×{uiState.runRerolls}</span>
+        </button>
+      {/if}
+      {#if uiState.runBanishes > 0}
+        <span class="ui-chip pink">🚫 {uiState.runBanishes} banish</span>
+      {/if}
+      <span class="hint pointer-only">
+        <kbd class="kbd">1</kbd>–<kbd class="kbd">{uiState.upgradeChoices.length}</kbd> pick ·
+        <kbd class="kbd">←</kbd><kbd class="kbd">→</kbd> browse
+      </span>
+      <span class="hint touch-only">Tap a card to take it</span>
+    </div>
+  {/snippet}
+</Modal>
 
 <style>
-  #upgrade-modal {
-    position: fixed;
-    inset: 0;
-    z-index: 2000;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    background: rgba(4, 6, 15, 0.78);
-    backdrop-filter: blur(12px);
-    padding: 1.5rem;
-    pointer-events: auto;
-  }
-
-  .modal-overlay {
-    display: none;
-  }
-
-  .upgrade-content {
-    width: 100%;
-    max-width: 420px;
+  .cards {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
-    z-index: 1;
+    gap: 0.55rem;
   }
 
-  .header {
-    text-align: center;
-  }
-
-  .title {
-    font-family: var(--font-heading);
-    font-size: 1.6rem;
-    font-weight: 800;
-    letter-spacing: 0.06em;
-    margin: 0;
-    color: var(--color-text-main);
-  }
-
-  .subtitle {
-    font-size: 0.62rem;
-    font-weight: 600;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--color-primary);
-    margin-top: 0.5rem;
-  }
-
-  .cards-container {
-    display: flex;
-    flex-direction: column;
-    gap: 0.6rem;
-  }
-
-  .upgrade-card {
-    all: unset;
-    cursor: pointer;
+  .card-wrap {
     position: relative;
-    padding: 1rem 1.1rem;
-    border-radius: var(--r-md);
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    text-align: left;
-    gap: 1rem;
-    transition: all var(--transition-fast);
-    overflow: hidden;
-    border: 1px solid var(--color-border);
-    border-left: 3px solid var(--rarity-color);
-    animation: card-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: card-in 0.45s var(--ease-out-expo) both;
   }
-
-  .upgrade-card:hover,
-  .upgrade-card:focus-visible,
-  .upgrade-card.key-focused {
-    border-color: var(--rarity-color);
-    border-left-color: var(--rarity-color);
-    background: rgba(255, 255, 255, 0.05);
-  }
-
-  .upgrade-card.key-focused {
-    box-shadow: inset 0 0 0 1px var(--rarity-color);
-  }
-
-  .upgrade-card.key-focused .selection-glow {
-    opacity: 0.25;
-  }
-
-  .upgrade-card:focus-visible {
-    outline: 2px solid var(--rarity-color);
-    outline-offset: 3px;
-  }
-
-  .upgrade-card:active {
-    transform: scale(0.99);
-  }
-
-  /* Commit animation: chosen card flares, the others fall away */
-  .upgrade-card.selected {
-    border-color: var(--rarity-color);
-    box-shadow: inset 0 0 0 1px var(--rarity-color);
-    animation: selected-flash 0.35s ease-out both;
-  }
-
-  .upgrade-card.dimmed {
-    opacity: 0.3;
-    filter: grayscale(0.7);
-  }
-
-  @keyframes selected-flash {
-    0% {
-      background: rgba(255, 255, 255, 0.25);
-    }
-    100% {
-      background: rgba(255, 255, 255, 0.05);
-    }
-  }
-
-  .hotkey-badge {
-    flex-shrink: 0;
-    width: 22px;
-    height: 22px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: var(--font-mono);
-    font-size: 0.7rem;
-    color: var(--color-text-dim);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 5px;
-    background: rgba(0, 0, 0, 0.25);
-  }
-
-  .key-hints {
-    display: flex;
-    justify-content: center;
-    gap: 2rem;
-    font-family: var(--font-mono);
-    font-size: 0.65rem;
-    letter-spacing: 0.15em;
-    color: var(--color-text-dim);
-  }
-
-  .key-hints kbd {
-    display: inline-block;
-    min-width: 16px;
-    padding: 2px 5px;
-    margin: 0 2px;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    border-radius: 4px;
-    background: rgba(0, 0, 0, 0.35);
-    font-family: inherit;
-    font-size: 0.6rem;
-    text-align: center;
-  }
-
-  /* Touch devices: hide keyboard affordances entirely */
-  @media (pointer: coarse) {
-    .hotkey-badge,
-    .key-hints {
-      display: none;
-    }
-  }
-
-  .rarity-tag {
-    position: absolute;
-    top: 0.6rem;
-    right: 0.7rem;
-    font-size: 0.46rem;
-    font-weight: 700;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: var(--rarity-color);
-  }
-
-  .item-icon {
-    flex-shrink: 0;
-    font-size: 2rem;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 48px;
-    width: 48px;
-  }
-
-  .item-icon :global(svg) {
-    width: 40px;
-    height: 40px;
-  }
-
-  .icon-img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-  }
-
-  .item-info {
-    min-width: 0;
-    padding-right: 2.5rem;
-  }
-
-  .item-name {
-    font-size: 1rem;
-    font-weight: 700;
-    margin: 0 0 0.2rem 0;
-    color: var(--color-text-main);
-  }
-
-  .level-step {
-    font-family: var(--font-mono);
-    font-size: 0.6rem;
-    letter-spacing: 0.1em;
-    color: var(--rarity-color);
-    margin-bottom: 0.2rem;
-  }
-
-  .item-desc {
-    font-size: 0.74rem;
-    color: var(--color-text-dim);
-    line-height: 1.35;
-    margin: 0;
-  }
-
-  .selection-glow {
-    display: none;
-  }
-
   @keyframes card-in {
     from {
       opacity: 0;
-      transform: translateY(16px);
+      transform: translateY(14px);
     }
     to {
       opacity: 1;
@@ -424,33 +224,140 @@
     }
   }
 
-  /* Wider screens: lay the choices out side by side */
-  @media (min-width: 720px) {
-    .upgrade-content {
-      max-width: 760px;
+  .card {
+    all: unset;
+    box-sizing: border-box;
+    cursor: pointer;
+    position: relative;
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.9rem;
+    padding: 0.85rem 1rem;
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+    border: 1px solid var(--color-border);
+    border-left: 3px solid var(--rarity-color);
+    text-align: left;
+    overflow: hidden;
+    transition:
+      background var(--transition-fast),
+      border-color var(--transition-fast),
+      box-shadow var(--transition-fast),
+      opacity var(--transition-fast),
+      transform var(--transition-fast);
+  }
+  .card:hover,
+  .card.key-focused {
+    background: var(--surface-3);
+    border-color: var(--rarity-color);
+    box-shadow: inset 0 0 0 1px var(--rarity-color);
+  }
+  .card:active {
+    transform: scale(0.99);
+  }
+
+  /* Commit animation: chosen card flares, the others fall away */
+  .card.selected {
+    border-color: var(--rarity-color);
+    box-shadow:
+      inset 0 0 0 1px var(--rarity-color),
+      0 0 30px -10px var(--rarity-color);
+    animation: selected-flash 0.35s ease-out both;
+  }
+  .card.dimmed {
+    opacity: 0.28;
+    filter: grayscale(0.7);
+  }
+  @keyframes selected-flash {
+    0% {
+      background: rgba(255, 255, 255, 0.28);
     }
-    .cards-container {
-      flex-direction: row;
-    }
-    .upgrade-card {
-      flex: 1;
-      flex-direction: column;
-      align-items: flex-start;
-      padding: 1.5rem;
-    }
-    .item-icon {
-      width: 56px;
-      height: 56px;
-    }
-    .item-info {
-      padding-right: 0;
+    100% {
+      background: var(--surface-3);
     }
   }
 
-  .kind-tag {
-    display: inline-block;
+  .hotkey {
+    position: absolute;
+    left: 0.55rem;
+    top: 0.5rem;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     font-family: var(--font-mono);
-    font-size: 0.55rem;
+    font-size: 0.6rem;
+    color: var(--color-text-faint);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.3);
+  }
+
+  .rarity-tag {
+    position: absolute;
+    top: 0.55rem;
+    right: 0.7rem;
+    font-family: var(--font-mono);
+    font-size: 0.5rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--rarity-color);
+  }
+
+  .icon {
+    flex: 0 0 auto;
+    width: 46px;
+    height: 46px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 1.85rem;
+    border-radius: var(--r-sm);
+    background: color-mix(in srgb, var(--rarity-color) 12%, transparent);
+  }
+  .icon :global(svg) {
+    width: 34px;
+    height: 34px;
+  }
+  .icon-img {
+    width: 84%;
+    height: 84%;
+    object-fit: contain;
+  }
+
+  .info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.12rem;
+    min-width: 0;
+    /* Keep text clear of the absolutely-placed rarity tag */
+    padding-right: 3.6rem;
+  }
+  .name {
+    font-size: var(--fs-heading);
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--color-text-main);
+  }
+  .level-step {
+    font-size: var(--fs-micro);
+    letter-spacing: 0.1em;
+    color: var(--rarity-color);
+  }
+  .desc {
+    font-size: var(--fs-caption);
+    line-height: 1.4;
+    color: var(--color-text-dim);
+  }
+
+  .kind-tag {
+    align-self: flex-start;
+    font-family: var(--font-mono);
+    font-size: 0.52rem;
     font-weight: 700;
     letter-spacing: 0.18em;
     color: var(--color-secondary);
@@ -458,94 +365,119 @@
     border: 1px solid rgba(255, 61, 119, 0.3);
     border-radius: 3px;
     padding: 1px 5px;
-    margin-bottom: 0.25rem;
+    margin-bottom: 0.1rem;
   }
-
   .rule-tag {
-    margin-top: 0.4rem;
+    margin-top: 0.3rem;
     font-family: var(--font-mono);
-    font-size: 0.62rem;
+    font-size: var(--fs-micro);
     font-weight: 700;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.1em;
     color: var(--color-secondary);
     text-transform: uppercase;
   }
 
-  .upgrade-card.exploit-card {
+  .card.exploit-card {
     background: linear-gradient(
       135deg,
-      rgba(255, 61, 119, 0.08) 0%,
-      rgba(170, 102, 255, 0.04) 100%
+      rgba(255, 61, 119, 0.09) 0%,
+      rgba(176, 107, 255, 0.05) 100%
     );
     border-left-color: var(--color-secondary);
-    box-shadow: inset 0 0 0 1px rgba(255, 61, 119, 0.18);
   }
-
-  .upgrade-card.exploit-card .exploit-icon {
-    background: rgba(255, 61, 119, 0.15);
+  .exploit-icon {
+    background: rgba(255, 61, 119, 0.15) !important;
     border: 1px solid rgba(255, 61, 119, 0.3);
-    border-radius: 8px;
   }
 
-  .banish-card-btn {
+  /* Banish: a small, deliberate target in the corner, clear of the card's
+     own tap area. */
+  /* Deliberately quiet: banishing is a rare, considered action, and three
+     loud pink buttons competed with the three cards they sit on. */
+  .banish {
     all: unset;
+    position: absolute;
+    right: 0.35rem;
+    bottom: 0.35rem;
     cursor: pointer;
-    display: inline-block;
-    margin-top: 0.5rem;
-    font-family: var(--font-mono);
-    font-size: 0.58rem;
-    font-weight: 700;
-    color: var(--color-secondary);
-    background: rgba(255, 61, 119, 0.1);
-    border: 1px solid rgba(255, 61, 119, 0.25);
+    width: 30px;
+    height: 30px;
+    display: grid;
+    place-items: center;
+    font-size: 0.7rem;
     border-radius: var(--r-sm);
-    padding: 0.25rem 0.6rem;
-    text-transform: uppercase;
-    transition: all var(--transition-fast);
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    opacity: 0.4;
+    filter: grayscale(0.6);
+    transition:
+      opacity var(--transition-fast),
+      filter var(--transition-fast),
+      background var(--transition-fast),
+      border-color var(--transition-fast);
   }
-  .banish-card-btn:hover {
-    background: var(--color-secondary);
-    color: #fff;
-    box-shadow: 0 0 8px rgba(255, 61, 119, 0.4);
+  .banish:hover,
+  .banish:focus-visible {
+    opacity: 1;
+    filter: none;
+    background: rgba(255, 61, 119, 0.18);
+    border-color: rgba(255, 61, 119, 0.45);
   }
 
-  .defrag-controls {
+  /* ---- Footer ---- */
+  .foot-row {
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 1.5rem;
-    margin-top: 1rem;
-    margin-bottom: 0.5rem;
+    gap: 0.6rem;
+    width: 100%;
+    flex-wrap: wrap;
   }
-
-  .reroll-btn {
-    all: unset;
-    cursor: pointer;
-    font-family: var(--font-body);
-    font-size: 0.85rem;
-    font-weight: 700;
+  .ui-btn.reroll {
+    flex: 0 0 auto;
+    background: rgba(54, 230, 255, 0.1);
+    border-color: rgba(54, 230, 255, 0.3);
     color: var(--color-primary);
-    background: rgba(0, 229, 255, 0.08);
-    border: 1px solid rgba(0, 229, 255, 0.25);
-    border-radius: var(--r-md);
-    padding: 0.55rem 1.25rem;
-    transition: all var(--transition-fast);
-    pointer-events: auto !important;
   }
-  .reroll-btn:hover {
-    background: var(--color-primary);
-    color: #04060f;
-    box-shadow: 0 0 10px rgba(0, 229, 255, 0.4);
+  .ui-btn.reroll:hover {
+    background: rgba(54, 230, 255, 0.2);
   }
-  .reroll-btn:active {
-    transform: scale(0.96);
+  .hint {
+    margin-left: auto;
+    font-size: var(--fs-micro);
+    letter-spacing: 0.06em;
+    color: var(--color-text-faint);
   }
 
-  .banish-hint {
-    font-family: var(--font-mono);
-    font-size: 0.64rem;
-    font-weight: 600;
-    color: var(--color-text-dim);
-    letter-spacing: 0.05em;
+  /* Desktop: choices side by side so the whole offer is one glance */
+  @media (min-width: 780px) {
+    .cards {
+      flex-direction: row;
+      align-items: stretch;
+    }
+    .card-wrap {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+    }
+    .card {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.7rem;
+      padding: 1.25rem 1.1rem 1.4rem;
+    }
+    .icon {
+      width: 54px;
+      height: 54px;
+      font-size: 2.1rem;
+    }
+    .info {
+      padding-right: 0;
+    }
+    /* Leave room in the body for the banish control, which lives in the
+       bottom-right corner — the rarity tag stays pinned top-right so the two
+       never sit on top of each other. */
+    .card {
+      padding-bottom: 2.6rem;
+    }
   }
 </style>

@@ -45,6 +45,20 @@
   });
 
   const BLIP_COLOR = ['#ffd75e', '#ffffff', '#3dff9a', '#ff3d55'];
+
+  /* Briefing shows for a few seconds at the start of each dive, keyed on the
+     node so re-entering a different one briefs again. */
+  let showBrief = $state(false);
+  $effect(() => {
+    const id = dive?.nodeId;
+    if (!id) {
+      showBrief = false;
+      return;
+    }
+    showBrief = true;
+    const t = setTimeout(() => (showBrief = false), 4200);
+    return () => clearTimeout(t);
+  });
 </script>
 
 {#if dive}
@@ -160,6 +174,18 @@
       </div>
     </div>
 
+    <!-- Entry briefing. `dive.brief` was written by every verb in
+         DiveVerbs.ts and then rendered nowhere, so a dive dropped you into an
+         unfamiliar sub-scene with a one-word verb and no statement of what
+         you were actually there to do. It rides the enter flash and clears
+         itself. -->
+    {#if showBrief && dive.brief}
+      <div class="brief">
+        <span class="brief-verb">{dive.verb}</span>
+        <span class="brief-text">{dive.brief}</span>
+      </div>
+    {/if}
+
     {#if uiState.diveTransition}
       <div
         class="transition"
@@ -174,13 +200,14 @@
   .dive-hud {
     position: fixed;
     inset: 0;
-    z-index: 80;
+    z-index: var(--z-hud);
     pointer-events: none;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
     align-items: center;
-    padding: 0.75rem 0.9rem 1rem;
+    padding: calc(var(--safe-top) + 0.75rem) calc(var(--safe-right) + 0.9rem)
+      calc(var(--safe-bottom) + 1rem) calc(var(--safe-left) + 0.9rem);
     color: #fff;
   }
 
@@ -286,15 +313,22 @@
   .eject {
     pointer-events: auto;
     flex: none;
+    /* Full tap target — bailing out mid-dive shouldn't need precision */
+    min-height: var(--tap);
+    display: flex;
+    align-items: center;
+    justify-content: center;
     font-family: var(--font-mono);
-    font-size: 0.58rem;
+    font-size: var(--fs-micro);
+    font-weight: 700;
     letter-spacing: 0.14em;
     color: #ff8fa3;
     background: rgba(40, 6, 14, 0.72);
     border: 1px solid rgba(255, 61, 85, 0.55);
-    border-radius: 5px;
-    padding: 0.5rem 0.6rem;
+    border-radius: var(--r-sm);
+    padding: 0.5rem 0.75rem;
     cursor: pointer;
+    transition: background var(--transition-fast);
   }
   .eject:hover {
     background: rgba(70, 8, 20, 0.85);
@@ -550,6 +584,60 @@
   @keyframes blip-pulse {
     50% {
       opacity: 0.35;
+    }
+  }
+
+  /* ---------- entry briefing ---------- */
+  .brief {
+    position: absolute;
+    left: 50%;
+    top: 38%;
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: min(88vw, 30rem);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.85rem 1.2rem;
+    border-radius: var(--r-lg);
+    background: rgba(4, 10, 16, 0.82);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid var(--bcolor);
+    box-shadow: 0 0 30px -8px var(--bcolor);
+    text-align: center;
+    pointer-events: none;
+    animation: brief-cycle 4.2s ease-out both;
+  }
+  .brief-verb {
+    font-family: var(--font-heading);
+    font-size: var(--fs-label);
+    font-weight: 800;
+    letter-spacing: 0.2em;
+    color: var(--bcolor);
+    text-shadow: 0 0 12px var(--bcolor);
+  }
+  .brief-text {
+    font-size: var(--fs-caption);
+    line-height: 1.5;
+    color: rgba(255, 255, 255, 0.86);
+    text-wrap: balance;
+  }
+  @keyframes brief-cycle {
+    0% {
+      opacity: 0;
+      transform: translateX(-50%) translateY(10px);
+    }
+    9% {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+    82% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
     }
   }
 

@@ -27,8 +27,34 @@ html {
   -webkit-user-select: none;
   -moz-user-select: none;
   user-select: none;
+  /* Suppresses page pan / pinch-zoom / double-tap-zoom over the game canvas.
+     Menus opt back in per scroll container with `.menu-scroll`
+     (touch-action: pan-y) — the intersection walk stops at the element that
+     actually scrolls, so the container's own value wins for its content.
+     Without that opt-in a finger drag does nothing and anything below the
+     fold is unreachable on a phone. */
   touch-action: none;
   overscroll-behavior: none;
+}
+
+/* Insurance: even if the body rule is ever relaxed, gameplay drag/pinch on
+   the WebGL surface stays suppressed. */
+#app > canvas {
+  touch-action: none;
+}
+
+/* Text inputs need real selection back — the global `user-select: none`
+   above otherwise makes editing a call sign or room code feel broken. */
+input,
+textarea {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  user-select: text;
+}
+
+::selection {
+  background: rgba(54, 230, 255, 0.32);
+  color: var(--color-text-main);
 }
 
 /* Dynamic viewport units track the real visible area on iOS (100% can
@@ -72,19 +98,55 @@ html {
   pointer-events: none;
 }
 
+/* Perspective grid floor — the same motif the menu uses, so the loading
+   screen and the menu read as one continuous surface. */
+.loading-grid {
+  position: absolute;
+  left: -25%;
+  right: -25%;
+  bottom: -10%;
+  height: 55%;
+  pointer-events: none;
+  opacity: 0.14;
+  background-image:
+    linear-gradient(rgba(54, 230, 255, 0.5) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(54, 230, 255, 0.5) 1px, transparent 1px);
+  background-size: 46px 46px;
+  transform: perspective(340px) rotateX(66deg);
+  transform-origin: bottom center;
+  mask-image: linear-gradient(to top, #000 0%, transparent 78%);
+  -webkit-mask-image: linear-gradient(to top, #000 0%, transparent 78%);
+}
+
 .loading-content {
+  position: relative;
+  container-type: inline-size;
+  width: 100%;
+  max-width: 30rem;
   text-align: center;
   padding: 0 1.5rem;
 }
 
 .loading-title {
   font-family: var(--font-heading);
-  font-size: clamp(2.25rem, 12vw, 3.5rem);
+  /* Sized against the container, not the viewport: "FIGHTERS" is ~6.1em
+     wide in Orbitron 800, so 15cqw guarantees it fits on one line at every
+     width. The vw line is the fallback for engines without container units. */
+  font-size: clamp(1.75rem, 13vw, 3.5rem);
+  font-size: clamp(1.75rem, 15cqw, 3.5rem);
   font-weight: 800;
+  line-height: 0.92;
   color: var(--color-text-main);
-  letter-spacing: 0.08em;
-  margin-bottom: 10px;
+  letter-spacing: 0.04em;
+  text-indent: 0.04em;
+  margin-bottom: 14px;
   animation: loading-pulse 2s ease-in-out infinite;
+}
+
+.loading-title span {
+  display: block;
+  text-indent: 0.04em;
+  color: var(--color-primary);
 }
 
 @keyframes loading-pulse {
@@ -95,7 +157,7 @@ html {
 
 .loading-subtitle {
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: clamp(0.55rem, 2.6cqw, 0.72rem);
   color: var(--color-text-dim);
   letter-spacing: 0.4em;
   text-indent: 0.4em;

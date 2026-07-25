@@ -17,11 +17,11 @@
     left: 50%;
     bottom: calc(1rem + var(--safe-bottom));
     transform: translateX(-50%);
-    z-index: 6000;
+    z-index: calc(var(--z-toast) - 1);
     display: flex;
     align-items: center;
     gap: var(--sp-3);
-    padding: 0.6rem 0.6rem 0.6rem 1rem;
+    padding: 0.5rem 0.5rem 0.5rem 1rem;
     border-radius: var(--r-pill);
     pointer-events: auto;
     animation: toast-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -39,19 +39,25 @@
   }
 
   .update-text {
-    font-size: 0.78rem;
-    font-weight: 500;
+    font-size: var(--fs-label);
+    font-weight: 600;
     color: var(--color-text-main);
   }
 
   .update-btn {
     all: unset;
+    box-sizing: border-box;
     cursor: pointer;
-    font-size: 0.75rem;
+    /* Full-size target — this used to be a ~26px pill, easy to fat-finger */
+    min-height: var(--tap);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--fs-label);
     font-weight: 700;
     color: #04060f;
     background: var(--color-primary);
-    padding: 0.4rem 0.9rem;
+    padding: 0.4rem 1.1rem;
     border-radius: var(--r-pill);
     transition: filter var(--transition-fast);
   }
