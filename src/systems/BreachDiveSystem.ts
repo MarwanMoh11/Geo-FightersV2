@@ -581,6 +581,31 @@ const DIVE_FOV_MAX = 60;
 /** Set while a dive owns the camera, so the arena's FOV can be handed back. */
 let savedFov: number | null = null;
 
+/**
+ * Fog is authored in world units against the DESKTOP rig, and THREE.Fog is
+ * measured from the camera — so pulling the camera back for mobile pushed the
+ * whole arena past the fog's far plane.
+ *
+ *   desktop  camDist 45.9  fog 26-62  ->  55% fogged
+ *   mobile   camDist 63.2  fog 26-62  -> 100% fogged
+ *
+ * At 100% every construct resolves to exactly the background colour: the ICE
+ * were being spawned, steered, rendered and dealing contact damage the whole
+ * time, but painted in the sky's own colour. Scaling the range by the rig's
+ * camera distance reproduces the authored look at any rig.
+ */
+const REF_CAM_DIST = Math.hypot(CAM_HEIGHT, CAM_DISTANCE);
+let baseFogNear = 0;
+let baseFogFar = 0;
+
+function applyRigFog(dist: number): void {
+  const fog = diveScene?.fog as THREE.Fog | null | undefined;
+  if (!fog || !baseFogFar) return;
+  const k = dist / REF_CAM_DIST;
+  fog.near = baseFogNear * k;
+  fog.far = baseFogFar * k;
+}
+
 function setDiveCamera(camera: THREE.Camera, px: number, pz: number): void {
   const mobile = isMobileRig();
   const height = mobile ? CAM_HEIGHT_MOBILE : CAM_HEIGHT;
@@ -597,6 +622,7 @@ function setDiveCamera(camera: THREE.Camera, px: number, pz: number): void {
      units, which shrinks the player to a speck. Clamped at both ends — the
      lower bound means a landscape/desktop framing is left exactly as it was. */
   const dist = Math.hypot(height, offset);
+  applyRigFog(dist);
   const hHalf = Math.atan(DIVE_VIEW_WIDTH / 2 / dist);
   const vHalf = Math.atan(Math.tan(hHalf) / (cam.aspect || 1));
   const fov = Math.min(DIVE_FOV_MAX, Math.max(DIVE_FOV_MIN, (vHalf * 360) / Math.PI));
@@ -739,6 +765,12 @@ export function enterDive(
   hordeCap = Math.min(MAX_DIVE_ICE, Math.round(cfg.cap * (1 + 0.08 * security)));
   hordeBudget = Math.round(hordeCap * 1.5 + cfg.initial);
   hazards = createHazards();
+  // Snapshot the authored fog range before any rig scaling is applied.
+  {
+    const fog = diveScene.fog as THREE.Fog | null;
+    baseFogNear = fog?.near ?? 0;
+    baseFogFar = fog?.far ?? 0;
+  }
   iceRenderer = createIceRenderer(diveScene, node.kind);
 
   // Reparent the local player's mesh group into the dive scene and stash its
