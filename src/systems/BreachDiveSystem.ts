@@ -160,6 +160,8 @@ let hazards: Hazards | null = null;
 /** Fractional carry so a sub-1-per-frame spawn rate isn't rounded to nothing. */
 let spawnBudget = 0;
 let hordeCap = 120;
+let hordeSpawned = 0;
+let hordeBudget = Infinity;
 /** Latest frame delta, so ctx.burnICE can apply a per-second rate. */
 let lastDt = 1 / 60;
 /** Insertion point — where the dive starts. */
@@ -284,6 +286,7 @@ function spawnIceRing(n: number, cx: number, cz: number, minR: number, maxR: num
  * constructs per second rather than rounding away at 60fps.
  */
 function tickHorde(dt: number): void {
+  if (hordeSpawned >= hordeBudget) return;
   const cfg = HORDE[diveNode!.kind] ?? HORDE.depot;
   const rate =
     (cfg.rate + cfg.ramp * diveElapsed) *
@@ -292,9 +295,11 @@ function tickHorde(dt: number): void {
   spawnBudget += rate * dt;
   if (spawnBudget < 1) return;
   const n = Math.floor(spawnBudget);
+  const clamped = Math.min(n, hordeBudget - hordeSpawned);
+  if (clamped <= 0) return;
   spawnBudget -= n;
-  // Reinforcements walk in from the rim so the horde visibly closes in.
-  spawnIceRing(n, 0, 0, DIVE_ARENA_R - 7, DIVE_ARENA_R - 1);
+  spawnIceRing(clamped, 0, 0, DIVE_ARENA_R - 7, DIVE_ARENA_R - 1);
+  hordeSpawned += clamped;
 }
 
 function diveSfx(name: 'pickup' | 'step' | 'alarm' | 'bust' | 'reveal'): void {
@@ -677,6 +682,7 @@ export function enterDive(
   fireCooldown = 0;
   radarTimer = 0;
   spawnBudget = 0;
+  hordeSpawned = 0;
 
   // Insertion point out on the rim. Every verb starts here, so reaching the
   // objective requires crossing the full arena.
@@ -688,6 +694,7 @@ export function enterDive(
 
   const cfg = HORDE[node.kind] ?? HORDE.depot;
   hordeCap = Math.min(MAX_DIVE_ICE, Math.round(cfg.cap * (1 + 0.08 * security)));
+  hordeBudget = Math.round(hordeCap * 3 + cfg.initial);
   hazards = createHazards();
   iceRenderer = createIceRenderer(diveScene, node.kind);
 
