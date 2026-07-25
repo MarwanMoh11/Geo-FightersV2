@@ -3,18 +3,12 @@
 // enemies walking across it. The horde supplies pressure; hazards supply
 // GEOMETRY — reasons to take one route and not another.
 //
-// Three kinds, each answering a different weakness:
+// Two kinds, each answering a different weakness:
 //
 //   TURRET   — objectives were undefended, so "walk to the marker" was the
 //              whole verb. Turrets sit on objective points, telegraph, and
 //              shell you while you stand there. Destructible, so clearing one
 //              is a real tactical option with a real time cost.
-//
-//   BARRIER  — sweeping radial walls rotating around the arena. Touching one
-//              deals damage AND throws you back to the dive's insertion point.
-//              This is the obstacle-course layer: crossing the arena stops
-//              being free, and a long carry (the armory exit run, a relay
-//              tower crossing) becomes a timing problem.
 //
 //   POOL     — static damage-over-time discs. Cheap route shaping: they make
 //              some ground expensive without hard-blocking it.
@@ -25,20 +19,13 @@
 import * as THREE from 'three';
 
 const TURRET_RANGE = 19;
-const TURRET_CHARGE = 1.3; // telegraph before firing — always dodgeable
+const TURRET_CHARGE = 1.3;
 const TURRET_COOLDOWN = 1.5;
 const TURRET_SHOT_SPEED = 15;
 const TURRET_SHOT_DAMAGE = 11;
 const TURRET_SHOT_LIFE = 3.2;
 const TURRET_SHOT_HIT = 0.95;
-/** Turret HP as a multiple of one player dive shot. */
 const TURRET_SHOTS_TO_KILL = 9;
-
-const BARRIER_HALF_WIDTH = 0.75;
-// A barrier's real cost is the THROW-BACK, not the chip damage. Stacking a
-// big hit on top of losing your whole crossing made mistiming one sweep
-// compound into a death spiral: reset to the rim, walk back, clip it again.
-const BARRIER_DAMAGE = 8;
 
 const POOL_DPS = 9;
 
@@ -55,17 +42,6 @@ export interface Turret {
   head: THREE.Object3D;
   ring: THREE.Mesh;
   mats: THREE.Material[];
-}
-
-export interface Barrier {
-  angle: number;
-  speed: number;
-  innerR: number;
-  outerR: number;
-  group: THREE.Group;
-  mats: THREE.Material[];
-  /** Brief grace after a hit so one sweep can't double-tap the same player. */
-  graceTimer: number;
 }
 
 export interface Pool {
@@ -87,7 +63,6 @@ interface Shot {
 
 export interface Hazards {
   turrets: Turret[];
-  barriers: Barrier[];
   pools: Pool[];
   shots: Shot[];
   shotGeo: THREE.SphereGeometry;
@@ -97,7 +72,6 @@ export interface Hazards {
 export function createHazards(): Hazards {
   return {
     turrets: [],
-    barriers: [],
     pools: [],
     shots: [],
     shotGeo: new THREE.SphereGeometry(0.34, 8, 8),
@@ -183,53 +157,6 @@ export function addTurret(
   return turret;
 }
 
-/**
- * Place a rotating radial barrier.
- *
- * @param speed radians/second. The player covers ~0.5 rad/s tangentially at
- *              mid-radius, so anything at or below that is outrunnable and
- *              anything above forces a radial dodge instead.
- */
-export function addBarrier(
-  scene: THREE.Scene,
-  h: Hazards,
-  angle: number,
-  speed: number,
-  innerR: number,
-  outerR: number,
-): Barrier {
-  const mats: THREE.Material[] = [];
-  const group = new THREE.Group();
-  const len = outerR - innerR;
-
-  const coreMat = glow(0xff2d4a, 0.85, THREE.DoubleSide);
-  const glowMat = glow(0xff8fa3, 0.22, THREE.DoubleSide);
-  mats.push(coreMat, glowMat);
-
-  const w = BARRIER_HALF_WIDTH * 2;
-
-  const core = new THREE.Mesh(new THREE.BoxGeometry(w, 3.2, len), coreMat);
-  core.position.set(0, 1.6, innerR + len / 2);
-  group.add(core);
-
-  const glowMesh = new THREE.Mesh(new THREE.BoxGeometry(w, 5, len), glowMat);
-  glowMesh.position.set(0, 2.5, innerR + len / 2);
-  group.add(glowMesh);
-
-  // Ground scar so the sweep reads even when the camera is tight on the player.
-  const scar = new THREE.Mesh(new THREE.PlaneGeometry(w, len), glowMat);
-  scar.rotation.x = -Math.PI / 2;
-  scar.position.set(0, 0.05, innerR + len / 2);
-  scar.renderOrder = 5;
-  group.add(scar);
-
-  scene.add(group);
-
-  const barrier: Barrier = { angle, speed, innerR, outerR, group, mats, graceTimer: 0 };
-  h.barriers.push(barrier);
-  return barrier;
-}
-
 /** Place a static damage-over-time pool. */
 export function addPool(
   scene: THREE.Scene,
@@ -267,17 +194,11 @@ export function addPool(
 export interface HazardResult {
   impact: number;
   dot: number;
-  /** Position delta from barrier wall-slide (applied every frame). */
-  slideX: number;
-  slideZ: number;
 }
 
 
 /**
  * Advance every hazard and resolve the player against them.
- *
- * @param iframes remaining player invulnerability — turret shots and pools
- *                respect it, barriers do not (a barrier is a wall, not a hit).
  */
 export function tickHazards(
   h: Hazards,
@@ -288,7 +209,7 @@ export function tickHazards(
   pz: number,
   iframes: number,
 ): HazardResult {
-  const out: HazardResult = { impact: 0, dot: 0, slideX: 0, slideZ: 0 };
+  const out: HazardResult = { impact: 0, dot: 0 };
 
   // --- turrets ---
   for (let i = h.turrets.length - 1; i >= 0; i--) {
@@ -351,48 +272,6 @@ export function tickHazards(
     if (consumed) {
       scene.remove(s.mesh);
       h.shots.splice(i, 1);
-    }
-  }
-
-  // --- barriers (always solid — no immunity gaps) ---
-  for (const b of h.barriers) {
-    b.angle += b.speed * dt;
-    b.group.rotation.y = b.angle;
-
-    const ax = Math.cos(b.angle) * b.innerR;
-    const az = Math.sin(b.angle) * b.innerR;
-    const bx = Math.cos(b.angle) * b.outerR;
-    const bz = Math.sin(b.angle) * b.outerR;
-    const sdx = bx - ax;
-    const sdz = bz - az;
-    const segLenSq = sdx * sdx + sdz * sdz;
-    const t = segLenSq > 1e-6 ? ((px - ax) * sdx + (pz - az) * sdz) / segLenSq : 0;
-    const ct = Math.max(0, Math.min(1, t));
-    const cx = ax + sdx * ct;
-    const cz = az + sdz * ct;
-    const nx = px - cx;
-    const nz = pz - cz;
-    const dist = Math.hypot(nx, nz);
-
-    if (dist <= BARRIER_HALF_WIDTH) {
-      // Resolve penetration — push player out of the wall
-      const pushDist = BARRIER_HALF_WIDTH - dist + 0.06;
-      const ndx = dist > 1e-6 ? (nx / dist) * pushDist : Math.cos(b.angle) * pushDist;
-      const ndz = dist > 1e-6 ? (nz / dist) * pushDist : Math.sin(b.angle) * pushDist;
-
-      // Slide along the wall in the barrier's rotational direction
-      const slideX = -cz * b.speed * dt;
-      const slideZ = cx * b.speed * dt;
-
-      out.slideX += ndx + slideX;
-      out.slideZ += ndz + slideZ;
-
-      // Damage throttled to once per ~0.5s so it doesn't fire every frame
-      b.graceTimer = Math.max(0, b.graceTimer - dt);
-      if (b.graceTimer <= 0) {
-        out.impact += BARRIER_DAMAGE;
-        b.graceTimer = 0.5;
-      }
     }
   }
 
@@ -479,17 +358,12 @@ export function disposeHazards(scene: THREE.Scene, h: Hazards): void {
     scene.remove(t.group);
     disposeGroup(t.group, t.mats);
   }
-  for (const b of h.barriers) {
-    scene.remove(b.group);
-    disposeGroup(b.group, b.mats);
-  }
   for (const p of h.pools) {
     scene.remove(p.mesh);
     disposeGroup(p.mesh, p.mats);
   }
   for (const s of h.shots) scene.remove(s.mesh);
   h.turrets = [];
-  h.barriers = [];
   h.pools = [];
   h.shots = [];
   h.shotGeo.dispose();
