@@ -874,9 +874,6 @@ export function BreachDiveSystem(
       }
       playerIFrames = Math.max(playerIFrames, ICE_HIT_IFRAMES);
       barrierImmunity = BARRIER_IMMUNITY;
-      spikeTrace(5);
-      banner('BARRIER');
-      playExplosion();
     }
     playerX = px;
     playerZ = pz;
