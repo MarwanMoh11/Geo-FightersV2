@@ -172,6 +172,19 @@ let entryZ = 0;
 /** Live player position, mirrored so spawn helpers can respect clearance. */
 let playerX = 0;
 let playerZ = 0;
+/**
+ * Dive-space player position/velocity.
+ *
+ * These deliberately do NOT live on the player entity. In co-op the arena
+ * keeps simulating while one player is jacked in (see main.ts), and the
+ * diver's arena body has to stay parked at the terminal they breached from —
+ * that is where teammates see them kneeling and where enemies converge. If the
+ * dive wrote through to `entity.position`, the host would broadcast dive-space
+ * coordinates into the arena and the diver would appear to teleport to the
+ * middle of the map.
+ */
+const divePos = new THREE.Vector3(0, 0.5, 0);
+const diveVel = new THREE.Vector3();
 
 let traceRate = 1;
 let traceValue = 0;
@@ -400,24 +413,26 @@ function movePlayer(dt: number): { entity: Entity; pos: THREE.Vector3 } | null {
   // build nor a Hardlight Shell turns the dive into a different game.
   const speed = DIVE_PLAYER_SPEED * Math.min(1.35, Math.max(0.8, entity.stats?.moveSpeed ?? 1));
   if (len > 0.001) {
-    entity.velocity.set((dx / len) * speed, 0, (dy / len) * speed);
+    diveVel.set((dx / len) * speed, 0, (dy / len) * speed);
   } else {
-    entity.velocity.set(0, 0, 0);
+    diveVel.set(0, 0, 0);
   }
 
-  entity.position.x += entity.velocity.x * dt;
-  entity.position.z += entity.velocity.z * dt;
+  playerX += diveVel.x * dt;
+  playerZ += diveVel.z * dt;
 
-  const dist = Math.hypot(entity.position.x, entity.position.z);
+  const dist = Math.hypot(playerX, playerZ);
   if (dist > DIVE_ARENA_R) {
     const k = DIVE_ARENA_R / dist;
-    entity.position.x *= k;
-    entity.position.z *= k;
+    playerX *= k;
+    playerZ *= k;
   }
-  entity.position.y = 0.5;
-  // RenderSystem normally copies position → transform; it is frozen here.
-  if (entity.transform) entity.transform.position.copy(entity.position);
-  return { entity, pos: entity.position };
+  divePos.set(playerX, 0.5, playerZ);
+  // RenderSystem normally copies position → transform; it is frozen here (and
+  // the transform is reparented into the dive scene, so this drives the rig
+  // without disturbing the parked arena body).
+  if (entity.transform) entity.transform.position.copy(divePos);
+  return { entity, pos: divePos };
 }
 
 /**
@@ -428,7 +443,7 @@ function movePlayer(dt: number): { entity: Entity; pos: THREE.Vector3 } | null {
 function animateRig(entity: Entity, elapsed: number, dt: number): void {
   const cache = entity.transform?.userData?.cache as Record<string, THREE.Object3D> | undefined;
   if (!cache) return;
-  const speed = entity.velocity ? entity.velocity.length() : 0;
+  const speed = diveVel.length();
 
   if (cache['gyroHRing']) cache['gyroHRing'].rotation.y += dt * 2.5;
   if (cache['gyroVRing']) cache['gyroVRing'].rotation.x += dt * 3.5;
@@ -774,7 +789,8 @@ export function enterDive(
   iceRenderer = createIceRenderer(diveScene, node.kind);
 
   // Reparent the local player's mesh group into the dive scene and stash its
-  // arena-space position for the exit.
+  // arena-space position — that stash is the terminal they jacked in from, and
+  // it stays the entity's real position for the whole dive (see divePos).
   {
     const player = world.with('isLocalPlayer', 'position', 'transform').first;
     if (player?.transform && player.position) {
@@ -783,9 +799,13 @@ export function enterDive(
       if (playerTransformParent) playerTransformParent.remove(player.transform);
       diveScene.add(player.transform);
       player.transform.position.set(entryX, 0.5, entryZ);
-      player.position.set(entryX, 0.5, entryZ);
+      // Park the arena body: it must not drift while its pilot is in cyberspace.
+      player.velocity?.set(0, 0, 0);
+      player.isDiving = true;
     }
   }
+  divePos.set(entryX, 0.5, entryZ);
+  diveVel.set(0, 0, 0);
 
   uiState.dive = {
     nodeId: node.id,
@@ -894,13 +914,12 @@ export function BreachDiveSystem(
     playHurt();
     haptics.hit();
     // Knock the player off the construct so a pack can't pin them in place.
-    if (player?.position) {
-      player.position.x -= hit.knockX * PLAYER_KNOCKBACK * 0.12;
-      player.position.z -= hit.knockZ * PLAYER_KNOCKBACK * 0.12;
-      if (player.transform) player.transform.position.copy(player.position);
-      px = player.position.x;
-      pz = player.position.z;
-    }
+    playerX -= hit.knockX * PLAYER_KNOCKBACK * 0.12;
+    playerZ -= hit.knockZ * PLAYER_KNOCKBACK * 0.12;
+    divePos.set(playerX, 0.5, playerZ);
+    if (player?.transform) player.transform.position.copy(divePos);
+    px = playerX;
+    pz = playerZ;
   }
 
   // --- hazards: turrets, corrosion pools ---
@@ -1090,15 +1109,21 @@ function teardownDiveScene(): void {
     if (player?.transform) {
       if (diveScene) diveScene.remove(player.transform);
       playerTransformParent.add(player.transform);
-      if (stashedPlayerPosition) {
+      player.isDiving = false;
+      // The body never left the terminal (divePos owns dive-space), so the
+      // entity position is already right. Fall back to the stash only if some
+      // other system nulled it out. Note we deliberately do NOT force the
+      // stashed position back: in co-op the arena kept running, so knockback
+      // taken while kneeling is legitimate and should survive the exit.
+      if (player.position.lengthSq() === 0 && stashedPlayerPosition) {
         player.position.copy(stashedPlayerPosition);
-        player.transform.position.copy(stashedPlayerPosition);
-        // Re-sync the rigid body; PhysicsSystem owns it from the next arena tick.
-        player.rigidBody?.setTranslation(
-          { x: player.position.x, y: 0.5, z: player.position.z },
-          true,
-        );
       }
+      player.transform.position.copy(player.position);
+      // Re-sync the rigid body; PhysicsSystem owns it from the next arena tick.
+      player.rigidBody?.setTranslation(
+        { x: player.position.x, y: 0.5, z: player.position.z },
+        true,
+      );
     }
   }
   playerTransformParent = null;
@@ -1134,6 +1159,8 @@ if (typeof window !== 'undefined' && new URLSearchParams(window.location.search)
     enterDiveForKind: (kind: BreachKind, security: number = 0, overclock: boolean = false) => {
       const node: BreachNode = {
         id: 'debug_' + kind,
+        claimedBy: '',
+        claimedName: '',
         kind,
         name: kind.toUpperCase(),
         icon: '◆',

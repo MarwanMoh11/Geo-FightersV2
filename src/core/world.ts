@@ -219,6 +219,13 @@ export type Entity = {
   rigidBody?: RAPIER.RigidBody;
   collider?: RAPIER.Collider;
   isUpgrading?: boolean;
+  /**
+   * This player is jacked into a breach dive. Their arena body kneels at the
+   * terminal: it does not accept movement input or fire, and teammates defend
+   * it. Replicated in co-op so every client renders the kneeling pose and the
+   * host grants the same damage bubble it grants for blocking modals.
+   */
+  isDiving?: boolean;
 
   // Spatial representation for scene-graph bypass (Phase 5)
   rotationY?: number;
@@ -256,19 +263,27 @@ function createECS() {
     indexes.set(key, new Set<Entity>());
   }
 
+  // A component counts as PRESENT when it is neither undefined nor an explicit
+  // `false`. The flags in indexKeys are all optional booleans, and `false` means
+  // "doesn't have it" — treating it as present is what let `isLocalPlayer: false`
+  // put remote players into the local-player index. Numbers (lifeTimer: 0) and
+  // objects are unaffected.
+  const has = (entity: Entity, key: keyof Entity) =>
+    entity[key] !== undefined && entity[key] !== false;
+
   const addToIndexes = (entity: Entity) => {
     for (const key of indexKeys) {
-      if (entity[key] !== undefined) {
+      if (has(entity, key)) {
         indexes.get(key)!.add(entity);
       }
     }
   };
 
   const removeFromIndexes = (entity: Entity) => {
+    // Unconditional: a flag may have been flipped since add(), and leaving the
+    // entity in a stale index Set is how removed entities keep getting iterated.
     for (const key of indexKeys) {
-      if (entity[key] !== undefined) {
-        indexes.get(key)!.delete(entity);
-      }
+      indexes.get(key)!.delete(entity);
     }
   };
 
@@ -286,13 +301,37 @@ function createECS() {
       return entity;
     },
     remove: (entity: Entity) => {
-      const index = entity.id !== undefined ? idIndex.get(entity.id) : undefined;
-      if (index !== undefined) {
+      const mapped = entity.id !== undefined ? idIndex.get(entity.id) : undefined;
+
+      // The mapped slot MUST actually hold this entity before we swap-remove it.
+      //
+      // If anything reassigns `entity.id` after world.add() (the network mirrors
+      // used to, to adopt the host's id), idIndex ends up pointing at a
+      // different entity's slot. The old unguarded swap then overwrote that live
+      // entity, popped a second one off the end, and — when the index was past
+      // the end — left `undefined` holes in `entities`. Every later
+      // world.with() that fell back to scanning `entities` (any query whose
+      // components aren't indexed, e.g. `isBoss`) then threw on the holes, and
+      // once `entities` had been over-popped to empty while idIndex still held
+      // keys, `last` came back undefined and remove() itself threw.
+      //
+      // Falling back to a linear scan is O(n) but only on the corrupt path,
+      // which should now be unreachable.
+      const index =
+        mapped !== undefined && entities[mapped] === entity ? mapped : entities.indexOf(entity);
+
+      if (index !== -1) {
+        // Drop our own mapping first so the swap below can't resurrect it.
+        if (entity.id !== undefined && mapped === index) idIndex.delete(entity.id);
         const last = entities[entities.length - 1];
-        entities[index] = last;
-        if (last.id !== undefined) idIndex.set(last.id, index);
         entities.pop();
-        idIndex.delete(entity.id!);
+        if (last !== entity) {
+          entities[index] = last;
+          if (last?.id !== undefined) idIndex.set(last.id, index);
+        }
+      } else if (entity.id !== undefined && mapped !== undefined) {
+        // Not in the array at all — clear the dangling mapping.
+        idIndex.delete(entity.id);
       }
       removeFromIndexes(entity);
     },
@@ -315,7 +354,7 @@ function createECS() {
       return {
         get first() {
           for (const e of source) {
-            if (components.every((c) => e[c] !== undefined)) {
+            if (e !== undefined && components.every((c) => has(e, c))) {
               return e;
             }
           }
@@ -323,7 +362,7 @@ function createECS() {
         },
         [Symbol.iterator]: function* () {
           for (const e of source) {
-            if (components.every((c) => e[c] !== undefined)) {
+            if (e !== undefined && components.every((c) => has(e, c))) {
               yield e;
             }
           }

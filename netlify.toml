@@ -8,6 +8,21 @@
   # safe to commit. Vite inlines VITE_* env vars into the build at build time.
   VITE_SIGNALING_SERVER_URL = "https://MarwanMo11-geofighters-signaling.hf.space"
 
+  # TURN relay. Required for players behind carrier-grade NAT — common on
+  # Egyptian/UAE mobile networks — who otherwise cannot open a direct P2P path
+  # and silently fall back to relaying everything through the signaling box.
+  #
+  # Unset = the Open Relay Project free tier (see rtc.ts). That is a shared,
+  # rate-limited service: fine to launch on, but stand up coturn on the Oracle
+  # always-free VM and point these at it before it matters.
+  #
+  # NOTE: VITE_* vars are inlined into the client bundle, so TURN credentials
+  # here are PUBLIC. Use throwaway long-lived creds, or better, have the
+  # signaling server hand out short-lived HMAC credentials per session.
+  # VITE_TURN_URL  = "turn:your-vm:3478,turn:your-vm:443?transport=tcp"
+  # VITE_TURN_USER = "geofighters"
+  # VITE_TURN_PASS = "change-me"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"

@@ -35,7 +35,7 @@ import {
 import { upgradeRandomOwnedWeapon, flushDeferredLevelUps } from './UpgradeSystem';
 import { resetVirtualJoystick } from './InputSystem';
 import type { Poi } from './WayfindingSystem';
-import { enterDive, resetBreachDiveSystem } from './BreachDiveSystem';
+import { enterDive, ejectDive, resetBreachDiveSystem } from './BreachDiveSystem';
 
 // --- ROOTKIT SOFT-COUPLING ---
 // build-depth's `ExploitRegistry.ts` exports `tryGrantRootkit(player, kind, overclock): boolean`.
@@ -94,6 +94,14 @@ export interface BreachNode extends NodeDef {
   // Permanent "BREACHED" state — flipped true the moment a dive is WON on
   // this node (set by BreachDiveSystem's exit-win handler, NOT on entry).
   opened: boolean;
+  /**
+   * Co-op: connection id of the player currently jacked into this node, or ''
+   * when free. Host-authoritative — two players must not dive the same node,
+   * and everyone's door should read "IN USE" while a teammate is inside.
+   */
+  claimedBy: string;
+  /** Display name of the claimer, for the door prompt / HUD. */
+  claimedName: string;
 }
 
 const DOOR_RADIUS = 3.2;
@@ -232,16 +240,14 @@ const nodes: BreachNode[] = buildNodeDefs().map((d) => ({
   ringMat: null,
   sign: null,
   opened: false,
+  claimedBy: '',
+  claimedName: '',
 }));
 
 let initialized = false;
 let sceneRef: THREE.Scene | null = null;
 let firstBreachDone = false;
 let keysBound = false;
-
-function isHostOrSolo(): boolean {
-  return !uiState.isMultiplayer || uiState.isHost;
-}
 
 function cssColor(hex: number): string {
   return '#' + hex.toString(16).padStart(6, '0');
@@ -448,6 +454,203 @@ export function isNodeBreached(id: string): boolean {
   return nodes.some((n) => n.id === id && n.opened);
 }
 
+// ---------------------------------------------------------------------------
+// CO-OP NODE ARBITRATION
+//
+// Breaching is available to every player, host or joiner. What must be
+// arbitrated is *node ownership*: two players cannot dive the same terminal,
+// and cooldown/opened state has to read the same on everyone's screen.
+//
+// So the host owns node state and nothing else. The dive itself is a local,
+// single-player sub-experience — it is never replicated, and its rewards are
+// applied by the diver locally (the same trust model chest ceremonies already
+// use: PvE co-op, no anti-cheat requirement).
+//
+// Flow: client asks (`breach-claim`) → host grants or denies → client plays →
+// client reports (`breach-resolve`) → host sets cooldown and tells everyone.
+// The host runs the identical path with the round trip skipped.
+// ---------------------------------------------------------------------------
+
+/** Wire-form node state. Small enough to ride the 1Hz reliable event channel. */
+export interface NetNodeState {
+  id: string;
+  cd: number;
+  op: boolean;
+  by: string;
+  bn: string;
+}
+
+/** Local connection id, or '' in solo. */
+function selfId(): string {
+  return netGetLocalId() ?? '';
+}
+
+let netGetLocalId: () => string | undefined = () => undefined;
+let netSendRequest: (reqType: string, data: unknown) => void = () => {};
+let netSendDirect: (targetId: string, eventType: string, data: unknown) => void = () => {};
+let netBroadcast: (eventType: string, data: unknown) => void = () => {};
+
+/**
+ * Installed once by network.ts at module init. Keeps BreachSystem free of a
+ * static import on the network layer (which imports BreachSystem itself).
+ */
+export function bindBreachNet(hooks: {
+  getLocalId: () => string | undefined;
+  sendRequest: (reqType: string, data: unknown) => void;
+  sendDirect: (targetId: string, eventType: string, data: unknown) => void;
+  broadcast: (eventType: string, data: unknown) => void;
+}): void {
+  netGetLocalId = hooks.getLocalId;
+  netSendRequest = hooks.sendRequest;
+  netSendDirect = hooks.sendDirect;
+  netBroadcast = hooks.broadcast;
+}
+
+/** HOST: serialise node state for replication. */
+export function netCollectNodeStates(): NetNodeState[] {
+  return nodes.map((n) => ({
+    id: n.id,
+    cd: Math.round(n.cooldown * 10) / 10,
+    op: n.opened,
+    by: n.claimedBy,
+    bn: n.claimedName,
+  }));
+}
+
+/** CLIENT: adopt the host's node state. */
+export function netApplyNodeStates(list: NetNodeState[]): void {
+  if (!Array.isArray(list)) return;
+  for (const s of list) {
+    const node = nodes.find((n) => n.id === s.id);
+    if (!node) continue;
+    const wasReady = node.cooldown <= 0 && !node.claimedBy;
+    node.cooldown = s.cd;
+    node.opened = s.op;
+    node.claimedBy = s.by || '';
+    node.claimedName = s.bn || '';
+    const isReady = node.cooldown <= 0 && !node.claimedBy;
+    if (wasReady !== isReady) setNodeReadyLook(node, isReady);
+  }
+}
+
+/** HOST: broadcast current node state to the party. */
+function pushNodeStates(): void {
+  if (!uiState.isMultiplayer || !uiState.isHost) return;
+  netBroadcast('breach-nodes', { nodes: netCollectNodeStates() });
+}
+
+/**
+ * HOST: a player (possibly the host itself) wants node `nodeId`.
+ * Returns true when the claim was granted.
+ */
+export function netHandleClaim(
+  fromId: string,
+  fromName: string,
+  nodeId: string,
+  claimantFirstBreach = false,
+): boolean {
+  const node = nodes.find((n) => n.id === nodeId);
+  if (!node) return false;
+  if (node.cooldown > 0) {
+    netSendDirect(fromId, 'breach-denied', { reason: 'COOLING DOWN' });
+    return false;
+  }
+  if (node.claimedBy && node.claimedBy !== fromId) {
+    netSendDirect(fromId, 'breach-denied', { reason: `${node.claimedName} IS INSIDE` });
+    return false;
+  }
+
+  node.claimedBy = fromId;
+  node.claimedName = fromName || 'PLAYER';
+  setNodeReadyLook(node, false);
+  pushNodeStates();
+  // The host grants itself synchronously in startBreach — only a remote
+  // claimant needs the reply packet.
+  if (fromId !== selfId()) {
+    // Security 0 is the newcomer grace (worth a 1.5x time budget in the
+    // mini-game). It keys off whether THAT player has breached before, not the
+    // host's own history — otherwise a joiner's very first breach silently
+    // arrived at full difficulty while a solo player's first is eased.
+    netSendDirect(fromId, 'breach-granted', {
+      nodeId,
+      security: claimantFirstBreach ? 0 : computeSecurity(),
+    });
+  }
+  return true;
+}
+
+/**
+ * HOST: a diver reported how their dive ended. Node state is the host's call;
+ * the loot was already applied on the diver's own machine.
+ */
+export function netHandleResolve(
+  fromId: string,
+  nodeId: string,
+  outcome: 'win' | 'fail' | 'abort',
+  kind?: string,
+): void {
+  const node = nodes.find((n) => n.id === nodeId);
+  if (!node) return;
+  // Only the claimer may resolve — a stale packet from a disconnected peer
+  // must not clear a node someone else is currently inside.
+  if (node.claimedBy && node.claimedBy !== fromId) return;
+
+  node.claimedBy = '';
+  node.claimedName = '';
+  if (outcome === 'win') {
+    node.cooldown = (kind ?? node.kind) === 'depot' ? COOLDOWN_WIN_DEPOT : COOLDOWN_WIN;
+    node.opened = true;
+  } else {
+    node.cooldown = outcome === 'fail' ? COOLDOWN_FAIL : COOLDOWN_ABORT;
+  }
+  setNodeReadyLook(node, false);
+  pushNodeStates();
+}
+
+/** HOST: release every node a departing player was holding. */
+export function netReleaseNodesOf(connId: string): void {
+  let dirty = false;
+  for (const node of nodes) {
+    if (node.claimedBy === connId) {
+      node.claimedBy = '';
+      node.claimedName = '';
+      node.cooldown = Math.max(node.cooldown, COOLDOWN_ABORT);
+      setNodeReadyLook(node, false);
+      dirty = true;
+    }
+  }
+  if (dirty) pushNodeStates();
+}
+
+/** CLIENT: the host granted our claim — open the mini-game now. */
+export function netOnBreachGranted(nodeId: string, security: number): void {
+  const node = nodes.find((n) => n.id === nodeId);
+  if (!node || uiState.breach || uiState.dive) return;
+  pendingClaimNodeId = '';
+  openBreachUI(node, security, pendingClaimOverclock);
+}
+
+/** CLIENT: the host refused. */
+export function netOnBreachDenied(reason: string): void {
+  pendingClaimNodeId = '';
+  announce(reason || 'NODE UNAVAILABLE');
+  haptics.hit();
+}
+
+/** Tell the host how our dive ended (no-op in solo / on the host itself). */
+function reportResolve(node: BreachNode, outcome: 'win' | 'fail' | 'abort'): void {
+  if (!uiState.isMultiplayer) return;
+  if (uiState.isHost) {
+    netHandleResolve(selfId(), node.id, outcome, node.kind);
+  } else {
+    netSendRequest('breach-resolve', { nodeId: node.id, outcome, kind: node.kind });
+  }
+}
+
+/** Node id we have asked the host for but not yet been granted. */
+let pendingClaimNodeId = '';
+let pendingClaimOverclock = false;
+
 // --- BREACH LIFECYCLE ---
 
 /** Open the mini-game for the prompted node (E key / prompt button). */
@@ -458,13 +661,40 @@ export function isNodeBreached(id: string): boolean {
  */
 export function startBreach(overclock: boolean): void {
   const prompt = uiState.breachPrompt;
-  if (!prompt || uiState.breach) return;
+  if (!prompt || uiState.breach || uiState.dive) return;
   // The world is frozen behind a modal — the prompt is stale; don't jack in
   // under an upgrade screen or the pause menu
   if (uiState.showUpgrade || uiState.isPaused || uiState.gameState !== 'PLAYING') return;
   const node = nodes.find((n) => n.id === prompt.nodeId);
   if (!node || node.cooldown > 0) return;
+  if (node.claimedBy && node.claimedBy !== selfId()) {
+    announce(`${node.claimedName} IS INSIDE`);
+    haptics.hit();
+    return;
+  }
 
+  // Co-op joiner: the node is the host's to hand out. Ask, and open the
+  // mini-game when the grant comes back (netOnBreachGranted). Without the round
+  // trip two players standing on the same door would both dive it.
+  if (uiState.isMultiplayer && !uiState.isHost) {
+    if (pendingClaimNodeId) return; // a claim is already in flight
+    pendingClaimNodeId = node.id;
+    pendingClaimOverclock = overclock;
+    uiState.breachPrompt = null;
+    netSendRequest('breach-claim', { nodeId: node.id, first: !firstBreachDone });
+    haptics.select();
+    return;
+  }
+
+  // Host: arbitrate against ourselves first, so a joiner mid-claim wins the race.
+  if (uiState.isMultiplayer && uiState.isHost) {
+    if (!netHandleClaim(selfId(), uiState.playerName || 'HOST', node.id)) return;
+  }
+  openBreachUI(node, prompt.security, overclock);
+}
+
+/** Actually open the mini-game overlay for a node we now own. */
+function openBreachUI(node: BreachNode, security: number, overclock: boolean): void {
   firstBreachDone = true;
   uiState.breachPrompt = null;
   uiState.breachShield = 1;
@@ -477,7 +707,7 @@ export function startBreach(overclock: boolean): void {
     name: node.name,
     icon: node.icon,
     color: cssColor(node.color),
-    security: prompt.security,
+    security,
     overclock,
   };
   playMenuBuy();
@@ -521,16 +751,15 @@ export function resolveBreach(outcome: 'win' | 'fail' | 'abort'): void {
   if (!node) return;
 
   if (outcome === 'win') {
-    if (uiState.isMultiplayer) {
-      // co-op parked this phase — dive is solo-only; co-op hosts get legacy instant grant.
-      legacyWinResolve(node, breach.overclock);
-      return;
-    }
     // Win → jack INTO the breach dive. The dive owns the rest of the
     // win-resolution flow now: on dive WIN-exit it calls
     // completeBreachWin() (grantReward + cooldown + opened=true); on a
     // dive FAIL/abort exit it calls completeBreachFail(). We therefore
     // return early without touching cooldown/reward here.
+    //
+    // This runs in co-op too, for host and joiner alike. The dive is a local
+    // sub-experience; the arena keeps simulating around the diver's kneeling
+    // body (see main.ts) and the node stays claimed until they report back.
     enterDive(node, breach.overclock, breach.security, sceneRef);
     return;
   } else if (outcome === 'fail') {
@@ -539,8 +768,10 @@ export function resolveBreach(outcome: 'win' | 'fail' | 'abort'): void {
     haptics.hit();
     // High-stakes fails bite back: the ICE dispatches a hunter
     if (breach.security >= 3 || breach.overclock) spawnTracer(node);
+    reportResolve(node, 'fail');
   } else {
     node.cooldown = COOLDOWN_ABORT;
+    reportResolve(node, 'abort');
   }
   setNodeReadyLook(node, false);
 }
@@ -624,6 +855,7 @@ export function completeBreachWin(node: BreachNode, outcome: DiveOutcome): void 
   node.cooldown = node.kind === 'depot' ? COOLDOWN_WIN_DEPOT : COOLDOWN_WIN;
   node.opened = true;
   setNodeReadyLook(node, false);
+  reportResolve(node, 'win');
 }
 
 /**
@@ -636,19 +868,11 @@ export function completeBreachFail(node: BreachNode): void {
   announce('DIVE ABORTED — LOCKED OUT');
   haptics.hit();
   setNodeReadyLook(node, false);
+  reportResolve(node, 'fail');
 }
 
-/**
- * Legacy instant-grant win resolution used when the dive is gated off (co-op
- * this phase). Mirrors the pre-dive win branch: grant loot + cooldown, but no
- * permanent BREACHED scar (node stays re-hackable) and no rootkit grant.
- */
-function legacyWinResolve(node: BreachNode, overclock: boolean): void {
-  grantReward(node, overclock);
-  node.cooldown = node.kind === 'depot' ? COOLDOWN_WIN_DEPOT : COOLDOWN_WIN;
-  announce('BREACHED — ' + node.name);
-  setNodeReadyLook(node, false);
-}
+// legacyWinResolve (instant loot grant, no dive) is gone: co-op now runs the
+// real dive for host and joiner alike, so nothing needs the downgraded path.
 
 function spawnTracer(node: BreachNode): void {
   if (!sceneRef) return;
@@ -891,40 +1115,74 @@ export function BreachSystem(dt: number, scene: THREE.Scene): void {
     }
   }
 
-  // Doors are decor for co-op clients this phase; breaching is host/solo
-  if (!isHostOrSolo()) {
-    if (uiState.breachPrompt) uiState.breachPrompt = null;
-    return;
-  }
-
+  // Doors are live for EVERY player, host or joiner. Node ownership is
+  // arbitrated by the host (see netHandleClaim) rather than by refusing to
+  // show joiners a prompt — which is what used to make half the party
+  // spectators to the game's headline mechanic.
   const player = world.with('isLocalPlayer', 'position', 'health').first;
   if (!player || !player.health || player.health.current <= 0) {
     if (uiState.breachPrompt) uiState.breachPrompt = null;
+    // Going down while jacked in has to END the session, not freeze it. This
+    // guard used to return before the upkeep below, so a downed diver stayed
+    // `isDiving` forever — and since PlayerControlSystem zeroes velocity and
+    // WeaponSystem skips firing for ANY diving player, they came back from the
+    // revive unable to move or shoot for the rest of the run.
+    if (player && (uiState.breach || uiState.dive)) {
+      announce('CONNECTION LOST — OPERATOR DOWN');
+      if (uiState.dive) ejectDive();
+      else resolveBreach('abort');
+      player.isDiving = false;
+    }
     return;
   }
+  // Belt and braces: never leave a live player parked as a diver when no dive
+  // is actually running locally.
+  if (player.isDiving && !uiState.dive) player.isDiving = false;
 
-  // Mid-breach upkeep: the fighter kneels at the terminal under a shield
-  if (uiState.breach) {
+  // Mid-breach upkeep: the fighter kneels at the terminal under a shield.
+  // This covers the DIVE as well as the mini-game — in co-op the arena keeps
+  // running for the whole time the pilot is in cyberspace, which is exactly
+  // when their body is most defenceless and the team has a job to do.
+  if (uiState.breach || uiState.dive) {
     if (!uiState.isMultiplayer) {
       // Solo: shield holds — but the pile-up outside is real
       player.invulnTimer = Math.max(player.invulnTimer ?? 0, 0.3);
     } else {
-      // Co-op defend-the-hacker: every enemy near the door eats the shield
+      // Co-op defend-the-hacker: every enemy near the door eats the shield.
+      //
+      // Rates are per-enemy-per-second against a 0..1 bar, so the wall-clock
+      // budget is (1 / (rate * enemies)). The old 0.025 with a cap of 10 meant
+      // 0.25/s — the shield was gone in FOUR SECONDS at ordinary horde density,
+      // which read as "the hacking timer is way too fast in multiplayer",
+      // because this bar is the clock the player actually watches. A dive runs
+      // 40-55s, so it gets a gentler rate still.
+      //
+      // The shield also REGENERATES when the door is clear. Without that,
+      // teammates clearing the swarm produced no visible reward and the breach
+      // was doomed the moment it dipped.
+      const DRAIN_PER_ENEMY = uiState.dive ? 0.005 : 0.01;
+      const NEAR_CAP = 8;
+      const REGEN = 0.08;
       let near = 0;
       for (const enemy of world.with('isEnemy', 'position')) {
         const dx = enemy.position.x - player.position.x;
         const dz = enemy.position.z - player.position.z;
         if (dx * dx + dz * dz < 81) {
           near++;
-          if (near >= 10) break;
+          if (near >= NEAR_CAP) break;
         }
       }
-      if (near > 0) uiState.breachShield -= near * 0.025 * dt;
+      if (near > 0) uiState.breachShield -= near * DRAIN_PER_ENEMY * dt;
+      else uiState.breachShield = Math.min(1, uiState.breachShield + REGEN * dt);
       if (uiState.breachShield > 0) {
         player.invulnTimer = Math.max(player.invulnTimer ?? 0, 0.3);
       } else {
         announce('BREACH SHIELD DOWN — EJECTED');
-        resolveBreach('abort');
+        // The shield can now collapse mid-DIVE too, not just mid-mini-game.
+        // Route to the right ejector: resolveBreach only understands the
+        // overlay, and would no-op while uiState.breach is already null.
+        if (uiState.dive) ejectDive();
+        else resolveBreach('abort');
       }
     }
     return;

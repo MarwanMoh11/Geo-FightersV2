@@ -31,11 +31,51 @@ interface Peer {
   pingTimer: ReturnType<typeof setInterval> | null;
 }
 
-const ICE_SERVERS: RTCIceServer[] = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun.cloudflare.com:3478' },
-];
+// STUN is enough to discover your public address, but it cannot get you
+// through a symmetric or carrier-grade NAT — the two peers simply never find a
+// working path and the connection silently falls back to the socket relay
+// (higher latency, and all traffic through the signaling box). CGNAT is the
+// norm on Egyptian and UAE mobile carriers, which is the exact audience for the
+// Capacitor build, so a TURN relay is not optional here.
+//
+// Self-hosted coturn wins when configured (see .env: VITE_TURN_URL /
+// VITE_TURN_USER / VITE_TURN_PASS — point these at the Oracle always-free VM).
+// Otherwise fall back to the Open Relay Project's free tier so a fresh checkout
+// still connects for CGNAT players without any setup.
+const env = import.meta.env as Record<string, string | undefined>;
+
+function buildIceServers(): RTCIceServer[] {
+  const servers: RTCIceServer[] = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' },
+  ];
+
+  const turnUrl = env.VITE_TURN_URL;
+  if (turnUrl) {
+    servers.push({
+      urls: turnUrl.split(',').map((u) => u.trim()),
+      username: env.VITE_TURN_USER ?? '',
+      credential: env.VITE_TURN_PASS ?? '',
+    });
+    return servers;
+  }
+
+  // Open Relay Project free tier. Port 443/TCP matters: restrictive mobile and
+  // corporate networks that drop UDP will still get through on it.
+  servers.push({
+    urls: [
+      'turn:openrelay.metered.ca:80',
+      'turn:openrelay.metered.ca:443',
+      'turn:openrelay.metered.ca:443?transport=tcp',
+    ],
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  });
+  return servers;
+}
+
+const ICE_SERVERS: RTCIceServer[] = buildIceServers();
 
 const peers = new Map<string, Peer>();
 let signalSocket: Socket | null = null;
@@ -45,6 +85,34 @@ let signalsBound = false;
 
 function sendSignal(targetId: string, data: any) {
   signalSocket?.emit('rtc-signal', { roomCode: signalRoom, targetId, data });
+}
+
+/**
+ * Log whether this peer connected directly or via a TURN relay.
+ *
+ * Without this there is no way to tell that TURN is doing any work — a broken
+ * or expired TURN credential looks exactly like "some players can't connect",
+ * which is the failure mode the handoff doc calls out as hardest to diagnose.
+ */
+async function reportCandidateType(pc: RTCPeerConnection, peerId: string): Promise<void> {
+  try {
+    const stats = await pc.getStats();
+    let pair: any = null;
+    stats.forEach((r: any) => {
+      if (r.type === 'candidate-pair' && (r.selected || r.state === 'succeeded') && !pair) pair = r;
+    });
+    if (!pair) return;
+    const local: any = stats.get(pair.localCandidateId);
+    const remote: any = stats.get(pair.remoteCandidateId);
+    const relayed = local?.candidateType === 'relay' || remote?.candidateType === 'relay';
+    uiState.netRelayed = relayed;
+    console.log(
+      `[RTC] ${peerId} connected via ${relayed ? 'TURN relay' : 'direct'} ` +
+        `(local=${local?.candidateType ?? '?'} remote=${remote?.candidateType ?? '?'})`,
+    );
+  } catch {
+    // getStats shape varies by browser — diagnostics only, never fatal.
+  }
 }
 
 function createPeer(peerId: string): Peer {
@@ -87,6 +155,7 @@ function createPeer(peerId: string): Peer {
       }
     }, 2000);
     updateTransportUi();
+    void reportCandidateType(pc, peerId);
   };
 
   state.onclose = () => updateTransportUi();

@@ -216,7 +216,17 @@ export function CollisionSystem(scene: THREE.Scene) {
           const dz = enemy.position.z - pool.position.z;
           const r = pool.radius || 3;
           if (dx * dx + dz * dz < r * r) {
-            applyDamage(enemy, pool.dps || 0, _pushDir.set(dx, 0, dz).normalize(), 0, scene, 'enemy', undefined, undefined, pool.ownerConnId);
+            applyDamage(
+              enemy,
+              pool.dps || 0,
+              _pushDir.set(dx, 0, dz).normalize(),
+              0,
+              scene,
+              'enemy',
+              undefined,
+              undefined,
+              pool.ownerConnId,
+            );
           }
         }
       }
@@ -361,11 +371,13 @@ function handleProjectileEnemyCollision(bullet: any, enemy: any, scene: THREE.Sc
     }
     if (nearestChain) {
       const halfDamage = Math.round((savedDamage || 1) * 0.5);
-      _pushDir.set(
-        nearestChain.position.x - bullet.position.x,
-        0,
-        nearestChain.position.z - bullet.position.z,
-      ).normalize();
+      _pushDir
+        .set(
+          nearestChain.position.x - bullet.position.x,
+          0,
+          nearestChain.position.z - bullet.position.z,
+        )
+        .normalize();
       applyDamage(
         nearestChain,
         halfDamage,
@@ -452,11 +464,9 @@ function handleProjectileEnemyCollision(bullet: any, enemy: any, scene: THREE.Sc
       if (nearestRc) {
         bullet.position.copy(nearestRc.position);
         if (bullet.transform) bullet.transform.position.copy(nearestRc.position);
-        _tempVec.set(
-          nearestRc.position.x - enemy.position.x,
-          0,
-          nearestRc.position.z - enemy.position.z,
-        ).normalize();
+        _tempVec
+          .set(nearestRc.position.x - enemy.position.x, 0, nearestRc.position.z - enemy.position.z)
+          .normalize();
         const speed = bullet.velocity
           ? Math.sqrt(bullet.velocity.x * bullet.velocity.x + bullet.velocity.z * bullet.velocity.z)
           : 20;
@@ -844,7 +854,7 @@ export function handleEnemyDeath(
     announce('VAULT CRACKED');
     for (let i = 0; i < 12; i++) {
       const a = (i / 12) * Math.PI * 2;
-      spawnCredit(scene, px + Math.cos(a) * 1.2, pz + Math.sin(a) * 1.2, 2);
+      spawnCredit(scene, px + Math.cos(a) * 1.2, pz + Math.sin(a) * 1.2, 2, killerConnId);
     }
     registerGuaranteedChestDrop();
     const vaultRarity = rollChestRarity(luckMult + 0.5);
@@ -879,20 +889,20 @@ export function handleEnemyDeath(
 
   // Basic: 5% * luck chance to drop 1 Credit
   if (Math.random() < 0.05 * luckMult) {
-    spawnCredit(scene, px, pz, 1 * creditMultiplier);
+    spawnCredit(scene, px, pz, 1 * creditMultiplier, killerConnId);
   }
 
   // Elites & Mini-bosses drop credits 100% of the time
   if (type === 'firewall' || type === 'enforcer' || type === 'warden') {
     const amt = (Math.floor(Math.random() * 6) + 5) * creditMultiplier; // 5-10 base
-    spawnCredit(scene, px, pz, amt);
+    spawnCredit(scene, px, pz, amt, killerConnId);
   } else if (type === 'colossus') {
     const amt = (Math.floor(Math.random() * 11) + 20) * creditMultiplier; // 20-30 base
-    spawnCredit(scene, px, pz, amt);
+    spawnCredit(scene, px, pz, amt, killerConnId);
   } else if (type === 'hydra') {
-    spawnCredit(scene, px, pz, 50 * creditMultiplier);
+    spawnCredit(scene, px, pz, 50 * creditMultiplier, killerConnId);
   } else if (type === 'overseer') {
-    spawnCredit(scene, px, pz, 100 * creditMultiplier);
+    spawnCredit(scene, px, pz, 100 * creditMultiplier, killerConnId);
   }
 
   // === CHEST DROPS BY ENEMY TYPE ===
@@ -903,7 +913,7 @@ export function handleEnemyDeath(
     if (tryDropEliteChest(scene, px, pz, luckMult)) {
       dlog(`[Chest] ${type} dropped a chest`);
     } else {
-      spawnCredit(scene, px, pz, 3 * creditMultiplier);
+      spawnCredit(scene, px, pz, 3 * creditMultiplier, killerConnId);
     }
   }
   // Mid-tier elite: also gated, but pays a bigger consolation.
@@ -911,7 +921,7 @@ export function handleEnemyDeath(
     if (tryDropEliteChest(scene, px, pz, luckMult + 0.5)) {
       dlog(`[Chest] ${type} dropped a chest`);
     } else {
-      spawnCredit(scene, px, pz, 8 * creditMultiplier);
+      spawnCredit(scene, px, pz, 8 * creditMultiplier, killerConnId);
     }
   }
   // Mini-boss HYDRA: one guaranteed epic (was 3 rares — chained 3 ceremony
@@ -920,7 +930,7 @@ export function handleEnemyDeath(
     registerGuaranteedChestDrop();
     spawnChest(scene, px, pz, 'epic');
     for (let i = 0; i < 4; i++) {
-      spawnCredit(scene, px + (i - 1.5) * 1.2, pz + 1.2, 6 * creditMultiplier);
+      spawnCredit(scene, px + (i - 1.5) * 1.2, pz + 1.2, 6 * creditMultiplier, killerConnId);
     }
     dlog(`[Chest] HYDRA dropped an epic chest`);
   }
@@ -937,6 +947,7 @@ export function handleEnemyDeath(
         px + Math.cos(angle) * 2.2,
         pz + Math.sin(angle) * 2.2,
         8 * creditMultiplier,
+        killerConnId,
       );
     }
     dlog(`[Chest] OVERSEER dropped 2 epic chests`);
@@ -1072,7 +1083,12 @@ const chainMat = new THREE.MeshBasicMaterial({
   depthWrite: false,
 });
 
-export function spawnBlastFX(pos: THREE.Vector3, radius: number, scene: THREE.Scene, color?: number) {
+export function spawnBlastFX(
+  pos: THREE.Vector3,
+  radius: number,
+  scene: THREE.Scene,
+  color?: number,
+) {
   // Clone the material so the fade-out doesn't affect other live rings
   const mesh = new THREE.Mesh(blastGeo, blastMat.clone());
   if (color !== undefined) (mesh.material as THREE.MeshBasicMaterial).color.setHex(color);

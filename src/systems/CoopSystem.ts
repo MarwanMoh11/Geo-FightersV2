@@ -80,6 +80,12 @@ export function CoopSystem(dt: number) {
         ghost.invulnTimer = REVIVE_IFRAMES;
         ghost.reviveProgress = 0;
         ghost._downAnnounced = false;
+        // Clear any state that only makes sense while they were up. A player
+        // downed mid-dive is ejected client-side, but the host must not hold a
+        // stale `isDiving` for even a frame — it parks their body and disarms
+        // them, which reads as "revived teammate can't play".
+        ghost.isDiving = false;
+        ghost.knockback?.set(0, 0, 0);
         const name = ghost.isLocalPlayer
           ? uiState.playerName || 'HOST'
           : ghost.playerName || 'PLAYER';
