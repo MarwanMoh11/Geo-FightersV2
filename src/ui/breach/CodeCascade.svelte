@@ -10,11 +10,23 @@
     mercy: boolean; // BYTE: absorb one wrong tap
     running: boolean;
     shuffle: boolean;
+    /** First time playing this game — show live on-board guidance. */
+    coach?: boolean;
     win: () => void;
     flash: (msg: string) => void;
     penalty: (seconds: number) => void;
   }
-  let { sec, overclock, mercy, running, shuffle, win, flash, penalty }: Props = $props();
+  let {
+    sec,
+    overclock,
+    mercy,
+    running,
+    shuffle,
+    coach = false,
+    win,
+    flash,
+    penalty,
+  }: Props = $props();
 
   const GLYPHS = ['◆', '▲', '●', '★', '✚', '☰', '⚡', '◼', '☾'];
   const rounds = 2 + (sec >= 2 ? 1 : 0) + (overclock ? 1 : 0);
@@ -105,6 +117,13 @@
     }
   }
 
+  /* First round only: ring the pad that comes next. "Tap them back in the
+     same order" is abstract until the board points at the actual glyph —
+     after one round the player is doing it from memory anyway. */
+  const nextGlyph = $derived(
+    coach && round === 0 && mode === 'input' ? (sequence[inputIdx] ?? '') : '',
+  );
+
   // Wait for the shell's intro to finish before the first playback
   let started = false;
   $effect(() => {
@@ -147,6 +166,7 @@
         class:lit={mode === 'show' && sequence[showIdx] === g}
         class:good={padFlash?.glyph === g && padFlash.kind === 'good'}
         class:bad={padFlash?.glyph === g && padFlash.kind === 'bad'}
+        class:coach-next={nextGlyph === g}
         disabled={mode !== 'input'}
         onpointerdown={() => tapPad(g)}>{g}</button
       >
@@ -249,5 +269,30 @@
   .pad.bad {
     background: color-mix(in srgb, #ff3d3d 35%, rgba(8, 14, 22, 0.9));
     border-color: #ff3d3d;
+  }
+
+  /* First-round coaching: a breathing ring on the pad that comes next. It
+     reads as "this one" without a word of instruction, and disabled pads
+     keep full opacity so the ring stays legible. */
+  .pad.coach-next {
+    opacity: 1;
+    border-color: #fff;
+    box-shadow:
+      0 0 0 2px rgba(255, 255, 255, 0.85),
+      0 0 18px rgba(255, 255, 255, 0.55);
+    animation: coach-breathe 1.05s ease-in-out infinite;
+  }
+  @keyframes coach-breathe {
+    50% {
+      box-shadow:
+        0 0 0 5px rgba(255, 255, 255, 0.28),
+        0 0 26px rgba(255, 255, 255, 0.7);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pad.coach-next {
+      animation: none;
+    }
   }
 </style>

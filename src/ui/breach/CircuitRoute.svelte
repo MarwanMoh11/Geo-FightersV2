@@ -11,10 +11,12 @@
     mercy: boolean; // BYTE: absorb the first ICE scramble
     running: boolean;
     corrupt: boolean;
+    /** First time playing this game — show live on-board guidance. */
+    coach?: boolean;
     win: () => void;
     flash: (msg: string) => void;
   }
-  let { sec, overclock, mercy, running, corrupt, win, flash }: Props = $props();
+  let { sec, overclock, mercy, running, corrupt, coach = false, win, flash }: Props = $props();
 
   const W = 5 + (sec >= 2 ? 1 : 0);
   const H = 4 + (sec >= 3 ? 1 : 0);
@@ -136,6 +138,36 @@
   ensureUnsolved();
   computePower();
 
+  /* Coaching points at the live frontier: the first solution-path tile that
+     isn't carrying power yet but touches a tile that is. That is always
+     exactly where a rotation pays off, so the hint teaches the strategy
+     ("extend the lit chain") rather than just naming a control.
+     Recomputes whenever the board mutates, so it walks forward with you. */
+  const hintTile = $derived.by(() => {
+    if (!coach || solved) return null;
+    // Nothing lit yet — the source tile itself needs turning to accept power.
+    if (!board[srcRow][0].powered) return { r: srcRow, c: 0 };
+    const D = [
+      [-1, 0],
+      [0, 1],
+      [1, 0],
+      [0, -1],
+    ];
+    for (let r = 0; r < H; r++) {
+      for (let c = 0; c < W; c++) {
+        const t = board[r][c];
+        if (t.powered || !t.isPath) continue;
+        for (const [dr, dc] of D) {
+          const nr = r + dr;
+          const nc = c + dc;
+          if (nr < 0 || nr >= H || nc < 0 || nc >= W) continue;
+          if (board[nr][nc].powered) return { r, c };
+        }
+      }
+    }
+    return null;
+  });
+
   function tapTile(r: number, c: number): void {
     if (!running || done) return;
     board[r][c].conn = rotCW(board[r][c].conn);
@@ -198,6 +230,7 @@
           class="tile"
           class:powered={tile.powered}
           class:zapped={corruptFx?.r === r && corruptFx?.c === c}
+          class:hint={hintTile?.r === r && hintTile?.c === c}
           onpointerdown={() => tapTile(r, c)}
         >
           {#if tile.conn[0]}<span class="arm n"></span>{/if}
@@ -205,6 +238,10 @@
           {#if tile.conn[2]}<span class="arm s"></span>{/if}
           {#if tile.conn[3]}<span class="arm w"></span>{/if}
           <span class="node"></span>
+          {#if hintTile?.r === r && hintTile?.c === c}
+            <!-- Rotate glyph spins on the tile itself: the verb, shown -->
+            <span class="hint-spin" aria-hidden="true">↻</span>
+          {/if}
         </button>
       {/each}
       <div class="edge sink" class:on={r === sinkRow} class:lit={solved && r === sinkRow}>
@@ -240,6 +277,9 @@
     justify-content: center;
   }
 
+  /* Source and sink are the two things the whole puzzle is *about*, and both
+     were dim grey glyphs at the board's edge — easy to miss entirely on a
+     first play. They now read as live terminals. */
   .edge {
     display: flex;
     align-items: center;
@@ -249,14 +289,30 @@
   }
   .edge.on {
     color: #ffd75e;
-    text-shadow: 0 0 8px rgba(255, 215, 94, 0.8);
+    text-shadow: 0 0 10px rgba(255, 215, 94, 0.9);
+    animation: port-throb 1.8s ease-in-out infinite;
+  }
+  @keyframes port-throb {
+    50% {
+      text-shadow: 0 0 18px rgba(255, 215, 94, 1);
+    }
   }
   .edge.sink.on {
-    color: rgba(255, 255, 255, 0.6);
+    color: rgba(255, 255, 255, 0.75);
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+    animation: none;
   }
   .edge.sink.lit {
     color: #4dff88;
-    text-shadow: 0 0 12px #4dff88;
+    text-shadow: 0 0 16px #4dff88;
+    animation: port-throb 0.9s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .edge.on,
+    .edge.sink.lit {
+      animation: none;
+    }
   }
 
   .tile {
@@ -282,6 +338,52 @@
   .tile.zapped {
     border-color: #ff3d3d;
     box-shadow: 0 0 14px rgba(255, 61, 61, 0.8);
+  }
+
+  /* ---- first-play coaching ---- */
+  .tile.hint {
+    border-color: #fff;
+    box-shadow:
+      0 0 0 2px rgba(255, 255, 255, 0.8),
+      0 0 16px rgba(255, 255, 255, 0.5);
+    animation: hint-breathe 1.05s ease-in-out infinite;
+    z-index: 2;
+  }
+  @keyframes hint-breathe {
+    50% {
+      box-shadow:
+        0 0 0 5px rgba(255, 255, 255, 0.25),
+        0 0 24px rgba(255, 255, 255, 0.65);
+    }
+  }
+  .hint-spin {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #fff;
+    text-shadow: 0 0 8px rgba(0, 0, 0, 0.9);
+    pointer-events: none;
+    animation: hint-turn 1.6s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+  }
+  @keyframes hint-turn {
+    0%,
+    40% {
+      transform: rotate(0deg);
+    }
+    70%,
+    100% {
+      transform: rotate(90deg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tile.hint,
+    .hint-spin {
+      animation: none;
+    }
   }
 
   .arm {

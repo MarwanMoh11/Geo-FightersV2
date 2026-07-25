@@ -10,6 +10,7 @@
   import { uiState } from '../../core/UIState.svelte.ts';
   import { playMenuClick } from '../../core/audio';
   import Modal from '../Modal.svelte';
+  import TutorialDemo from '../breach/TutorialDemo.svelte';
 
   let tab = $state<'controls' | 'loop' | 'systems'>('controls');
 
@@ -50,6 +51,11 @@
       <p class="lead">Aiming and firing are automatic. You only decide where to stand.</p>
 
       {#if isTouch}
+        <!-- Shown, not described: the stick spawning under a finger and the
+             ship trailing it is the entire control scheme in one loop. -->
+        <div class="demo-frame">
+          <TutorialDemo game="move" />
+        </div>
         <div class="row">
           <span class="row-key">Drag anywhere</span>
           <span class="row-val">Move. A stick appears under your thumb.</span>
@@ -135,8 +141,18 @@
         <p class="sys-body">
           Data nodes sit around the arena. Stand at one and jack in to play a short hack for gear.
           Security rating sets both the difficulty and the payout; overclocking a breach doubles the
-          reward and tightens the clock.
+          reward and tightens the clock. There are four hacks — each one plays like this:
         </p>
+        <!-- All four mechanics, playable-looking, before you ever meet one.
+             A player who reads this once is never surprised mid-run. -->
+        <div class="hack-grid">
+          {#each [{ id: 'crack', name: 'Crack Timer' }, { id: 'cascade', name: 'Code Cascade' }, { id: 'route', name: 'Circuit Route' }, { id: 'runner', name: 'Grid Runner' }] as h (h.id)}
+            <figure class="hack">
+              <TutorialDemo game={h.id as 'crack' | 'cascade' | 'route' | 'runner'} />
+              <figcaption>{h.name}</figcaption>
+            </figure>
+          {/each}
+        </div>
       </div>
       <div class="sys">
         <h3 class="sys-title"><span aria-hidden="true">💀</span> Exploits</h3>
@@ -258,6 +274,52 @@
     font-size: var(--fs-caption);
     line-height: 1.55;
     color: var(--color-text-dim);
+  }
+
+  /* Controls demo frame */
+  .demo-frame {
+    display: flex;
+    justify-content: center;
+    padding: 0.5rem 0 0.9rem;
+    --bcolor: var(--color-primary);
+  }
+
+  /* Four hack demos, side by side */
+  .hack-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.6rem;
+    margin-top: 0.75rem;
+    --bcolor: var(--color-primary);
+  }
+  .hack {
+    margin: 0;
+    padding: 0.5rem 0.4rem 0.4rem;
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+    border: 1px solid var(--color-border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+  }
+  .hack :global(.stage) {
+    max-width: 6.5rem;
+  }
+  .hack figcaption {
+    font-family: var(--font-mono);
+    font-size: var(--fs-micro);
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-text-dim);
+    text-align: center;
+  }
+
+  @media (min-width: 641px) {
+    .hack-grid {
+      grid-template-columns: repeat(4, 1fr);
+    }
   }
 
   @media (max-width: 400px) {

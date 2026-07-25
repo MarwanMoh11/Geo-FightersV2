@@ -20,6 +20,7 @@
   import CrackTimer from './breach/CrackTimer.svelte';
   import CodeCascade from './breach/CodeCascade.svelte';
   import CircuitRoute from './breach/CircuitRoute.svelte';
+  import TutorialDemo from './breach/TutorialDemo.svelte';
 
   const breach = uiState.breach!;
   const kind = breach.kind;
@@ -75,47 +76,28 @@
      explained by one line of 10px footer text while the trace clock was
      already running. Each game now teaches itself once, with the clock held,
      and never interrupts again. */
+  /* The demo above carries the mechanic; the text is reduced to one
+     imperative goal and one consequence. Anything longer competes with the
+     animation for attention and loses. */
   interface Rules {
-    icon: string;
     goal: string;
-    steps: string[];
     warn: string;
   }
   const GAME_RULES: Record<GameId, Rules> = {
     runner: {
-      icon: '🏁',
-      goal: 'Reach the green exit before the trace lands.',
-      steps: [
-        'Swipe (or use WASD / arrow keys) to step one cell at a time.',
-        'Walls block you — read the maze before you commit.',
-      ],
-      warn: 'Red antivirus nodes patrol the grid. Touch one and the breach fails.',
+      goal: 'Swipe to reach the green exit.',
+      warn: 'Red antivirus nodes hunt you. One touch ends the breach.',
     },
     crack: {
-      icon: '🎯',
-      goal: 'Land every pin to crack the lock.',
-      steps: [
-        'A needle sweeps around the dial.',
-        'Tap the moment it crosses the glowing arc.',
-      ],
-      warn: 'Tapping outside the arc costs you time off the clock.',
+      goal: 'Tap when the needle crosses the lit arc.',
+      warn: 'Missing the arc costs you time.',
     },
     cascade: {
-      icon: '🧠',
-      goal: 'Repeat the access code back to the terminal.',
-      steps: [
-        'Watch the glyphs light up in sequence.',
-        'Tap them back in the same order.',
-      ],
-      warn: 'A wrong glyph costs time — the sequence grows each round.',
+      goal: 'Watch the glyphs, then tap them back in order.',
+      warn: 'A wrong glyph costs time and replays the code.',
     },
     route: {
-      icon: '🔌',
-      goal: 'Bridge power from the ⚡ source to the ◉ target.',
-      steps: [
-        'Tap a conduit to rotate it a quarter turn.',
-        'Link them into one unbroken path.',
-      ],
+      goal: 'Tap conduits to rotate them and connect ⚡ to ◉.',
       warn: 'On corrupted nodes, ICE re-scrambles tiles while you work.',
     },
   };
@@ -129,6 +111,11 @@
         return false;
       }
     })();
+
+  /* First time with this game, the demo is followed by live coaching on the
+     real board — pulsing the exact thing to act on — because a demo teaches
+     the shape of the action and the board teaches where it lives. */
+  const coach = !rulesSeen;
 
   function dismissRules(): void {
     playMenuClick();
@@ -240,7 +227,11 @@
 </script>
 
 <div class="breach-backdrop">
-  <div class="breach-panel" style={`--bcolor:${breach.color};`}>
+  <div
+    class="breach-panel"
+    class:panel-rules={phase === 'rules'}
+    style={`--bcolor:${breach.color};`}
+  >
     <header class="b-head">
       <span class="b-icon">{breach.icon}</span>
       <div class="b-title">
@@ -278,10 +269,11 @@
       </div>
     {/if}
 
-    <div class="b-stage">
+    <div class="b-stage" class:stage-hidden={phase === 'rules'}>
       {#if plan.game === 'runner'}
         <GridRunner
           {sec}
+          {coach}
           overclock={breach.overclock}
           mercy={isByte}
           running={phase === 'run'}
@@ -293,6 +285,7 @@
       {:else if plan.game === 'crack'}
         <CrackTimer
           {sec}
+          {coach}
           overclock={breach.overclock}
           mercy={isByte}
           running={phase === 'run'}
@@ -304,6 +297,7 @@
       {:else if plan.game === 'cascade'}
         <CodeCascade
           {sec}
+          {coach}
           overclock={breach.overclock}
           mercy={isByte}
           running={phase === 'run'}
@@ -315,6 +309,7 @@
       {:else}
         <CircuitRoute
           {sec}
+          {coach}
           overclock={breach.overclock}
           mercy={isByte}
           running={phase === 'run'}
@@ -324,24 +319,7 @@
         />
       {/if}
 
-      {#if phase === 'rules'}
-        {@const r = GAME_RULES[plan.game]}
-        <div class="b-rules">
-          <div class="b-rules-card">
-            <span class="b-rules-icon" aria-hidden="true">{r.icon}</span>
-            <h3 class="b-rules-title">{GAME_NAMES[plan.game]}</h3>
-            <p class="b-rules-goal">{r.goal}</p>
-            <ol class="b-rules-steps">
-              {#each r.steps as step (step)}
-                <li>{step}</li>
-              {/each}
-            </ol>
-            <p class="b-rules-warn"><span aria-hidden="true">⚠</span> {r.warn}</p>
-            <button class="b-rules-go" onclick={dismissRules}>Start breach</button>
-            <p class="b-rules-foot">Shown once — the clock starts when you tap.</p>
-          </div>
-        </div>
-      {:else if phase === 'intro'}
+      {#if phase === 'intro'}
         <div class="b-splash">JACKING IN…</div>
       {:else if phase === 'done'}
         <div class="b-splash {resultClass}">{resultText}</div>
@@ -352,6 +330,28 @@
     <footer class="b-foot">
       {GAME_HINTS[plan.game]}<span class="pointer-only">&nbsp;• ESC EJECTS</span>
     </footer>
+
+    <!-- Rules overlay covers the WHOLE panel, not just the game stage: the
+         stage is locked to the game's own aspect ratio (13:9), which on a
+         phone is far too short to hold a demo plus its caption without
+         clipping the top of the card. -->
+    {#if phase === 'rules'}
+      {@const r = GAME_RULES[plan.game]}
+      <div class="b-rules menu-scroll">
+        <div class="b-rules-card">
+          <!-- The demo does the teaching: a looping miniature of the real
+               mechanic with a ghost finger showing the exact action. -->
+          <TutorialDemo game={plan.game} />
+          <div class="b-rules-copy">
+            <h3 class="b-rules-title">{GAME_NAMES[plan.game]}</h3>
+            <p class="b-rules-goal">{r.goal}</p>
+            <p class="b-rules-warn"><span aria-hidden="true">⚠</span> {r.warn}</p>
+            <button class="b-rules-go" onclick={dismissRules}>Start breach</button>
+            <p class="b-rules-foot">The clock starts when you tap.</p>
+          </div>
+        </div>
+      </div>
+    {/if}
   </div>
 </div>
 
@@ -360,24 +360,36 @@
     position: fixed;
     inset: 0;
     z-index: 90;
+    /* Column + `margin:auto` on the panel rather than `align-items:center`:
+       a centred flex item taller than its container overflows in BOTH
+       directions and can't be scrolled back into view. On a landscape phone
+       that put the Start button — and the eject control — off-screen. */
     display: flex;
-    align-items: center;
-    justify-content: center;
+    flex-direction: column;
+    overflow-y: auto;
+    /* pan-y, not none: GridRunner preventDefaults its own touchmove so swipe
+       -to-move still wins, and the other three games are pointerdown-only. */
+    touch-action: pan-y;
+    overscroll-behavior: contain;
     padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
     background: rgba(3, 7, 13, 0.82);
     backdrop-filter: blur(2px);
-    touch-action: none;
   }
 
   .breach-panel {
+    /* Positioning context for the full-panel rules overlay */
+    position: relative;
+    /* The 3rd term keeps the game's 13:9 stage from outgrowing a short
+       viewport before scrolling is even needed. */
+    width: min(94vw, 580px, 82vh);
+    margin: auto;
+    flex: 0 0 auto;
+  }
+  /* While the rules show, the stage is collapsed — so the 13:9 height cap
+     that the third term exists for doesn't apply and the card can use the
+     full comfortable width. */
+  .breach-panel.panel-rules {
     width: min(94vw, 580px);
-    max-height: 100%;
-    overflow-y: auto;
-    /* The backdrop suppresses gestures so the mini-games own every touch;
-       the panel has to opt scrolling back in or a landscape phone can't
-       reach the eject button or the rules card. */
-    touch-action: pan-y;
-    overscroll-behavior: contain;
     border: 1px solid var(--bcolor);
     border-radius: 12px;
     background: rgba(6, 12, 20, 0.96);
@@ -457,35 +469,60 @@
     }
   }
 
+  /* While the rules are up the game stage is collapsed entirely. Left in the
+     layout it forced the panel to the game's own 13:9 height, which is far
+     shorter than a demo + caption + button — so the Start button fell off the
+     bottom. Collapsed, the panel simply sizes to the card. The games stay
+     mounted (they only start when `running` flips) so nothing re-initialises. */
+  .stage-hidden {
+    display: none;
+  }
+
   /* ---- First-time rules card ---- */
   .b-rules {
-    position: absolute;
-    inset: 0;
-    z-index: 4;
+    /* In flow, not absolute: the card decides the panel's height instead of
+       being trapped inside it. */
     display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0.6rem;
-    background: rgba(4, 8, 14, 0.94);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    border-radius: 10px;
-    overflow-y: auto;
-    touch-action: pan-y;
-    overscroll-behavior: contain;
+    flex-direction: column;
+    padding: 0.25rem 0.25rem 0.5rem;
   }
   .b-rules-card {
     width: 100%;
-    max-width: 22rem;
+    max-width: 21rem;
+    margin: auto;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 0.5rem;
     text-align: center;
   }
-  .b-rules-icon {
-    font-size: 1.9rem;
-    line-height: 1;
+
+  /* Short viewports (landscape phones): demo beside the caption instead of
+     above it, so the whole lesson — including the Start button — fits in
+     ~360px of height without scrolling. */
+  @media (max-height: 560px) {
+    .b-rules-card {
+      max-width: none;
+      flex-direction: row;
+      align-items: center;
+      gap: 1.1rem;
+      text-align: left;
+    }
+    .b-rules-card :global(.demo) {
+      flex: 0 0 auto;
+      width: 8.5rem;
+    }
+    .b-rules-copy {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.45rem;
+    }
+    .b-rules-go {
+      width: 100%;
+    }
   }
   .b-rules-title {
     margin: 0;
@@ -502,23 +539,6 @@
     font-weight: 700;
     line-height: 1.45;
     color: var(--color-text-main);
-  }
-  .b-rules-steps {
-    margin: 0.15rem 0 0;
-    padding-left: 1.15rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-    text-align: left;
-  }
-  .b-rules-steps li {
-    font-size: var(--fs-caption);
-    line-height: 1.45;
-    color: var(--color-text-dim);
-  }
-  .b-rules-steps li::marker {
-    color: var(--bcolor);
-    font-weight: 700;
   }
   .b-rules-warn {
     margin: 0.25rem 0 0;

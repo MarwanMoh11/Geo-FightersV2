@@ -113,10 +113,13 @@
                sentence beside it is describing. -->
           <div class="onb-art" aria-hidden="true">
             {#if steps[index].art === 'move'}
+              <!-- Same vocabulary as every other tutorial in the game: a
+                   ghost finger on the stick, the ship trailing it. -->
               <svg viewBox="0 0 120 90">
                 <circle class="ring" cx="42" cy="52" r="24" />
-                <circle class="knob" cx="56" cy="44" r="11" />
                 <path class="trail" d="M42 52 L56 44" />
+                <circle class="knob" cx="56" cy="44" r="11" />
+                <circle class="ghost" cx="56" cy="44" r="13" />
                 <path class="ship" d="M96 30 l9 8 -9 8 -9 -8z" />
                 <path class="arrow" d="M74 42 h14 m-4 -4 l4 4 -4 4" />
               </svg>
@@ -270,6 +273,13 @@
     stroke-width: 1.5;
     stroke-dasharray: 3 3;
   }
+  /* Ghost finger — the shared "touch here" mark used by every tutorial */
+  .ghost {
+    fill: rgba(255, 255, 255, 0.55);
+    stroke: rgba(255, 255, 255, 0.9);
+    stroke-width: 1.2;
+    animation: knob-drift 2.6s ease-in-out infinite;
+  }
   .ship {
     fill: var(--color-text-main);
     filter: drop-shadow(0 0 6px rgba(234, 242, 255, 0.5));
@@ -420,6 +430,7 @@
 
   @media (prefers-reduced-motion: reduce) {
     .knob,
+    .ghost,
     .beam,
     .spark,
     .shard,

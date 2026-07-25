@@ -150,6 +150,8 @@ let diveOverclock = false;
 let diveSecurity = 0;
 let diveElapsed = 0;
 let arenaSceneRef: THREE.Scene | null = null;
+/** Camera the dive is currently driving — needed to restore its FOV on exit. */
+let cameraRef: THREE.Camera | null = null;
 let keysBound = false;
 
 let verb: DiveVerb | null = null;
@@ -563,14 +565,55 @@ function clearProjectiles(): void {
 // Camera + radar
 // ---------------------------------------------------------------------------
 
+/**
+ * World-units of arena that must be visible ACROSS the screen, always.
+ *
+ * The camera's FOV is *vertical*, so the horizontal view collapses on a
+ * portrait phone: at the shared 35° a 1440x900 desktop frames 46 units — the
+ * whole 44-unit arena — while a 390x844 phone frames just 18. ICE spawn on a
+ * ring 30-42 units across, so on a phone essentially the entire horde sat
+ * outside the frame and the dive read as empty. They were spawning, steering
+ * and rendering correctly the whole time; they were simply off-camera.
+ */
+const DIVE_VIEW_WIDTH = 34;
+const DIVE_FOV_MIN = 35;
+const DIVE_FOV_MAX = 60;
+/** Set while a dive owns the camera, so the arena's FOV can be handed back. */
+let savedFov: number | null = null;
+
 function setDiveCamera(camera: THREE.Camera, px: number, pz: number): void {
   const mobile = isMobileRig();
-  camera.position.set(
-    px,
-    mobile ? CAM_HEIGHT_MOBILE : CAM_HEIGHT,
-    pz + (mobile ? CAM_DISTANCE_MOBILE : CAM_DISTANCE),
-  );
+  const height = mobile ? CAM_HEIGHT_MOBILE : CAM_HEIGHT;
+  const offset = mobile ? CAM_DISTANCE_MOBILE : CAM_DISTANCE;
+  camera.position.set(px, height, pz + offset);
   camera.lookAt(px, 0, pz);
+
+  const cam = camera as THREE.PerspectiveCamera;
+  if (!cam.isPerspectiveCamera) return;
+  if (savedFov === null) savedFov = cam.fov;
+
+  /* Widen the vertical FOV until DIVE_VIEW_WIDTH fits horizontally, rather
+     than pulling the camera back: at this aspect the retreat needed is ~140
+     units, which shrinks the player to a speck. Clamped at both ends — the
+     lower bound means a landscape/desktop framing is left exactly as it was. */
+  const dist = Math.hypot(height, offset);
+  const hHalf = Math.atan(DIVE_VIEW_WIDTH / 2 / dist);
+  const vHalf = Math.atan(Math.tan(hHalf) / (cam.aspect || 1));
+  const fov = Math.min(DIVE_FOV_MAX, Math.max(DIVE_FOV_MIN, (vHalf * 360) / Math.PI));
+  if (Math.abs(cam.fov - fov) > 0.01) {
+    cam.fov = fov;
+    cam.updateProjectionMatrix();
+  }
+}
+
+/** Hand the arena its camera back — the dive borrows and widens the FOV. */
+function restoreCameraFov(camera: THREE.Camera | null): void {
+  const cam = camera as THREE.PerspectiveCamera | null;
+  if (cam?.isPerspectiveCamera && savedFov !== null) {
+    cam.fov = savedFov;
+    cam.updateProjectionMatrix();
+  }
+  savedFov = null;
 }
 
 /**
@@ -786,6 +829,7 @@ export function BreachDiveSystem(
   // Normally captured in enterDive; re-assert it in case the dive was opened
   // by a debug hook with no scene to hand.
   if (!arenaSceneRef) arenaSceneRef = scene;
+  cameraRef = camera;
   diveElapsed += dt;
   const time = diveElapsed;
 
@@ -986,6 +1030,10 @@ export function resetBreachDiveSystem(): void {
 }
 
 function teardownDiveScene(): void {
+  // The dive widens the shared camera's FOV to keep the horde on screen in
+  // portrait; hand the arena back the framing it started with.
+  restoreCameraFov(cameraRef);
+  cameraRef = null;
   if (diveScene) {
     // Constructs are dive-local illusions — remove them from the world BEFORE
     // the scene goes so they can't bleed back into the arena (where

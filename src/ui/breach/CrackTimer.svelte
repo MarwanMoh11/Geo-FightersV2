@@ -11,11 +11,23 @@
     mercy: boolean; // BYTE: absorb one miss
     running: boolean;
     decoys: boolean;
+    /** First time playing this game — show live on-board guidance. */
+    coach?: boolean;
     win: () => void;
     flash: (msg: string) => void;
     penalty: (seconds: number) => void;
   }
-  let { sec, overclock, mercy, running, decoys, win, flash, penalty }: Props = $props();
+  let {
+    sec,
+    overclock,
+    mercy,
+    running,
+    decoys,
+    coach = false,
+    win,
+    flash,
+    penalty,
+  }: Props = $props();
 
   const totalLocks = Math.min(6, 2 + sec + (overclock ? 1 : 0));
   const useDecoys = decoys || sec >= 2;
@@ -126,6 +138,14 @@
     return css + `, transparent ${cur}deg 360deg)`;
   });
 
+  /* Live coaching for the first lock only: the arc is marked with a ghost
+     finger so you know WHERE, and a TAP NOW cue fires the instant the needle
+     is actually inside it so you learn WHEN. Both vanish once the first pin
+     sets — by then the mechanic has been felt, not read. */
+  const coaching = $derived(coach && locksDone === 0 && running);
+  const arcMid = $derived(target.start + target.size / 2);
+  const inTarget = $derived(inArc(angle, target));
+
   onMount(() => {
     window.addEventListener('keydown', onKey, true);
     let last = performance.now();
@@ -148,18 +168,35 @@
      why "tapping doesn't work" here while the button-based games did. -->
 <button class="ct-wrap" type="button" onpointerdown={tap}>
   <div class="dial" class:good={hitFlash === 'good'} class:bad={hitFlash === 'bad'}>
+    <!-- Track sits under the arc gradient. Without it the dial was invisible
+         except for the lit arc, so there was no read on how far the needle
+         still had to travel — the whole tension of the mechanic. -->
+    <div class="track"></div>
     <div class="ring" style={`background:${ringStyle};`}></div>
     <div class="ring-mask"></div>
     <div class="marker" style={`transform: rotate(${angle}deg);`}>
       <div class="marker-tip"></div>
     </div>
+
+    {#if coaching}
+      <!-- Ghost finger parked on the arc: the target, in the same visual
+           language the demo just used. -->
+      <div class="coach-hand" style={`transform: rotate(${arcMid}deg);`}>
+        <span class="hand-dot"></span>
+      </div>
+    {/if}
+
     <div class="hub">
       <div class="locks">
         {#each Array(totalLocks) as _, i (i)}
           <span class="lock" class:set={i < locksDone}>{i < locksDone ? '●' : '○'}</span>
         {/each}
       </div>
-      <div class="hub-hint">TAP IN THE ARC</div>
+      {#if coaching}
+        <div class="hub-cue" class:now={inTarget}>{inTarget ? 'TAP NOW' : 'WAIT…'}</div>
+      {:else}
+        <div class="hub-hint">TAP IN THE ARC</div>
+      {/if}
     </div>
   </div>
 </button>
@@ -202,11 +239,19 @@
     filter: drop-shadow(0 0 18px #ff3d3d);
   }
 
+  .track {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.09);
+    box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.6);
+  }
+
   .ring {
     position: absolute;
     inset: 0;
     border-radius: 50%;
-    opacity: 0.9;
+    opacity: 0.95;
   }
   /* Punch the ring into an annulus */
   .ring-mask {
@@ -254,15 +299,86 @@
   .lock {
     font-size: 1rem;
     color: rgba(255, 255, 255, 0.35);
+    transition:
+      color 0.2s,
+      transform 0.2s;
   }
   .lock.set {
     color: var(--bcolor);
-    text-shadow: 0 0 8px var(--bcolor);
+    text-shadow: 0 0 10px var(--bcolor);
+    transform: scale(1.15);
   }
   .hub-hint {
     font-family: var(--font-mono);
     font-size: 0.5rem;
     letter-spacing: 0.14em;
     color: rgba(255, 255, 255, 0.5);
+  }
+
+  /* ---- first-lock coaching ---- */
+  .coach-hand {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+  }
+  /* Sits on the ring itself at the arc's midpoint, so "where" needs no words */
+  .hand-dot {
+    position: absolute;
+    left: calc(50% - 11px);
+    top: 1%;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: radial-gradient(
+      circle at 34% 30%,
+      rgba(255, 255, 255, 0.95),
+      rgba(255, 255, 255, 0.35)
+    );
+    border: 1.5px solid rgba(255, 255, 255, 0.9);
+    box-shadow: 0 0 12px rgba(255, 255, 255, 0.7);
+    animation: hand-bob 1.1s ease-in-out infinite;
+  }
+  @keyframes hand-bob {
+    50% {
+      transform: scale(0.82);
+      opacity: 0.75;
+    }
+  }
+
+  .hub-cue {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+    padding: 0.15rem 0.5rem;
+    border-radius: var(--r-pill);
+    color: rgba(255, 255, 255, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    transition:
+      color 0.08s,
+      background 0.08s,
+      border-color 0.08s;
+  }
+  /* The moment the needle is genuinely inside the arc — this is the whole
+     lesson, delivered as a state change rather than a sentence. */
+  .hub-cue.now {
+    color: #04060f;
+    background: #4dff88;
+    border-color: #4dff88;
+    box-shadow: 0 0 16px rgba(77, 255, 136, 0.9);
+    animation: cue-punch 0.5s ease-in-out infinite;
+  }
+  @keyframes cue-punch {
+    50% {
+      transform: scale(1.09);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hand-dot,
+    .hub-cue.now {
+      animation: none;
+    }
   }
 </style>

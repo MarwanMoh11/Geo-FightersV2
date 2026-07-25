@@ -2,6 +2,7 @@
   import { uiState } from '../core/UIState.svelte.ts';
   import { WEAPONS } from '../core/WeaponRegistry';
   import { PASSIVES } from '../core/PassiveRegistry';
+  import { EVOLUTION_TIME_THRESHOLD } from '../core/EvolutionRegistry';
   import { formatBehaviourTag, type ExploitDef } from '../core/ExploitRegistry';
   import { getWeaponIcon, getPassiveIcon } from './icons';
 
@@ -23,15 +24,97 @@
     if (rarity === 'rare') return 'var(--color-primary)';
     return 'var(--color-text-dim)';
   }
+
+  /**
+   * Evolution coaching, read straight off the live loadout.
+   *
+   * Evolving is the single highest-impact thing a new player can do and it
+   * was completely invisible in-run: the recipe table lives behind two menus,
+   * so unless you went looking you never learned that a maxed weapon plus a
+   * specific passive turns into something far stronger. The bar now says it
+   * out loud, for the weapons you actually hold.
+   *
+   * Each weapon that has an evolution path gets one of three states:
+   *   ready   — maxed, partner held, clock past the gate → open a chest
+   *   partner — maxed (or close) but the partner passive is missing
+   *   path    — has a recipe, still levelling
+   */
+  type EvoState = 'ready' | 'partner' | 'path' | null;
+
+  let heldPassives = $derived(new Set(passives.map((p) => p.passiveId)));
+
+  function evoFor(weaponId: string, level: number) {
+    const def = WEAPONS[weaponId];
+    if (!def?.evolvesInto || !def.evolutionRequires) return null;
+    const maxed = level >= (def.maxLevel ?? 8);
+    const hasPartner = heldPassives.has(def.evolutionRequires);
+    const timeOk = uiState.gameTime >= EVOLUTION_TIME_THRESHOLD;
+    const state: EvoState = maxed && hasPartner && timeOk ? 'ready' : maxed ? 'partner' : 'path';
+    return {
+      state,
+      partnerId: def.evolutionRequires,
+      partnerName: PASSIVES[def.evolutionRequires]?.name ?? def.evolutionRequires,
+      evolvedName: WEAPONS[def.evolvesInto]?.name ?? def.evolvesInto,
+      hasPartner,
+      maxed,
+    };
+  }
+
+  /* The single most actionable pairing, surfaced as a one-line banner above
+     the bar. Only one at a time — a list of recipes mid-fight is noise. */
+  let evoHint = $derived.by(() => {
+    let best: { text: string; kind: 'ready' | 'need'; icon: string } | null = null;
+    for (const slot of weapons) {
+      const e = evoFor(slot.weaponId, slot.level);
+      if (!e) continue;
+      if (e.state === 'ready') {
+        return {
+          kind: 'ready' as const,
+          icon: getWeaponIcon(slot.weaponId),
+          text: `${getName(slot.weaponId, 'weapon')} can evolve — open a chest`,
+        };
+      }
+      if (e.state === 'partner' && !best) {
+        best = {
+          kind: 'need' as const,
+          icon: getWeaponIcon(slot.weaponId),
+          text: `${getName(slot.weaponId, 'weapon')} is maxed — add ${e.partnerName} to evolve`,
+        };
+      }
+    }
+    return best;
+  });
 </script>
 
 <div id="inventory-layer" class:hidden={uiState.gameState !== 'PLAYING'}>
+  {#if evoHint}
+    <div class="evo-hint" class:ready={evoHint.kind === 'ready'}>
+      <span class="evo-icon">
+        {#if evoHint.icon.startsWith('<svg')}
+          {@html evoHint.icon}
+        {:else}
+          {evoHint.icon}
+        {/if}
+      </span>
+      <span class="evo-text">{evoHint.text}</span>
+    </div>
+  {/if}
+
   <div class="loadout">
-    {#each weapons as slot, i}
+    {#each weapons as slot, i (slot.weaponId)}
       {@const icon = getWeaponIcon(slot.weaponId)}
       {@const name = getName(slot.weaponId, 'weapon')}
       {@const readiness = uiState.weaponReadiness[i] ?? 1}
-      <div class="slot weapon" title={name}>
+      {@const evo = evoFor(slot.weaponId, slot.level)}
+      {@const maxed = slot.level >= (WEAPONS[slot.weaponId]?.maxLevel ?? 8)}
+      <div
+        class="slot weapon"
+        class:maxed
+        class:evo-ready={evo?.state === 'ready'}
+        title={evo
+          ? `${name} — evolves with ${evo.partnerName} → ${evo.evolvedName}`
+          : name}
+      >
         <div class="art">
           {#if icon.startsWith('<svg')}
             {@html icon}
@@ -44,7 +127,13 @@
             <div class="cooldown" style="height: {(1 - readiness) * 100}%"></div>
           {/if}
         </div>
-        <span class="lvl tnum">{slot.level}</span>
+        <span class="lvl tnum" class:max={maxed}>{maxed ? 'M' : slot.level}</span>
+        <!-- Corner mark: this weapon has somewhere to go -->
+        {#if evo?.state === 'ready'}
+          <span class="evo-mark ready" aria-label="Ready to evolve">★</span>
+        {:else if evo?.state === 'partner'}
+          <span class="evo-mark need" aria-label="Needs partner passive">◈</span>
+        {/if}
       </div>
     {/each}
 
@@ -54,10 +143,13 @@
       <div class="row-break"></div>
     {/if}
 
-    {#each passives as slot}
+    {#each passives as slot (slot.passiveId)}
       {@const icon = getPassiveIcon(slot.passiveId)}
       {@const name = getName(slot.passiveId, 'passive')}
-      <div class="slot passive" title={name}>
+      {@const isPartner = weapons.some(
+        (w) => WEAPONS[w.weaponId]?.evolutionRequires === slot.passiveId,
+      )}
+      <div class="slot passive" class:partner={isPartner} title={name}>
         <div class="art">
           {#if icon.startsWith('<svg')}
             {@html icon}
@@ -76,7 +168,7 @@
       <div class="group-label">EXPLOITS</div>
     {/if}
 
-    {#each exploitSlots as def}
+    {#each exploitSlots as def, i (i)}
       {@const tag = def ? formatBehaviourTag(def) : ''}
       {@const color = def ? getRarityColor(def.rarity) : 'var(--color-text-dim)'}
       <div
@@ -105,6 +197,10 @@
     transform: translateX(-50%);
     z-index: var(--z-inventory);
     pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
     /* max-content keeps each group (weapons / passives) on a single row until it
        genuinely can't fit, then wraps; the max-width caps it to the screen and,
        anchored at the bottom, extra rows grow UPWARD into the frame rather than
@@ -115,6 +211,53 @@
 
   .hidden {
     display: none !important;
+  }
+
+  /* ---- Evolution coaching banner ---- */
+  .evo-hint {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    max-width: 100%;
+    padding: 0.25rem 0.6rem;
+    border-radius: var(--r-pill);
+    background: rgba(8, 13, 23, 0.86);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 216, 77, 0.4);
+    font-size: var(--fs-micro);
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: var(--color-gold);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  /* Ready to evolve is a *now* moment — it earns green and a pulse. */
+  .evo-hint.ready {
+    border-color: rgba(56, 245, 168, 0.55);
+    color: var(--color-accent);
+    box-shadow: 0 0 18px -6px rgba(56, 245, 168, 0.9);
+    animation: evo-throb 1.5s ease-in-out infinite;
+  }
+  @keyframes evo-throb {
+    50% {
+      box-shadow: 0 0 26px -4px rgba(56, 245, 168, 1);
+    }
+  }
+  .evo-icon {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    font-size: 0.8rem;
+  }
+  .evo-icon :global(svg) {
+    width: 13px;
+    height: 13px;
+  }
+  .evo-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   /* Minimal: subtle per-icon tiles, no heavy panel. Row-gap is near-zero so the
@@ -172,6 +315,24 @@
   }
   .passive .art {
     background: rgba(56, 245, 168, 0.1);
+  }
+  /* A passive that completes a recipe you're holding gets a quiet gold edge,
+     so the pairing is visible in the bar itself, not just the banner. */
+  .passive.partner .art {
+    box-shadow:
+      0 1px 3px rgba(0, 0, 0, 0.4),
+      inset 0 0 0 1px rgba(255, 216, 77, 0.65);
+  }
+  .weapon.maxed .art {
+    box-shadow:
+      0 1px 3px rgba(0, 0, 0, 0.4),
+      inset 0 0 0 1px rgba(255, 216, 77, 0.6);
+  }
+  .weapon.evo-ready .art {
+    box-shadow:
+      0 1px 3px rgba(0, 0, 0, 0.4),
+      inset 0 0 0 1px var(--color-accent),
+      0 0 14px -3px var(--color-accent);
   }
   .exploit .art {
     background: rgba(255, 61, 119, 0.12);
@@ -239,6 +400,34 @@
   .passive .lvl {
     background: var(--color-accent);
   }
+  /* "M" instead of 8 — max is a state worth naming, not a number to compare */
+  .lvl.max {
+    background: var(--color-gold);
+  }
+
+  /* Corner mark: where this weapon can still go */
+  .evo-mark {
+    position: absolute;
+    top: -3px;
+    left: -3px;
+    width: 13px;
+    height: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.5rem;
+    line-height: 1;
+    border-radius: 50%;
+    color: #04060f;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  }
+  .evo-mark.ready {
+    background: var(--color-accent);
+    animation: evo-throb 1.5s ease-in-out infinite;
+  }
+  .evo-mark.need {
+    background: var(--color-gold);
+  }
 
   /* Inline label that sits between rows (EXPLOITS heading). The pill style
      keeps it aligned to the slot bar's vertical centre without competing
@@ -281,6 +470,13 @@
       min-width: 12px;
       height: 12px;
       font-size: 0.48rem;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .evo-hint.ready,
+    .evo-mark.ready {
+      animation: none;
     }
   }
 </style>
