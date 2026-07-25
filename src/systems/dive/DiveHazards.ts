@@ -203,19 +203,21 @@ export function addBarrier(
   const len = outerR - innerR;
 
   const coreMat = glow(0xff2d4a, 0.85, THREE.DoubleSide);
-  const haloMat = glow(0xff8fa3, 0.22, THREE.DoubleSide);
-  mats.push(coreMat, haloMat);
+  const glowMat = glow(0xff8fa3, 0.22, THREE.DoubleSide);
+  mats.push(coreMat, glowMat);
 
-  const core = new THREE.Mesh(new THREE.BoxGeometry(BARRIER_HALF_WIDTH * 2, 3.2, len), coreMat);
+  const w = BARRIER_HALF_WIDTH * 2;
+
+  const core = new THREE.Mesh(new THREE.BoxGeometry(w, 3.2, len), coreMat);
   core.position.set(0, 1.6, innerR + len / 2);
   group.add(core);
 
-  const halo = new THREE.Mesh(new THREE.BoxGeometry(BARRIER_HALF_WIDTH * 4.5, 5, len), haloMat);
-  halo.position.set(0, 2.5, innerR + len / 2);
-  group.add(halo);
+  const glowMesh = new THREE.Mesh(new THREE.BoxGeometry(w, 5, len), glowMat);
+  glowMesh.position.set(0, 2.5, innerR + len / 2);
+  group.add(glowMesh);
 
   // Ground scar so the sweep reads even when the camera is tight on the player.
-  const scar = new THREE.Mesh(new THREE.PlaneGeometry(BARRIER_HALF_WIDTH * 3, len), haloMat);
+  const scar = new THREE.Mesh(new THREE.PlaneGeometry(w, len), glowMat);
   scar.rotation.x = -Math.PI / 2;
   scar.position.set(0, 0.05, innerR + len / 2);
   scar.renderOrder = 5;
