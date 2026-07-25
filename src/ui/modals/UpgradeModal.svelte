@@ -7,6 +7,8 @@
     type UpgradeOption,
   } from '../../systems/UpgradeSystem';
   import { formatBehaviourTag, getExploitById } from '../../core/ExploitRegistry';
+  import { WEAPONS } from '../../core/WeaponRegistry';
+  import { PASSIVES } from '../../core/PassiveRegistry';
   import { playUpgradeSelect, playMenuClick } from '../../core/audio';
   import { haptics } from '../../core/haptics';
   import Modal from '../Modal.svelte';
@@ -98,6 +100,35 @@
     return def ? formatBehaviourTag(def) : '';
   }
 
+  /**
+   * Evolution pairing hint — the beginner's biggest blind spot.
+   *
+   * Nothing at the level-up screen ever said that this particular passive is
+   * the one that evolves the weapon you're already carrying, so new players
+   * picked by description and never assembled a recipe by accident. The
+   * badge names the partner, at the exact moment the choice is made.
+   */
+  function pairingFor(option: UpgradeOption): string {
+    const held = uiState.weaponSlots;
+    const heldPassives = new Set(uiState.passiveSlots.map((p) => p.passiveId));
+
+    // Offering a passive that completes a weapon already in the loadout
+    if (option.type === 'passive_new' || option.type === 'passive_level') {
+      const match = held.find((w) => WEAPONS[w.weaponId]?.evolutionRequires === option.id);
+      if (match) return `Evolves ${WEAPONS[match.weaponId]?.name ?? match.weaponId}`;
+      return '';
+    }
+
+    // Offering a weapon whose partner passive is already held
+    if (option.type === 'weapon_new' || option.type === 'weapon_level') {
+      const req = WEAPONS[option.id]?.evolutionRequires;
+      if (req && heldPassives.has(req)) {
+        return `Pairs with ${PASSIVES[req]?.name ?? req}`;
+      }
+    }
+    return '';
+  }
+
   /* Colour the whole sheet by the best thing on offer, so a legendary drop
      announces itself before a single word is read. */
   const RANK = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
@@ -131,6 +162,7 @@
       {@const isExploit = option.type === 'exploit_new'}
       {@const exploitExtra = isExploit ? getExploitExtra(option) : ''}
       {@const canBanish = uiState.runBanishes > 0 && option.type !== 'health'}
+      {@const pairing = pairingFor(option)}
       <div class="card-wrap" style="--rarity-color: {color}; animation-delay: {i * 80}ms">
         <button
           class="card"
@@ -165,6 +197,9 @@
             <span class="desc">{option.description}</span>
             {#if isExploit && exploitExtra}
               <span class="rule-tag">{exploitExtra}</span>
+            {/if}
+            {#if pairing}
+              <span class="pair-tag"><span aria-hidden="true">⧉</span> {pairing}</span>
             {/if}
           </span>
         </button>
@@ -367,6 +402,22 @@
     padding: 1px 5px;
     margin-bottom: 0.1rem;
   }
+  /* Gold, like every other evolution cue in the game (loadout marks, the
+     Grimoire "both held" flag) so the association is learned once. */
+  .pair-tag {
+    align-self: flex-start;
+    margin-top: 0.35rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: var(--r-pill);
+    background: rgba(255, 216, 77, 0.14);
+    border: 1px solid rgba(255, 216, 77, 0.45);
+    font-family: var(--font-mono);
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    color: var(--color-gold);
+  }
+
   .rule-tag {
     margin-top: 0.3rem;
     font-family: var(--font-mono);

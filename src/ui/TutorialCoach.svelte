@@ -1,17 +1,21 @@
 <script lang="ts">
   /**
-   * Contextual, one-time tips.
+   * Contextual, one-time tips — anchored to the thing they describe.
    *
-   * The game has a lot of systems — overclock, breach nodes, exploits,
-   * evolutions, chests, the boss, endless — and none of them explained
-   * themselves. Front-loading all of that into the first-run briefing would
-   * just make a longer wall nobody reads, so each idea is instead taught the
-   * first moment it becomes relevant, once, ever.
+   * The game has a lot of systems (overclock, breach nodes, exploits,
+   * evolutions, the boss) and none of them explained themselves. Rather than
+   * front-loading all of it into a briefing nobody reads, each idea is taught
+   * the first moment it becomes relevant, once, ever.
+   *
+   * Crucially the tip does not just *describe* the thing — it points at it.
+   * A spotlight ring is measured onto the real HUD element and the card is
+   * placed beside it with a connector, the way a blockbuster tutorial calls
+   * out a new button. Telling a new player "the meter under your health is
+   * charged" is a sentence they have to solve; ringing the meter is not.
    *
    * This component is purely observational: it watches `uiState` and never
    * touches a game system, so triggers can be added or removed without any
-   * risk to simulation code. Tips queue rather than stack, never block input,
-   * and are suppressed while any modal owns the screen.
+   * risk to simulation code.
    */
   import { uiState, saveLocal } from '../core/UIState.svelte.ts';
   import { fly } from 'svelte/transition';
@@ -22,6 +26,10 @@
     icon: string;
     title: string;
     body: string;
+    /** Candidate CSS selectors for the element to spotlight, best first.
+        Svelte keeps original class names and only *adds* a scope class, so
+        plain component selectors resolve fine from here. */
+    anchor?: string[];
   }
 
   const SEEN_PREFIX = 'geo_tip_';
@@ -38,6 +46,9 @@
   let current = $state<Tip | null>(null);
   let hideTimer: ReturnType<typeof setTimeout> | undefined;
 
+  // Measured rect of the spotlighted element (null = unanchored, centre card)
+  let spot = $state<{ x: number; y: number; w: number; h: number } | null>(null);
+
   // Tips fired this session, so a value that oscillates can't re-queue one.
   const fired = new Set<string>();
 
@@ -51,34 +62,107 @@
   function dismiss() {
     clearTimeout(hideTimer);
     current = null;
+    spot = null;
   }
 
-  /* One at a time, with a beat between, so two triggers in the same frame
-     don't collapse into one unreadable flash. */
-  $effect(() => {
-    if (current || queue.length === 0) return;
-    // Never talk over a modal — it owns the screen and the player's attention.
-    if (
-      uiState.showUpgrade ||
+  /** Measure the first anchor that actually exists and is on screen. */
+  function measure(tip: Tip | null) {
+    if (!tip?.anchor) return null;
+    for (const sel of tip.anchor) {
+      const el = document.querySelector(sel);
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width < 4 || r.height < 4) continue;
+      // Pad the ring so it frames the element rather than clipping it
+      const pad = 8;
+      return { x: r.left - pad, y: r.top - pad, w: r.width + pad * 2, h: r.height + pad * 2 };
+    }
+    return null;
+  }
+
+  /* Anything that owns the screen. A tip must neither start nor survive
+     while one of these is up. */
+  const blocked = $derived(
+    uiState.showUpgrade ||
       uiState.showChestCeremony ||
       uiState.showProtocolChoice ||
       uiState.showSecondChance ||
       uiState.showVictoryChoice ||
       uiState.showOnboarding ||
       uiState.showHowTo ||
-      uiState.breach ||
-      uiState.gameState !== 'PLAYING'
-    ) {
-      return;
-    }
+      !!uiState.breach ||
+      uiState.gameState !== 'PLAYING',
+  );
+
+  /* Retract on interruption, and put the tip BACK in the queue.
+     Gating only the *start* of a tip left an already-visible one stranded:
+     level up mid-tip and the spotlight ring — which sits above the modal
+     layer so it can highlight HUD chrome — kept glowing over the upgrade
+     card, ringing nothing.
+
+     It re-queues rather than dismissing because `offer()` already wrote the
+     seen-flag; a plain dismiss would burn the one showing this tip ever
+     gets. Interrupted after half a second, you still get it afterwards. */
+  $effect(() => {
+    if (!blocked || !current) return;
+    clearTimeout(hideTimer);
+    queue.unshift(current);
+    current = null;
+    spot = null;
+  });
+
+  /* One at a time, with a beat between, so two triggers in the same frame
+     don't collapse into one unreadable flash. */
+  $effect(() => {
+    if (current || queue.length === 0 || blocked) return;
     const next = queue.shift();
     if (!next) return;
     current = next ?? null;
+    spot = measure(next);
     haptics.select();
-    hideTimer = setTimeout(dismiss, 7000);
+    hideTimer = setTimeout(dismiss, 8000);
+  });
+
+  // Keep the ring on target through rotation / resize / HUD reflow.
+  $effect(() => {
+    if (!current) return;
+    const sync = () => (spot = measure(current));
+    window.addEventListener('resize', sync);
+    const poll = setInterval(sync, 500);
+    return () => {
+      window.removeEventListener('resize', sync);
+      clearInterval(poll);
+    };
   });
 
   $effect(() => () => clearTimeout(hideTimer));
+
+  /* Card sits on the far side of the anchor from the screen edge it hugs,
+     clamped so it can never hang off. Unanchored tips fall back to the
+     lower third, clear of the loadout bar and the Overclock button. */
+  const placement = $derived.by(() => {
+    if (!spot) return { style: '', side: 'none' as const };
+    const vw = typeof window !== 'undefined' ? window.innerWidth : 400;
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
+    const below = spot.y + spot.h + 14;
+    const above = spot.y - 14;
+    // Prefer whichever side has more room for a ~120px card
+    const useBelow = below < vh * 0.55 || above < 150;
+
+    /* The card stays horizontally centred (it's the most readable position
+       on a phone), so the connector notch slides along its edge to line up
+       with the anchor instead. Without this the arrow points at the middle
+       of the screen while the ring is off in a corner. */
+    const cardW = Math.min(vw * 0.92, 400);
+    const cardLeft = vw / 2 - cardW / 2;
+    const anchorCx = spot.x + spot.w / 2;
+    const arrowX = Math.max(18, Math.min(cardW - 18, anchorCx - cardLeft));
+
+    const style =
+      (useBelow ? `top:${below}px;` : `bottom:${Math.max(8, vh - above)}px;`) +
+      `--arrow-x:${arrowX}px;`;
+    return { style, side: useBelow ? ('below' as const) : ('above' as const) };
+  });
 
   // ---- Triggers: each reads state only, and fires at most once ever ----
 
@@ -89,6 +173,8 @@
         id: 'overclock',
         icon: '⚡',
         title: 'Overclock is charged',
+        // Ring the button on touch, the meter on desktop where there is none.
+        anchor: ['.overload-btn', '.overload'],
         body: 'A short burst of overwhelming firepower. Save it for when the horde closes in.',
       });
     }
@@ -101,6 +187,7 @@
         id: 'breach',
         icon: '🔓',
         title: 'You found a data node',
+        anchor: ['.breach-prompt'],
         body: 'Jack in to run a quick hack for gear. Higher security means a harder hack and a better payout.',
       });
     }
@@ -113,7 +200,8 @@
         id: 'exploit',
         icon: '💀',
         title: 'Exploit installed',
-        body: "Exploits rewrite a rule of the run rather than adding numbers. You can hold three.",
+        anchor: ['.loadout'],
+        body: 'Exploits rewrite a rule of the run rather than adding numbers. You can hold three.',
       });
     }
   });
@@ -125,6 +213,7 @@
         id: 'boss',
         icon: '⚠️',
         title: 'Firewall awake',
+        anchor: ['.boss'],
         body: 'Keep circling and let your weapons work. Bring it down to clear the run.',
       });
     }
@@ -137,6 +226,7 @@
         id: 'combo',
         icon: '🔥',
         title: 'Combo chain',
+        anchor: ['.combo'],
         body: 'Fast consecutive kills build a chain. Keep it alive by never letting the horde thin out around you.',
       });
     }
@@ -149,14 +239,37 @@
         id: 'evolve',
         icon: '📖',
         title: 'A weapon is nearly maxed',
-        body: 'Max a weapon, hold its partner passive, then open a chest to evolve it. Check Evolutions from the pause menu.',
+        anchor: ['.loadout'],
+        body: 'Max a weapon, hold its partner passive, then open a chest to evolve it. Recipes are under Evolutions.',
       });
     }
   });
 </script>
 
 {#if current}
-  <div class="coach" transition:fly={{ y: 18, duration: 260 }} role="status" aria-live="polite">
+  <!-- Spotlight ring on the real element -->
+  {#if spot}
+    <div
+      class="spot"
+      style="left:{spot.x}px; top:{spot.y}px; width:{spot.w}px; height:{spot.h}px;"
+      aria-hidden="true"
+    >
+      <span class="spot-ring"></span>
+      <span class="spot-pulse"></span>
+    </div>
+  {/if}
+
+  <div
+    class="coach"
+    class:anchored={!!spot}
+    class:above={placement.side === 'above'}
+    class:below={placement.side === 'below'}
+    style={placement.style}
+    transition:fly={{ y: 18, duration: 260 }}
+    role="status"
+    aria-live="polite"
+  >
+    {#if spot}<span class="arrow" aria-hidden="true"></span>{/if}
     <span class="coach-icon" aria-hidden="true">{current.icon}</span>
     <div class="coach-text">
       <span class="coach-title">{current.title}</span>
@@ -168,15 +281,48 @@
 {/if}
 
 <style>
+  /* ---------- spotlight ---------- */
+  .spot {
+    position: fixed;
+    z-index: calc(var(--z-coach) - 1);
+    pointer-events: none;
+    border-radius: var(--r-md);
+  }
+  .spot-ring,
+  .spot-pulse {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    border: 2px solid var(--color-primary);
+  }
+  .spot-ring {
+    box-shadow:
+      0 0 18px rgba(54, 230, 255, 0.85),
+      inset 0 0 14px rgba(54, 230, 255, 0.35);
+  }
+  /* Expanding echo — the "look here" beat */
+  .spot-pulse {
+    animation: spot-echo 1.7s ease-out infinite;
+  }
+  @keyframes spot-echo {
+    0% {
+      opacity: 0.85;
+      transform: scale(1);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(1.28);
+    }
+  }
+
+  /* ---------- card ---------- */
   .coach {
     position: fixed;
     left: 50%;
     transform: translateX(-50%);
-    /* Clear of the loadout bar AND the Overclock button (which sits at
-       bottom 7.5rem and is ~4.2rem tall) — an overlapping tip covering the
-       very button it is telling you to press would be self-defeating. The
-       percentage cap keeps it on-screen on short landscape phones. */
-    bottom: min(calc(var(--safe-bottom) + 12.2rem), 46%);
+    /* Unanchored default: clear of the loadout bar, its evolution banner and
+       the ⚡ button */
+    bottom: min(calc(var(--safe-bottom) + 13.6rem), 46%);
     z-index: var(--z-coach);
     width: min(92vw, 25rem);
     display: flex;
@@ -184,7 +330,7 @@
     gap: 0.7rem;
     padding: 0.75rem 0.85rem;
     border-radius: var(--r-lg);
-    background: rgba(8, 13, 23, 0.94);
+    background: rgba(8, 13, 23, 0.96);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
     border: 1px solid var(--color-border-bright);
@@ -193,6 +339,35 @@
       0 0 26px -12px rgba(54, 230, 255, 0.9);
     pointer-events: auto;
     overflow: hidden;
+  }
+  /* When anchored, `top`/`bottom` come from the inline placement style */
+  .coach.anchored {
+    bottom: auto;
+  }
+  .coach.anchored.above {
+    top: auto;
+  }
+
+  /* Connector notch pointing back at the ringed element */
+  .arrow {
+    position: absolute;
+    left: var(--arrow-x, 50%);
+    width: 12px;
+    height: 12px;
+    margin-left: -6px;
+    background: rgba(8, 13, 23, 0.96);
+    border: 1px solid var(--color-border-bright);
+    transform: rotate(45deg);
+  }
+  .coach.below .arrow {
+    top: -7px;
+    border-right: none;
+    border-bottom: none;
+  }
+  .coach.above .arrow {
+    bottom: -7px;
+    border-left: none;
+    border-top: none;
   }
 
   .coach-icon {
@@ -254,7 +429,7 @@
     width: 100%;
     background: var(--color-primary);
     transform-origin: left center;
-    animation: coach-countdown 7s linear forwards;
+    animation: coach-countdown 8s linear forwards;
   }
   @keyframes coach-countdown {
     to {
@@ -263,9 +438,12 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .coach-timer {
+    .coach-timer,
+    .spot-pulse {
       animation: none;
-      opacity: 0.4;
+    }
+    .spot-pulse {
+      opacity: 0;
     }
   }
 </style>

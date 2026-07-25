@@ -10,11 +10,23 @@
     mercy: boolean; // BYTE: first antivirus contact freezes it
     running: boolean;
     variant: 'chase' | 'fog';
+    /** First time playing this game — show live on-board guidance. */
+    coach?: boolean;
     win: () => void;
     fail: () => void;
     flash: (msg: string) => void;
   }
-  let { sec, overclock, mercy, running, variant, win, fail, flash }: Props = $props();
+  let {
+    sec,
+    overclock,
+    mercy,
+    running,
+    variant,
+    coach = false,
+    win,
+    fail,
+    flash,
+  }: Props = $props();
 
   const COLS = 13;
   const ROWS = 9;
@@ -147,6 +159,39 @@
       });
     })(),
   );
+
+  /* Coaching breadcrumbs: a live BFS-downhill route from wherever the player
+     actually is to the exit, not a fixed path — wander off and the trail
+     re-points from your new cell, so it teaches "read the maze toward the
+     green" instead of memorising one line. Capped at a few cells so it hints
+     a direction rather than solving the maze for you. */
+  const distToExit = bfs(grid, exit.r, exit.c);
+  const BREADCRUMBS = 5;
+  const trail = $derived.by(() => {
+    if (!coach) return [] as [number, number][];
+    const out: [number, number][] = [];
+    let r = player.r;
+    let c = player.c;
+    for (let i = 0; i < BREADCRUMBS; i++) {
+      const d = distToExit[r][c];
+      if (d <= 0) break;
+      let moved = false;
+      for (const [dr, dc] of DIRS4) {
+        const nr = r + dr;
+        const nc = c + dc;
+        if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+        if (distToExit[nr][nc] === d - 1) {
+          r = nr;
+          c = nc;
+          out.push([r, c]);
+          moved = true;
+          break;
+        }
+      }
+      if (!moved) break;
+    }
+    return out;
+  });
 
   function gateAt(r: number, c: number) {
     return gates.find((g) => g.r === r && g.c === c);
@@ -389,6 +434,12 @@
         </div>
       {/each}
     {/each}
+    {#each trail as [tr, tc], i (i)}
+      <div
+        class="crumb"
+        style={`${posStyle(tr, tc)} animation-delay:${i * 110}ms; opacity:${0.85 - i * 0.13};`}
+      ></div>
+    {/each}
     <div class="packet" style={posStyle(player.r, player.c)}></div>
     {#each chasers as ch (ch.id)}
       <div class="chaser" class:frozen={ch.frozen > 0} style={posStyle(ch.r, ch.c)}></div>
@@ -495,6 +546,29 @@
   .gate {
     font-size: 0.8rem;
     filter: drop-shadow(0 0 4px #ffaa00);
+  }
+
+  /* Coaching breadcrumbs — a chevron of light running toward the exit. They
+     ripple outward in sequence so the eye reads a direction, not a set of
+     dots. Behind the packet and the chasers in z-order; purely decorative. */
+  .crumb {
+    position: absolute;
+    z-index: 1;
+    pointer-events: none;
+    border-radius: 50%;
+    transform: scale(0.3);
+    background: #fff;
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.9);
+    animation: crumb-flow 1.1s ease-in-out infinite;
+  }
+  @keyframes crumb-flow {
+    0%,
+    100% {
+      transform: scale(0.24);
+    }
+    50% {
+      transform: scale(0.42);
+    }
   }
 
   .packet {
@@ -640,7 +714,8 @@
 
   @media (prefers-reduced-motion: reduce) {
     .cell.exit,
-    .gp-arrow.next {
+    .gp-arrow.next,
+    .crumb {
       animation: none;
     }
   }

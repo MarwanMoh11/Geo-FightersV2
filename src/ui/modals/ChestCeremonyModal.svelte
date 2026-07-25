@@ -78,6 +78,20 @@
     uiState.chestRewards = [];
   }
 
+  /* Keyboard, to match the level-up screen.
+     Every other blocking modal in the run resolves from the keyboard — the
+     upgrade cards take 1-3 and Enter — so reaching for the mouse only for
+     the chest broke the rhythm of a run badly. Enter/Space/Escape all do
+     what the visible button does: skip the reveal, then continue. */
+  function onKeydown(e: KeyboardEvent) {
+    if (!uiState.showChestCeremony) return;
+    if (e.code === 'Enter' || e.code === 'Space' || e.code === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!e.repeat) close();
+    }
+  }
+
   // Multiplayer doesn't pause for the ceremony — if the run ends while it's
   // open, kill the fanfare and get out of the way of the game-over screen.
   $effect(() => {
@@ -88,6 +102,8 @@
     }
   });
 </script>
+
+<svelte:window onkeydown={onKeydown} />
 
 {#if uiState.showChestCeremony}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
@@ -137,6 +153,13 @@
         <div class="subtitle">
           {uiState.chestRewards.length} MODULE{uiState.chestRewards.length > 1 ? 'S' : ''} RECOVERED
         </div>
+        <!-- Reveal progress: without it the only cue that more was coming was
+             the row of question marks, which reads as "stuck" mid-fanfare. -->
+        <div class="pips" aria-hidden="true">
+          {#each uiState.chestRewards as _, i (i)}
+            <span class="pip" class:on={i < revealed}></span>
+          {/each}
+        </div>
       </div>
 
       <div class="rewards">
@@ -162,7 +185,8 @@
       </div>
 
       <button class="continue-btn" class:ready={done} onclick={close}>
-        {done ? 'CONTINUE' : 'SKIP'}
+        <span>{done ? 'CONTINUE' : 'SKIP'}</span>
+        <kbd class="kbd pointer-only">ENTER</kbd>
       </button>
     </div>
   </div>
@@ -557,6 +581,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 0.5rem;
     padding: 0.75rem 1.25rem;
     border-radius: var(--r-pill);
     font-size: var(--fs-label);
@@ -565,6 +590,36 @@
     color: var(--color-text-dim);
     border: 1px solid var(--color-border);
     transition: all var(--transition-fast);
+  }
+  .continue-btn .kbd {
+    font-size: 0.55rem;
+    letter-spacing: 0.06em;
+  }
+  .continue-btn.ready .kbd {
+    color: rgba(4, 6, 15, 0.65);
+    border-color: rgba(4, 6, 15, 0.3);
+    background: rgba(4, 6, 15, 0.12);
+  }
+
+  /* ---- reveal progress pips ---- */
+  .pips {
+    display: flex;
+    justify-content: center;
+    gap: 5px;
+    margin-top: 0.5rem;
+  }
+  .pip {
+    width: 16px;
+    height: 3px;
+    border-radius: var(--r-pill);
+    background: rgba(255, 255, 255, 0.16);
+    transition:
+      background 0.25s ease,
+      box-shadow 0.25s ease;
+  }
+  .pip.on {
+    background: var(--ceremony-color);
+    box-shadow: 0 0 8px var(--ceremony-glow);
   }
 
   .continue-btn.ready {
