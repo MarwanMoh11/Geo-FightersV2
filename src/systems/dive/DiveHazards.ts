@@ -396,20 +396,19 @@ export function tickHazards(
     if (distSqToSegment(px, pz, ax, az, bx, bz) <= BARRIER_HALF_WIDTH * BARRIER_HALF_WIDTH) {
       out.impact += BARRIER_DAMAGE;
       out.reset = true;
-      // Knockback normal: perpendicular to the radial segment, on the side the
-      // player is on. Pushing them back along this clears the wall without the
-      // disorienting full-arena teleport the old throw-back used.
+      // Push the player away from the closest point on the wall surface.
+      // This sends them back the way they came — not along the sweep tangent.
       const sdx = bx - ax;
       const sdz = bz - az;
-      const slen = Math.hypot(sdx, sdz) || 1;
-      let nx = -sdz / slen;
-      let nz = sdx / slen;
-      if ((px - ax) * nx + (pz - az) * nz < 0) {
-        nx = -nx;
-        nz = -nz;
-      }
-      out.knockX = nx;
-      out.knockZ = nz;
+      const lenSq = sdx * sdx + sdz * sdz;
+      const t = lenSq > 1e-6 ? ((px - ax) * sdx + (pz - az) * sdz) / lenSq : 0;
+      const cx = ax + sdx * Math.max(0, Math.min(1, t));
+      const cz = az + sdz * Math.max(0, Math.min(1, t));
+      const dx = px - cx;
+      const dz = pz - cz;
+      const dl = Math.hypot(dx, dz) || 1;
+      out.knockX = dx / dl;
+      out.knockZ = dz / dl;
       b.graceTimer = 1.6;
     }
   }
