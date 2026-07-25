@@ -2,7 +2,7 @@
   import { uiState } from '../../core/UIState.svelte.ts';
   import { requestRewardedAd } from '../../core/portal';
   import { reviveSecondChance, declineSecondChance } from '../../systems/GameManager';
-  import { fade, fly } from 'svelte/transition';
+  import Modal from '../Modal.svelte';
 
   // Guard against double taps while the ad request is in flight.
   let requesting = $state(false);
@@ -24,55 +24,40 @@
   }
 </script>
 
-{#if uiState.showSecondChance}
-  <div id="second-chance-modal" transition:fade={{ duration: 250 }}>
-    <div class="content glass" in:fly={{ y: 30, duration: 400, delay: 150 }}>
-      <h2 class="title">SIGNAL LOST</h2>
-      <div class="subtitle">EMERGENCY PROTOCOL AVAILABLE</div>
-
-      <div class="revive-wrap">
-        <div class="pulse-ring" aria-hidden="true"></div>
-        <button class="revive-btn" disabled={requesting} onclick={watchAd}>
-          <span class="btn-text">▶ SECOND CHANCE</span>
-          <span class="btn-subtext">{requesting ? 'LOADING…' : 'WATCH AD · REVIVE AT 50% HP'}</span>
-        </button>
-      </div>
-
-      <button class="decline-btn" disabled={requesting} onclick={declineSecondChance}>
-        ACCEPT FATE
-      </button>
-    </div>
+<!-- The offer must be answered, so there's no ✕ and no backdrop escape:
+     both exits are explicit buttons with their consequences spelled out. -->
+<Modal
+  open={uiState.showSecondChance}
+  eyebrow="Emergency protocol"
+  title="Signal lost"
+  subtitle="One revive is available this run."
+  size="sm"
+  tone="pink"
+  dismissible={false}
+>
+  <div class="revive-wrap">
+    <div class="pulse-ring" aria-hidden="true"></div>
+    <button class="revive-btn" disabled={requesting} onclick={watchAd}>
+      <span class="revive-glyph" aria-hidden="true">▶</span>
+      <span class="revive-text">
+        <span class="revive-label">Second chance</span>
+        <span class="revive-sub"
+          >{requesting ? 'Loading…' : 'Watch an ad · revive at 50% HP'}</span
+        >
+      </span>
+    </button>
   </div>
-{/if}
+
+  {#snippet footer()}
+    <button class="ui-btn ghost" disabled={requesting} onclick={declineSecondChance}>
+      Accept fate
+    </button>
+  {/snippet}
+</Modal>
 
 <style>
-  #second-chance-modal {
-    position: fixed;
-    inset: 0;
-    z-index: 3200; /* above the HUD, below nothing — this IS the moment */
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    background: rgba(8, 4, 8, 0.72);
-    backdrop-filter: blur(10px);
-    padding: 1.5rem;
-    pointer-events: auto;
-  }
-
-  .content {
-    position: relative;
-    width: 100%;
-    max-width: 340px;
-    border-radius: var(--r-xl);
-    padding: 2.25rem 1.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1.1rem;
-    text-align: center;
-  }
-
   /* Pulse traces the revive button's own shape (not a floating decoration
-     elsewhere on the card), so the "click here" cue sits exactly where the
+     elsewhere on the card), so the "tap here" cue sits exactly where the
      tap needs to land. */
   .revive-wrap {
     position: relative;
@@ -80,101 +65,88 @@
   .pulse-ring {
     position: absolute;
     inset: 0;
-    border-radius: var(--r-md);
-    border: 2px solid var(--color-gold);
-    animation: sc-pulse 1.4s ease-out infinite;
+    border-radius: var(--r-lg);
+    border: 2px solid var(--color-accent);
     pointer-events: none;
+    animation: revive-pulse 1.9s ease-out infinite;
   }
-  @keyframes sc-pulse {
+  @keyframes revive-pulse {
     0% {
+      opacity: 0.7;
       transform: scale(1);
-      opacity: 0.8;
     }
     100% {
-      transform: scale(1.08);
       opacity: 0;
+      transform: scale(1.11);
     }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .pulse-ring {
-      animation: none;
-      opacity: 0.5;
-    }
-  }
-
-  .title {
-    font-family: var(--font-heading);
-    font-size: 1.6rem;
-    font-weight: 800;
-    letter-spacing: 0.06em;
-    margin: 0;
-    color: var(--color-secondary);
-  }
-
-  .subtitle {
-    font-size: 0.6rem;
-    font-weight: 600;
-    letter-spacing: 0.22em;
-    text-transform: uppercase;
-    color: var(--color-text-dim);
   }
 
   .revive-btn {
     all: unset;
     box-sizing: border-box;
-    width: 100%;
     cursor: pointer;
-    padding: 1.1rem;
-    border-radius: var(--r-md);
-    background: var(--color-gold, #ffd75e);
-    color: #1b1206;
+    position: relative;
+    width: 100%;
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 0.25rem;
-    transition: all var(--transition-fast);
+    gap: 0.85rem;
+    min-height: 66px;
+    padding: 0.85rem 1.1rem;
+    border-radius: var(--r-lg);
+    background: linear-gradient(135deg, #5cffbe, var(--color-accent) 60%, #17c98a);
+    color: #03150e;
+    box-shadow:
+      0 10px 30px -12px rgba(56, 245, 168, 0.9),
+      inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    transition:
+      filter var(--transition-fast),
+      transform var(--transition-fast);
   }
-  .revive-btn:hover {
-    filter: brightness(1.08);
+  .revive-btn:hover:not(:disabled) {
+    filter: brightness(1.06);
   }
-  .revive-btn:active {
+  .revive-btn:active:not(:disabled) {
     transform: scale(0.985);
   }
   .revive-btn:disabled {
-    opacity: 0.6;
-    cursor: default;
-  }
-  .revive-btn .btn-text {
-    font-size: 1rem;
-    font-weight: 800;
-    letter-spacing: 0.04em;
-  }
-  .revive-btn .btn-subtext {
-    font-size: 0.55rem;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    opacity: 0.75;
+    cursor: wait;
+    filter: saturate(0.5) brightness(0.85);
   }
 
-  .decline-btn {
-    all: unset;
-    cursor: pointer;
-    padding: 0.7rem;
-    border-radius: var(--r-md);
-    font-size: 0.68rem;
+  .revive-glyph {
+    flex: 0 0 auto;
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: rgba(3, 21, 14, 0.16);
+    font-size: 1rem;
+  }
+  .revive-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+  }
+  .revive-label {
+    font-family: var(--font-heading);
+    font-size: 1.05rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    line-height: 1.1;
+  }
+  .revive-sub {
+    font-size: var(--fs-micro);
     font-weight: 700;
-    letter-spacing: 0.14em;
-    color: var(--color-text-dim);
-    border: 1px solid var(--color-border);
-    transition: all var(--transition-fast);
+    letter-spacing: 0.08em;
+    color: rgba(3, 21, 14, 0.66);
   }
-  .decline-btn:hover {
-    color: var(--color-text-main);
-    border-color: var(--color-border-bright);
-  }
-  .decline-btn:disabled {
-    opacity: 0.5;
-    cursor: default;
+
+  @media (prefers-reduced-motion: reduce) {
+    .pulse-ring {
+      animation: none;
+      opacity: 0.5;
+    }
   }
 </style>

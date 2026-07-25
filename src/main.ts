@@ -392,6 +392,13 @@ function startGameLoop(
         !uiState.showChestCeremony &&
         !uiState.showProtocolChoice &&
         !uiState.showSecondChance &&
+        // The first-run briefing and the How-to-Play reference both sit over a
+        // live arena. Without these the horde spawned and the clock ran while
+        // a brand-new player was still reading how to move — they finished the
+        // tutorial already surrounded. (Co-op deliberately keeps simulating:
+        // teammates are mid-run, and onboarding is skipped there anyway.)
+        !uiState.showOnboarding &&
+        !uiState.showHowTo &&
         !uiState.dive;
     }
 

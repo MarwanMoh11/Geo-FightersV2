@@ -217,7 +217,8 @@
     gap: 0.45rem;
   }
   .pad {
-    width: min(17vw, 3.6rem);
+    /* Never below the comfortable-touch floor, however narrow the screen */
+    width: max(var(--tap), min(17vw, 3.6rem));
     aspect-ratio: 1;
     font-size: 1.35rem;
     border-radius: 10px;

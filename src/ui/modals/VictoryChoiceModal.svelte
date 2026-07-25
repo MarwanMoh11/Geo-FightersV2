@@ -3,7 +3,7 @@
   import { resolveVictoryChoice } from '../../systems/GameManager';
   import { playMenuClick } from '../../core/audio';
   import { haptics } from '../../core/haptics';
-  import { fade, fly } from 'svelte/transition';
+  import Modal from '../Modal.svelte';
 
   function choose(stay: boolean) {
     playMenuClick();
@@ -12,70 +12,36 @@
   }
 </script>
 
-{#if uiState.showVictoryChoice}
-  <div id="victory-choice" transition:fade={{ duration: 250 }}>
-    <div class="content glass" in:fly={{ y: 30, duration: 450, delay: 150 }}>
-      <h2 class="title">CORRUPTION PURGED</h2>
-      <p class="subtitle">The system is clean… but the signal keeps growing.</p>
-
-      <div class="choices">
-        <button class="choice stay" onclick={() => choose(true)}>
-          <span class="choice-label">STAY IN THE SYSTEM</span>
-          <span class="choice-sub">Endless mode — how long can you last?</span>
-        </button>
-        <button class="choice extract" onclick={() => choose(false)}>
-          <span class="choice-label">EXTRACT</span>
-          <span class="choice-sub">Bank the victory</span>
-        </button>
-      </div>
-    </div>
+<!-- Not dismissible: the run cannot continue until one of the two futures is
+     picked, and a stray backdrop tap should never decide it. -->
+<Modal
+  open={uiState.showVictoryChoice}
+  eyebrow="Objective complete"
+  title="Corruption purged"
+  subtitle="The system is clean… but the signal keeps growing."
+  size="sm"
+  tone="green"
+  dismissible={false}
+>
+  <div class="choices">
+    <button class="choice stay" onclick={() => choose(true)}>
+      <span class="choice-icon" aria-hidden="true">∞</span>
+      <span class="choice-text">
+        <span class="choice-label">Stay in the system</span>
+        <span class="choice-sub">Endless mode — push your score as far as it goes.</span>
+      </span>
+    </button>
+    <button class="choice extract" onclick={() => choose(false)}>
+      <span class="choice-icon" aria-hidden="true">↥</span>
+      <span class="choice-text">
+        <span class="choice-label">Extract</span>
+        <span class="choice-sub">Bank the win and take your credits home.</span>
+      </span>
+    </button>
   </div>
-{/if}
+</Modal>
 
 <style>
-  #victory-choice {
-    position: fixed;
-    inset: 0;
-    z-index: 2200;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    background:
-      radial-gradient(ellipse 70% 60% at 50% 30%, rgba(60, 255, 170, 0.1), transparent 70%),
-      rgba(4, 10, 8, 0.82);
-    backdrop-filter: blur(12px);
-    padding: 1.5rem;
-    pointer-events: auto;
-  }
-
-  .content {
-    width: 100%;
-    max-width: 380px;
-    border-radius: var(--r-xl);
-    padding: 2rem 1.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1.4rem;
-    text-align: center;
-  }
-
-  .title {
-    font-family: var(--font-heading);
-    font-size: 1.4rem;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-    margin: 0;
-    color: #3cffaa;
-    text-shadow: 0 0 18px rgba(60, 255, 170, 0.4);
-  }
-
-  .subtitle {
-    font-size: 0.72rem;
-    color: var(--color-text-dim);
-    margin: 0;
-    line-height: 1.5;
-  }
-
   .choices {
     display: flex;
     flex-direction: column;
@@ -84,39 +50,69 @@
 
   .choice {
     all: unset;
+    box-sizing: border-box;
     cursor: pointer;
     display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    padding: 0.95rem 1.1rem;
+    align-items: center;
+    gap: 0.85rem;
+    min-height: var(--tap);
+    padding: 0.9rem 1rem;
     border-radius: var(--r-md);
     border: 1px solid var(--color-border);
-    transition: all var(--transition-fast);
+    background: var(--surface-2);
+    transition:
+      background var(--transition-fast),
+      border-color var(--transition-fast),
+      transform var(--transition-fast);
+  }
+  .choice:hover {
+    background: var(--surface-3);
+    transform: translateY(-1px);
+  }
+  .choice:active {
+    transform: scale(0.985);
   }
 
-  .choice:hover,
-  .choice:focus-visible {
-    background: rgba(255, 255, 255, 0.05);
+  .choice-icon {
+    flex: 0 0 auto;
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    border-radius: var(--r-sm);
+    background: rgba(255, 255, 255, 0.06);
+    font-size: 1.2rem;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--color-text-dim);
+  }
+  .choice-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+  }
+  .choice-label {
+    font-size: var(--fs-label);
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: var(--color-text-main);
+  }
+  .choice-sub {
+    font-size: var(--fs-micro);
+    line-height: 1.4;
+    color: var(--color-text-dim);
   }
 
   .choice.stay {
-    border-color: #3cffaa;
-    background: rgba(60, 255, 170, 0.08);
+    border-color: rgba(56, 245, 168, 0.5);
+    background: rgba(56, 245, 168, 0.08);
   }
-
-  .choice-label {
-    font-size: 0.8rem;
-    font-weight: 800;
-    letter-spacing: 0.1em;
-    color: var(--color-text-main);
-  }
-
   .choice.stay .choice-label {
-    color: #3cffaa;
+    color: var(--color-accent);
   }
-
-  .choice-sub {
-    font-size: 0.62rem;
-    color: var(--color-text-dim);
+  .choice.stay .choice-icon {
+    color: var(--color-accent);
+    background: rgba(56, 245, 168, 0.14);
   }
 </style>

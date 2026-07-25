@@ -1,5 +1,12 @@
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
+/* ==================================================================
+   GEO FIGHTERS — DESIGN SYSTEM
+   One source of truth for colour, type, space, motion and controls.
+   Components import nothing: every shared look lives here as a global
+   class so Svelte's style scoping can't fragment it again.
+   ================================================================== */
+
 :root {
   /* ---- Palette: restrained neon on near-black ---- */
   --color-bg-dark: #04060f;
@@ -10,22 +17,49 @@
   --color-accent: #38f5a8; /* green / success */
   --color-gold: #ffd84d; /* xp / highlight */
   --color-text-main: #eaf2ff;
-  --color-text-dim: #7e8aa3;
-  --color-text-faint: #4d566b;
-  --color-border: rgba(255, 255, 255, 0.08);
+  --color-text-dim: #8b97b0;
+  --color-text-faint: #5b6480;
+  --color-border: rgba(255, 255, 255, 0.09);
   --color-border-bright: rgba(54, 230, 255, 0.45);
 
-  /* ---- Surfaces (clean glass, minimal glow) ---- */
+  /* Rarity ramp — shared by upgrades, chests, exploits, evolutions */
+  --rarity-common: #8b97b0;
+  --rarity-uncommon: #38f5a8;
+  --rarity-rare: #36e6ff;
+  --rarity-epic: #b06bff;
+  --rarity-legendary: #ffd84d;
+
+  /* ---- Surfaces: a real elevation ladder ---- */
+  --surface-0: #04060f; /* page */
+  --surface-1: rgba(11, 15, 26, 0.94); /* sheet / modal body */
+  --surface-2: rgba(255, 255, 255, 0.038); /* card on a sheet */
+  --surface-3: rgba(255, 255, 255, 0.07); /* raised / hover card */
+  --surface-sunken: rgba(0, 0, 0, 0.3); /* wells, tracks, inputs */
+  --scrim: rgba(3, 5, 12, 0.78); /* modal backdrop */
+
   --glass-bg: rgba(10, 14, 24, 0.66);
   --glass-bg-solid: rgba(10, 14, 24, 0.92);
-  --glass-border: 1px solid rgba(255, 255, 255, 0.08);
+  --glass-border: 1px solid rgba(255, 255, 255, 0.09);
   --glass-blur: blur(18px) saturate(125%);
   --glass-shadow: 0 6px 28px rgba(0, 0, 0, 0.45);
 
+  --elev-1: 0 2px 10px rgba(0, 0, 0, 0.35);
+  --elev-2: 0 10px 30px rgba(0, 0, 0, 0.5);
+  --elev-3: 0 24px 64px rgba(0, 0, 0, 0.62);
+
   /* ---- Typography ---- */
-  --font-heading: 'Orbitron', 'Inter', sans-serif;
-  --font-body: 'Inter', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --font-heading: 'Orbitron', 'Inter', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+
+  /* One type scale. Nothing outside this list. */
+  --fs-display: clamp(2.25rem, 11vw, 3.5rem);
+  --fs-title: clamp(1.15rem, 4.6vw, 1.45rem);
+  --fs-heading: 1rem;
+  --fs-body: 0.875rem;
+  --fs-label: 0.78rem;
+  --fs-caption: 0.7rem;
+  --fs-micro: 0.6rem;
 
   /* ---- Radii ---- */
   --r-sm: 8px;
@@ -46,15 +80,46 @@
   --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-smooth: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-springy: 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 
   /* ---- Safe-area insets (notch / rounded corners / home indicator) ---- */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
+
+  /* ---- Layout contracts every overlay obeys ---- */
+  /* Minimum comfortable touch target. Nothing interactive goes below it. */
+  --tap: 44px;
+  /* Modal/sheet height cap — dvh so a mobile toolbar can't clip the footer */
+  --modal-max-h: min(88dvh, 820px);
+  /* ---- Z-index ladder. Every overlay picks from this list, never a
+     hand-rolled number, so stacking order stays predictable. ---- */
+  --z-inventory: 40;
+  /* Steering sits BELOW the HUD on purpose: the joystick zone covers the whole
+     screen, so anything above it (pause button, prompts) would lose its taps. */
+  --z-controls: 80;
+  --z-hud: 120;
+  --z-prompt: 150;
+  --z-menu: 1000;
+  --z-modal: 2000;
+  --z-coach: 2200; /* tutorial coach marks sit above modals they point at */
+  --z-onboarding: 2300;
+  --z-toast: 2600;
+  --z-debug: 2800;
+
+  /* Gutter used by sheets and full-screen panels, safe-area aware */
+  --gutter: 1.15rem;
+  --pad-top: calc(var(--safe-top) + var(--gutter));
+  --pad-bottom: calc(var(--safe-bottom) + var(--gutter));
+  --pad-left: calc(var(--safe-left) + var(--gutter));
+  --pad-right: calc(var(--safe-right) + var(--gutter));
 }
 
-/* ---- Clean glass surface utility ---- */
+/* ==================================================================
+   SURFACES
+   ================================================================== */
+
 .glass {
   background: var(--glass-bg);
   backdrop-filter: var(--glass-blur);
@@ -63,12 +128,91 @@
   box-shadow: var(--glass-shadow);
 }
 
-/* Tiny tracked label used everywhere in the HUD */
+/* Console panel: the signature surface. A dark pane with a 1px inner neon
+   hairline and a faint scanline weave, so menus read as one machine. */
+.sheet {
+  position: relative;
+  background: var(--surface-1);
+  backdrop-filter: blur(22px) saturate(130%);
+  -webkit-backdrop-filter: blur(22px) saturate(130%);
+  border: 1px solid var(--color-border);
+  box-shadow:
+    var(--elev-3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* Decorative scanline texture. Applied via ::before so it never intercepts
+   taps and never affects layout. */
+.sheet::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image: repeating-linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.022) 0px,
+    rgba(255, 255, 255, 0.022) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+
+/* ==================================================================
+   SCROLLING
+   `body { touch-action: none }` suppresses page-level gestures over the
+   canvas. Any scrollable menu region must opt back in, or a finger drag
+   does nothing and the content below the fold is unreachable.
+   ================================================================== */
+
+.menu-scroll {
+  overflow-y: auto;
+  overflow-x: hidden;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.menu-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.menu-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.menu-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: var(--r-pill);
+}
+.menu-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+/* Horizontal rails (character thumbnails, stat strips) */
+.rail-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  touch-action: pan-x;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.rail-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* ==================================================================
+   TEXT UTILITIES
+   ================================================================== */
+
+/* Tiny tracked label used everywhere in the HUD and menu headers */
 .eyebrow {
-  font-family: var(--font-body);
-  font-size: 0.5rem;
-  font-weight: 600;
-  letter-spacing: 0.18em;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--color-text-dim);
 }
@@ -88,10 +232,433 @@
   color: var(--color-secondary);
 }
 
-/* Shared focus affordance: keyboard navigation must always be visible */
+/* Screen-reader-only: labels that assistive tech needs but the art doesn't */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ==================================================================
+   HEADER GRAMMAR
+   Every panel headline is the same three parts: eyebrow, title, readout.
+   ================================================================== */
+
+.ui-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+.ui-head-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.ui-title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: var(--fs-title);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1.1;
+  color: var(--color-text-main);
+}
+.ui-sub {
+  margin: 0;
+  font-size: var(--fs-caption);
+  line-height: 1.4;
+  color: var(--color-text-dim);
+}
+
+/* ==================================================================
+   BUTTONS
+   .ui-btn is the base. Variants: primary / ghost / danger / quiet.
+   Sizes: default / lg / sm. Everything is >= 44px tall.
+   ================================================================== */
+
+.ui-btn {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: var(--tap);
+  padding: 0.7rem 1.1rem;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  border: 1px solid var(--color-border);
+  font-family: var(--font-body);
+  font-size: var(--fs-label);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--color-text-main);
+  text-align: center;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    transform var(--transition-fast),
+    filter var(--transition-fast),
+    opacity var(--transition-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+.ui-btn:hover:not(:disabled):not([aria-disabled='true']) {
+  background: var(--surface-3);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.ui-btn:active:not(:disabled):not([aria-disabled='true']) {
+  transform: scale(0.97);
+}
+.ui-btn:disabled,
+.ui-btn[aria-disabled='true'] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ui-btn.primary {
+  background: linear-gradient(180deg, #4ff0ff, var(--color-primary));
+  border-color: transparent;
+  color: #04060f;
+  font-weight: 800;
+  box-shadow:
+    0 6px 20px -8px rgba(54, 230, 255, 0.85),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+.ui-btn.primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+  background: linear-gradient(180deg, #4ff0ff, var(--color-primary));
+  border-color: transparent;
+}
+
+.ui-btn.ghost {
+  background: transparent;
+}
+.ui-btn.ghost:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.ui-btn.danger {
+  border-color: rgba(255, 61, 119, 0.35);
+  color: #ff8fb0;
+}
+.ui-btn.danger:hover:not(:disabled) {
+  background: rgba(255, 61, 119, 0.12);
+  border-color: rgba(255, 61, 119, 0.6);
+}
+
+/* Tertiary text row — quiet, but still a full-height tap target */
+.ui-btn.quiet {
+  background: transparent;
+  border-color: transparent;
+  font-weight: 600;
+  color: var(--color-text-dim);
+}
+.ui-btn.quiet:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: transparent;
+  color: var(--color-text-main);
+}
+
+.ui-btn.lg {
+  min-height: 56px;
+  padding: 0.9rem 1.4rem;
+  font-size: var(--fs-heading);
+  border-radius: var(--r-lg);
+}
+.ui-btn.block {
+  display: flex;
+  width: 100%;
+}
+
+/* Icon-only control (close, pause, stepper). Square and always tappable. */
+.ui-icon-btn {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  flex: 0 0 auto;
+  width: var(--tap);
+  height: var(--tap);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-main);
+  font-size: 1rem;
+  line-height: 1;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    transform var(--transition-fast),
+    opacity var(--transition-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+.ui-icon-btn:hover:not(:disabled) {
+  background: var(--surface-3);
+  border-color: var(--color-border-bright);
+}
+.ui-icon-btn:active:not(:disabled) {
+  transform: scale(0.92);
+}
+.ui-icon-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* ==================================================================
+   CHIPS / BADGES
+   ================================================================== */
+
+.ui-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--color-border);
+  background: var(--surface-2);
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text-dim);
+  white-space: nowrap;
+}
+.ui-chip.gold {
+  border-color: rgba(255, 216, 77, 0.3);
+  background: rgba(255, 216, 77, 0.1);
+  color: var(--color-gold);
+}
+.ui-chip.cyan {
+  border-color: rgba(54, 230, 255, 0.32);
+  background: rgba(54, 230, 255, 0.1);
+  color: var(--color-primary);
+}
+.ui-chip.green {
+  border-color: rgba(56, 245, 168, 0.3);
+  background: rgba(56, 245, 168, 0.1);
+  color: var(--color-accent);
+}
+.ui-chip.pink {
+  border-color: rgba(255, 61, 119, 0.32);
+  background: rgba(255, 61, 119, 0.1);
+  color: var(--color-secondary);
+}
+
+/* ==================================================================
+   TABS — one primitive, underline-pill style
+   ================================================================== */
+
+.ui-tabs {
+  display: flex;
+  gap: 0.3rem;
+  padding: 0.25rem;
+  border-radius: var(--r-pill);
+  background: var(--surface-sunken);
+  border: 1px solid var(--color-border);
+}
+.ui-tab {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  flex: 1;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.7rem;
+  border-radius: var(--r-pill);
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text-dim);
+  white-space: nowrap;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
+}
+.ui-tab:hover {
+  color: var(--color-text-main);
+}
+.ui-tab[aria-selected='true'] {
+  background: rgba(54, 230, 255, 0.14);
+  color: var(--color-primary);
+  box-shadow: inset 0 0 0 1px rgba(54, 230, 255, 0.35);
+}
+
+/* ==================================================================
+   PROGRESS / METERS
+   ================================================================== */
+
+.ui-meter {
+  position: relative;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+.ui-meter-fill {
+  height: 100%;
+  border-radius: var(--r-pill);
+  background: linear-gradient(90deg, var(--color-primary-dim), var(--color-primary));
+  transition: width 0.25s var(--ease-out-expo);
+}
+
+/* Level pips — the "LV 3/5" dot row used by shop + upgrades */
+.ui-pips {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.ui-pip {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+}
+.ui-pip.on {
+  background: var(--color-primary);
+  box-shadow: 0 0 6px rgba(54, 230, 255, 0.8);
+}
+
+/* ==================================================================
+   FIELDS
+   ================================================================== */
+
+.ui-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.ui-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 0.6rem 0.9rem;
+  border-radius: var(--r-md);
+  background: var(--surface-sunken);
+  border: 1px solid var(--color-border);
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--color-text-main);
+  outline: none;
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast);
+  -webkit-user-select: text;
+  user-select: text;
+}
+.ui-input::placeholder {
+  color: var(--color-text-faint);
+}
+.ui-input:focus {
+  border-color: var(--color-border-bright);
+  background: rgba(54, 230, 255, 0.06);
+}
+
+/* ==================================================================
+   FOCUS — keyboard navigation must always be visible
+   ================================================================== */
+
 button:focus-visible,
+a:focus-visible,
+input:focus-visible,
 [role='button']:focus-visible,
-input:focus-visible {
+[role='tab']:focus-visible,
+[tabindex]:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* Fade a modal out while an interstitial/reset runs behind it, so the tap
+   reads as acknowledged instead of frozen. Global because the class is
+   passed into Modal from the outside. */
+.modal-root.leaving {
+  opacity: 0;
+  transition: opacity 0.22s ease;
+  pointer-events: none;
+}
+
+/* ==================================================================
+   INPUT-MODE ADAPTATION
+   Mobile and desktop are two first-class targets, not one scaled to
+   fit the other. These utilities let a component show the right
+   affordance for the device instead of the lowest common denominator.
+   ================================================================== */
+
+/* Keyboard hint pill — "ESC", "SPACE". Hidden on touch, where it lies. */
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5em;
+  padding: 0.1em 0.4em;
+  border-radius: 5px;
+  border: 1px solid var(--color-border);
+  border-bottom-width: 2px;
+  background: var(--surface-sunken);
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--color-text-dim);
+  white-space: nowrap;
+}
+
+/* Shown only where a real pointer exists (mouse/trackpad). */
+.pointer-only {
+  display: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .pointer-only {
+    display: revert;
+  }
+  .touch-only {
+    display: none !important;
+  }
+}
+
+/* Desktop: more air, larger reading sizes, wider measure. Phones stay
+   compact so the thumb zone and the play area both keep their room. */
+@media (min-width: 768px) {
+  :root {
+    --gutter: 1.75rem;
+    --fs-body: 0.9375rem;
+    --fs-label: 0.82rem;
+    --fs-caption: 0.75rem;
+    --fs-micro: 0.64rem;
+    --modal-max-h: min(86dvh, 900px);
+  }
+}
+
+/* ==================================================================
+   REDUCED MOTION
+   Decorative motion stops; state changes stay legible.
+   ================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

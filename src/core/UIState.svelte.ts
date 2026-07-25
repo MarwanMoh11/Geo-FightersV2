@@ -53,7 +53,6 @@ export const uiState = $state({
   creditsCollected: 0,
   selectedCharacter: getLocalVal<string>('geo_selected_character', 'cypher'),
   permanentUpgrades: getUpgradeDefaults(),
-  showShop: false,
   showGrimoire: false,
 
   // Run Specific Defrag Modifiers
@@ -242,6 +241,9 @@ export const uiState = $state({
 
   // First-run tutorial overlay (shown once, then remembered)
   showOnboarding: false,
+  // "How to Play" reference — always reachable from the menu and the pause
+  // screen, so a player who skipped onboarding is never stranded.
+  showHowTo: false,
 
   // Global leaderboard: rank of the run that just ended (0 = none/unranked)
   lastRunRank: 0,

@@ -103,7 +103,7 @@
     left: 50%;
     bottom: calc(var(--safe-bottom) + 14px);
     transform: translateX(-50%);
-    z-index: 40;
+    z-index: var(--z-inventory);
     pointer-events: none;
     /* max-content keeps each group (weapons / passives) on a single row until it
        genuinely can't fit, then wraps; the max-width caps it to the screen and,
@@ -238,9 +238,6 @@
   }
   .passive .lvl {
     background: var(--color-accent);
-  }
-  .exploit .lvl {
-    background: var(--color-secondary);
   }
 
   /* Inline label that sits between rows (EXPLOITS heading). The pill style

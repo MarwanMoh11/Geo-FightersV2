@@ -4,291 +4,198 @@
   import { PASSIVES } from '../../core/PassiveRegistry';
   import { EVOLUTIONS } from '../../core/EvolutionRegistry';
   import { getWeaponIcon, getPassiveIcon } from '../icons';
-  import { fade, scale } from 'svelte/transition';
+  import { playMenuClick } from '../../core/audio';
+  import Modal from '../Modal.svelte';
 
   function close() {
+    playMenuClick();
     uiState.showGrimoire = false;
   }
+
+  /* Mid-run this doubles as a build planner: a recipe you already hold both
+     halves of is called out, so you can see what's one level-up away instead
+     of memorising the table. */
+  let ownedWeapons = $derived(new Set(uiState.weaponSlots.map((s) => s.weaponId)));
+  let ownedPassives = $derived(new Set(uiState.passiveSlots.map((s) => s.passiveId)));
+  let inRun = $derived(uiState.gameState === 'PLAYING' || uiState.gameState === 'PAUSED');
 </script>
 
-{#if uiState.showGrimoire}
-  <div id="grimoire-modal" transition:fade={{ duration: 180 }}>
-    <div class="sheet glass" transition:scale={{ duration: 240, start: 0.95 }}>
-      <header class="grimoire-header">
-        <h2 class="title">System Evolutions</h2>
-        <p class="subtitle">Weapon + Passive Combinations (Grimoire)</p>
-      </header>
+<Modal
+  open={uiState.showGrimoire}
+  eyebrow="Grimoire"
+  title="Evolutions"
+  subtitle="Max a weapon, hold its partner passive, then open a chest to evolve it."
+  size="lg"
+  tone="pink"
+  backdropClose
+  onclose={close}
+>
+  <div class="evolutions">
+    {#each EVOLUTIONS as evo (evo.evolvedWeaponId)}
+      {@const baseW = WEAPONS[evo.weaponId]}
+      {@const passP = PASSIVES[evo.passiveId]}
+      {@const evolvedW = WEAPONS[evo.evolvedWeaponId]}
+      {#if baseW && passP && evolvedW}
+        {@const hasW = ownedWeapons.has(evo.weaponId)}
+        {@const hasP = ownedPassives.has(evo.passiveId)}
+        {@const ready = inRun && hasW && hasP}
+        <div class="recipe" class:ready>
+          {#if ready}
+            <span class="ready-flag">Both held</span>
+          {/if}
+          <div class="recipe-row">
+            <div class="element" class:have={inRun && hasW}>
+              <div class="element-icon">{@html getWeaponIcon(evo.weaponId)}</div>
+              <div class="element-name">{baseW.name}</div>
+              <div class="element-tag">Weapon</div>
+            </div>
 
-      <div class="scroll-area">
-        <div class="evolutions-grid">
-          {#each EVOLUTIONS as evo}
-            {@const baseW = WEAPONS[evo.weaponId]}
-            {@const passP = PASSIVES[evo.passiveId]}
-            {@const evolvedW = WEAPONS[evo.evolvedWeaponId]}
-            {#if baseW && passP && evolvedW}
-              <div class="recipe-card">
-                <div class="recipe-row">
-                  <!-- Base Weapon -->
-                  <div class="element">
-                    <div class="element-icon">
-                      {@html getWeaponIcon(evo.weaponId)}
-                    </div>
-                    <div class="element-name">{baseW.name}</div>
-                    <div class="element-tag">WEAPON</div>
-                  </div>
+            <span class="operator" aria-hidden="true">+</span>
 
-                  <span class="operator">+</span>
+            <div class="element" class:have={inRun && hasP}>
+              <div class="element-icon">{@html getPassiveIcon(evo.passiveId)}</div>
+              <div class="element-name">{passP.name}</div>
+              <div class="element-tag">Passive</div>
+            </div>
 
-                  <!-- Required Passive -->
-                  <div class="element">
-                    <div class="element-icon">
-                      {@html getPassiveIcon(evo.passiveId)}
-                    </div>
-                    <div class="element-name">{passP.name}</div>
-                    <div class="element-tag">PASSIVE</div>
-                  </div>
+            <span class="operator" aria-hidden="true">=</span>
 
-                  <span class="operator">=</span>
+            <div class="element evolved">
+              <div class="element-icon evolved-glow">{@html getWeaponIcon(evo.evolvedWeaponId)}</div>
+              <div class="element-name evolved-name">{evolvedW.name}</div>
+              <div class="element-tag evolved-tag">Evolved</div>
+            </div>
+          </div>
 
-                  <!-- Evolved Weapon -->
-                  <div class="element evolved">
-                    <div class="element-icon evolved-glow">
-                      {@html getWeaponIcon(evo.evolvedWeaponId)}
-                    </div>
-                    <div class="element-name evolved-name">{evolvedW.name}</div>
-                    <div class="element-tag evolved-tag">EVOLVED</div>
-                  </div>
-                </div>
-
-                <div class="recipe-desc">
-                  {evolvedW.description}
-                </div>
-              </div>
-            {/if}
-          {/each}
+          <p class="recipe-desc">{evolvedW.description}</p>
         </div>
-      </div>
-
-      <button class="close-btn" onclick={close}>
-        <span class="btn-text">Close Grimoire</span>
-      </button>
-    </div>
+      {/if}
+    {/each}
   </div>
-{/if}
+
+  {#snippet footer()}
+    <button class="ui-btn primary" onclick={close}>Close</button>
+  {/snippet}
+</Modal>
 
 <style>
-  #grimoire-modal {
-    position: fixed;
-    inset: 0;
-    z-index: 2500;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    background: rgba(4, 6, 15, 0.72);
-    backdrop-filter: blur(12px);
-    padding: 1.5rem;
-    pointer-events: auto;
-  }
-
-  .sheet {
-    width: 100%;
-    max-width: 680px;
-    max-height: 80vh;
-    border-radius: var(--r-xl);
-    padding: 2rem 1.5rem 1.5rem;
+  .evolutions {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
-    text-align: center;
-    overflow: hidden;
+    gap: 0.6rem;
   }
 
-  .grimoire-header {
-    text-align: center;
-  }
-
-  .title {
-    font-family: var(--font-heading);
-    font-size: 1.5rem;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-    margin: 0;
-    color: var(--color-text-main);
-  }
-
-  .subtitle {
-    font-size: 0.62rem;
-    font-weight: 600;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: var(--color-primary);
-    margin-top: 0.5rem;
-  }
-
-  .scroll-area {
-    flex: 1;
-    overflow-y: auto;
-    padding-right: 0.5rem;
-  }
-
-  /* Custom Scrollbar for matrix look */
-  .scroll-area::-webkit-scrollbar {
-    width: 4px;
-  }
-  .scroll-area::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.02);
-  }
-  .scroll-area::-webkit-scrollbar-thumb {
-    background: var(--color-border-bright);
-    border-radius: 2px;
-  }
-
-  .evolutions-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    text-align: left;
-  }
-
-  .recipe-card {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--color-border);
+  .recipe {
+    position: relative;
+    padding: 0.9rem 0.85rem;
     border-radius: var(--r-md);
-    padding: 1rem 1.2rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.8rem;
-    transition: all var(--transition-fast);
+    background: var(--surface-2);
+    border: 1px solid var(--color-border);
   }
-  .recipe-card:hover {
-    background: rgba(255, 255, 255, 0.035);
-    border-color: rgba(0, 229, 255, 0.25);
+  .recipe.ready {
+    border-color: rgba(56, 245, 168, 0.45);
+    background: rgba(56, 245, 168, 0.06);
+  }
+  .ready-flag {
+    position: absolute;
+    top: -0.55rem;
+    right: 0.7rem;
+    padding: 0.12rem 0.5rem;
+    border-radius: var(--r-pill);
+    background: var(--color-accent);
+    color: #03150e;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
   }
 
   .recipe-row {
-    display: flex;
-    flex-direction: row;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr auto 1fr;
     align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
+    gap: 0.35rem;
   }
 
   .element {
-    flex: 1;
     display: flex;
     flex-direction: column;
     align-items: center;
-    text-align: center;
-    gap: 0.25rem;
+    gap: 0.2rem;
     min-width: 0;
+    text-align: center;
+    opacity: 0.9;
+  }
+  .element.have .element-icon {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 14px -6px var(--color-accent);
   }
 
   .element-icon {
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    width: 42px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    border-radius: var(--r-sm);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--color-border);
   }
   .element-icon :global(svg) {
-    width: 100%;
-    height: 100%;
+    width: 26px;
+    height: 26px;
   }
 
   .element-name {
-    font-size: 0.72rem;
+    font-size: var(--fs-micro);
     font-weight: 700;
+    line-height: 1.25;
     color: var(--color-text-main);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    width: 100%;
+    overflow-wrap: anywhere;
   }
-
   .element-tag {
     font-family: var(--font-mono);
-    font-size: 0.48rem;
-    letter-spacing: 0.08em;
-    color: var(--color-text-dim);
+    font-size: 0.5rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--color-text-faint);
+  }
+
+  .evolved .element-icon {
+    border-color: rgba(255, 61, 119, 0.5);
+    background: rgba(255, 61, 119, 0.1);
+  }
+  .evolved-glow {
+    box-shadow: 0 0 18px -6px var(--color-secondary);
+  }
+  .evolved-name {
+    color: var(--color-secondary);
+  }
+  .evolved-tag {
+    color: var(--color-secondary);
   }
 
   .operator {
-    font-family: var(--font-heading);
-    font-size: 1.2rem;
-    font-weight: 800;
-    color: var(--color-text-dim);
-    user-select: none;
-    padding: 0 0.2rem;
-  }
-
-  .element.evolved {
-    background: rgba(0, 229, 255, 0.04);
-    border: 1px dashed rgba(0, 229, 255, 0.25);
-    border-radius: var(--r-sm);
-    padding: 0.4rem 0.2rem;
-  }
-
-  .evolved-glow :global(svg) {
-    filter: drop-shadow(0 0 6px var(--color-accent)) !important;
-  }
-
-  .evolved-name {
-    color: var(--color-accent);
-  }
-
-  .evolved-tag {
-    color: var(--color-accent);
+    font-family: var(--font-mono);
+    font-size: 0.95rem;
     font-weight: 700;
+    color: var(--color-text-faint);
   }
 
   .recipe-desc {
-    font-size: 0.72rem;
+    margin: 0.65rem 0 0;
+    padding-top: 0.55rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    font-size: var(--fs-caption);
+    line-height: 1.45;
     color: var(--color-text-dim);
-    line-height: 1.4;
-    border-top: 1px dashed rgba(255, 255, 255, 0.05);
-    padding-top: 0.6rem;
   }
 
-  .close-btn {
-    all: unset;
-    cursor: pointer;
-    padding: 0.9rem;
-    border-radius: var(--r-md);
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--color-border);
-    transition: all var(--transition-fast);
-  }
-  .close-btn:hover {
-    background: rgba(255, 255, 255, 0.06);
-    border-color: var(--color-border-bright);
-  }
-  .close-btn:active {
-    transform: scale(0.985);
-  }
-
-  .btn-text {
-    font-size: 0.9rem;
-    font-weight: 700;
-    color: var(--color-text-main);
-  }
-
-  /* Responsive layout adjustment for smaller phone screens */
-  @media (max-width: 480px) {
-    .recipe-row {
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 0.8rem;
-    }
-    .element {
-      flex: unset;
-      width: 40%;
-    }
-    .element.evolved {
-      width: 90%;
-      margin-top: 0.4rem;
-    }
-    .operator {
-      display: none;
+  @media (min-width: 780px) {
+    .evolutions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.6rem;
     }
   }
 </style>

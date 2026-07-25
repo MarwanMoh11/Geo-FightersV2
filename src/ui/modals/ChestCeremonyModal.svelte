@@ -174,13 +174,15 @@
     --ceremony-glow: rgba(200, 144, 74, 0.35);
     position: fixed;
     inset: 0;
-    z-index: 2100;
+    z-index: var(--z-modal);
     display: flex;
     justify-content: center;
     align-items: center;
     background: rgba(3, 4, 12, 0.88);
     backdrop-filter: blur(14px);
-    padding: 1.5rem;
+    /* Safe-area aware: the reveal stack is tall, and on a notched phone the
+       Continue button used to finish up under the home indicator. */
+    padding: var(--pad-top) var(--pad-right) var(--pad-bottom) var(--pad-left);
     pointer-events: auto;
     overflow: hidden;
   }
@@ -303,10 +305,21 @@
     position: relative;
     width: 100%;
     max-width: 380px;
+    /* A 5-item jackpot on a landscape phone overflows the viewport; cap the
+       stack and let it scroll rather than pushing Continue off-screen. */
+    max-height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    touch-action: pan-y;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
     display: flex;
     flex-direction: column;
     gap: 1.2rem;
     text-align: center;
+  }
+  .content::-webkit-scrollbar {
+    display: none;
   }
 
   .content.shake-it {
@@ -536,10 +549,17 @@
 
   .continue-btn {
     all: unset;
+    box-sizing: border-box;
     cursor: pointer;
-    padding: 0.75rem;
+    /* Full-height target: at 0.75rem of padding this was a ~34px strip, the
+       hardest thing on screen to hit while the panel is shaking. */
+    min-height: var(--tap);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.75rem 1.25rem;
     border-radius: var(--r-pill);
-    font-size: 0.75rem;
+    font-size: var(--fs-label);
     font-weight: 800;
     letter-spacing: 0.12em;
     color: var(--color-text-dim);

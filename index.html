@@ -31,11 +31,14 @@
   <body>
     <div id="app"></div>
 
-    <!-- Loading Screen (shown during asset preload) -->
+    <!-- Loading Screen (shown during asset preload). Deliberately mirrors the
+         main menu's wordmark and grid floor so the very first frame already
+         looks like the game, not a placeholder. -->
     <div id="loading-screen">
+      <div class="loading-grid" aria-hidden="true"></div>
       <div class="loading-content">
-        <div class="loading-title">GEOFIGHTERS</div>
-        <div class="loading-subtitle">INITIALIZING SYSTEMS</div>
+        <div class="loading-title">GEO<span>FIGHTERS</span></div>
+        <div class="loading-subtitle">SURVIVE THE HORDE</div>
         <div class="loading-bar-container">
           <div id="loading-bar-fill"></div>
         </div>
