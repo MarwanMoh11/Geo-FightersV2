@@ -694,7 +694,7 @@ export function enterDive(
 
   const cfg = HORDE[node.kind] ?? HORDE.depot;
   hordeCap = Math.min(MAX_DIVE_ICE, Math.round(cfg.cap * (1 + 0.08 * security)));
-  hordeBudget = Math.round(hordeCap * 3 + cfg.initial);
+  hordeBudget = Math.round(hordeCap * 1.5 + cfg.initial);
   hazards = createHazards();
   iceRenderer = createIceRenderer(diveScene, node.kind);
 
