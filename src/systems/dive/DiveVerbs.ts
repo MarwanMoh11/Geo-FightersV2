@@ -79,14 +79,11 @@ export type DiveResult = 'win' | 'fail' | null;
 /**
  * Horde pressure per verb. Constructs arrive as a continuous RATE that ramps
  * with elapsed time, not as fixed waves.
- *
  * The old model spawned 2-4 constructs every 5.5s against a cap of 26 while
  * the player killed roughly two per second — the grid could never out-produce
  * the gun, so the room stayed empty and the dive had no horde in it at all.
- * These rates sit deliberately ABOVE the player's sustained clear rate
- * (~3.3/s through a dense pack with the dive's weakened, short-range,
- * two-pierce shot), so the room fills over the dive. That is the second clock:
- * finish the objective before you are buried.
+ * Rates now sit below the player's clear rate (~3.3/s through dense packs) so
+ * a focused player can outpace the horde, but neglecting it lets the room fill.
  */
 export interface HordeConfig {
   /** Constructs present the moment the dive opens. */
@@ -99,15 +96,12 @@ export interface HordeConfig {
 }
 
 export const HORDE: Record<BreachKind, HordeConfig> = {
-  // Pure chase — the heaviest pressure in the game.
-  relay: { initial: 14, rate: 4.6, ramp: 0.1, cap: 150 },
-  // Hold-the-point: they have to keep coming or the pad is free.
-  bank: { initial: 14, rate: 5.0, ramp: 0.11, cap: 160 },
-  substation: { initial: 12, rate: 4.5, ramp: 0.09, cap: 150 },
-  armory: { initial: 12, rate: 4.5, ramp: 0.09, cap: 150 },
-  depot: { initial: 12, rate: 4.5, ramp: 0.09, cap: 150 },
-  // Starts calm; every push you take spawns its own reinforcements.
-  stashden: { initial: 8, rate: 3.5, ramp: 0.08, cap: 160 },
+  relay: { initial: 8, rate: 1.8, ramp: 0.04, cap: 50 },
+  bank: { initial: 8, rate: 2.0, ramp: 0.04, cap: 55 },
+  substation: { initial: 6, rate: 1.6, ramp: 0.03, cap: 50 },
+  armory: { initial: 6, rate: 1.6, ramp: 0.03, cap: 50 },
+  depot: { initial: 6, rate: 1.6, ramp: 0.03, cap: 50 },
+  stashden: { initial: 4, rate: 1.2, ramp: 0.02, cap: 55 },
 };
 
 export interface DiveCtx {
