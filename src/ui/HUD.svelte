@@ -171,14 +171,16 @@
       class:mixed={uiState.netTransport === 'mixed'}
       title={uiState.netTransport === 'relay'
         ? 'Traffic routed through the signaling server'
-        : 'Direct peer-to-peer connection'}
+        : uiState.netRelayed
+          ? 'Peer-to-peer via TURN relay (your network blocks a direct path)'
+          : 'Direct peer-to-peer connection'}
     >
       {#if uiState.netTransport === 'relay'}
         ☁ RELAY
       {:else}
-        ⚡ {uiState.netTransport === 'mixed' ? 'MIXED' : 'P2P'}{uiState.netRtt >= 0
-          ? ` · ${uiState.netRtt}ms`
-          : ''}
+        ⚡ {uiState.netTransport === 'mixed' ? 'MIXED' : 'P2P'}{uiState.netRelayed
+          ? ' · TURN'
+          : ''}{uiState.netRtt >= 0 ? ` · ${uiState.netRtt}ms` : ''}
       {/if}
     </div>
   {/if}
@@ -201,6 +203,12 @@
               </div>
             </div>
           {:else}
+            {#if mate.diving}
+              <!-- Their pilot is in cyberspace: the body at the terminal can't
+                   move or shoot, and the breach shield drains from whatever
+                   crowds the door. This is the team's cue to go hold it. -->
+              <div class="mate-diving">JACKED IN — COVER THEM</div>
+            {/if}
             <div class="mate-hp">
               <div
                 class="mate-hp-fill"
@@ -343,6 +351,28 @@
     font-weight: 800;
     letter-spacing: 0.1em;
     color: var(--color-secondary);
+  }
+  .mate-diving {
+    font-size: 0.5rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    color: var(--color-accent, #36e6ff);
+    animation: mate-diving-pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes mate-diving-pulse {
+    0%,
+    100% {
+      opacity: 0.55;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .mate-diving {
+      animation: none;
+      opacity: 1;
+    }
   }
   .mate-revive {
     flex: 1;

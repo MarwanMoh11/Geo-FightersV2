@@ -149,6 +149,19 @@ preloadTextures(updateLoadingProgress).then(async () => {
       applyCharacterModel;
     // Balance harness: scripted bot + metrics sampler (window.__balance)
     import('./core/BalanceHarness').then((m) => m.initBalanceHarness());
+    // Co-op harness hook (window.__coop): exposes the SAME module instances the
+    // game loop calls into. A test that imports these by their own path gets a
+    // SECOND copy — with its own socket and its own module state — which then
+    // reports zero traffic while the real one sits idle. Always drive co-op
+    // tests through this object, never through a fresh import().
+    Promise.all([
+      import('./core/network'),
+      import('./systems/BreachSystem'),
+      import('./systems/AnomalySystem'),
+      import('./systems/PickupSystem'),
+    ]).then(([net, breach, anomaly, pickup]) => {
+      (window as unknown as { __coop: object }).__coop = { net, breach, anomaly, pickup };
+    });
     // Jump straight into a breach dive: __dive('relay', 1). Reaching one
     // normally costs a full run plus a won mini-game, which makes the dive
     // effectively untestable in a headless browser.
@@ -393,13 +406,24 @@ function startGameLoop(
       updateDynamicResolution(rawDt);
     }
 
+    const isMultiplayer = uiState.isMultiplayer;
+    const inDive = !!uiState.dive;
+
     // --- BREACH DIVE (scene-transition spine, chunk2) ---
-    // While a dive is active, the dive system owns the frame: it ticks the
-    // dive sub-scene and renders it itself (bypassing renderFrame/bloom), so
-    // none of the arena systems below run. Placed BEFORE shouldRunGame so the
-    // dive runs even if other modal flags (e.g. showVictoryChoice) are set,
-    // and so we never render the arena scene while a dive is showing.
-    if (uiState.dive) {
+    // SOLO: the dive system owns the entire frame. It ticks the dive sub-scene
+    // and renders it itself (bypassing renderFrame/bloom), and the arena is
+    // legitimately frozen — there is nobody else in it. Placed BEFORE
+    // shouldRunGame so the dive runs even if other modal flags (e.g.
+    // showVictoryChoice) are set, and so we never render the arena while a
+    // dive is showing.
+    //
+    // CO-OP: we must NOT return here. The arena has teammates in it, and if the
+    // host returns early it stops simulating enemies AND stops broadcasting
+    // snapshots — the entire party freezes for as long as one player is jacked
+    // in. So in multiplayer the arena keeps running below (headlessly: no arena
+    // render, no camera work) and the dive is ticked at the end of the frame,
+    // where it takes the screen. See the render phase near the bottom.
+    if (inDive && !isMultiplayer) {
       try {
         BreachDiveSystem(dt, scene, camera, renderer);
       } catch (e) {
@@ -408,15 +432,11 @@ function startGameLoop(
       return;
     }
 
-    const isMultiplayer = uiState.isMultiplayer;
-
     // Check if game should run (not in menu, not paused by upgrade modal, not game over)
     let shouldRunGame = false;
     if (isMultiplayer) {
       shouldRunGame =
-        (uiState.gameState === 'PLAYING' || uiState.gameState === 'PAUSED') &&
-        !isGameOver &&
-        !uiState.dive;
+        (uiState.gameState === 'PLAYING' || uiState.gameState === 'PAUSED') && !isGameOver;
     } else {
       shouldRunGame =
         isPlaying() &&
@@ -437,8 +457,18 @@ function startGameLoop(
     }
 
     if (!shouldRunGame) {
-      // Still render the scene even when paused
-      renderFrame();
+      // Still render something even when the arena sim is halted. A co-op dive
+      // outliving the run (host died, game over) must keep painting the dive,
+      // not snap back to a frozen arena behind the dive HUD.
+      if (inDive) {
+        try {
+          BreachDiveSystem(dt, scene, camera, renderer);
+        } catch (e) {
+          logLoopError(e);
+        }
+      } else {
+        renderFrame();
+      }
       return;
     }
     const isHost = uiState.isHost;
@@ -448,156 +478,174 @@ function startGameLoop(
     // (see logLoopError). The UI/Camera/Render phase below stays outside the
     // try so the screen always advances even if a gameplay system errors.
     try {
-    let _t: () => void;
-    _t = benchmark.trace('MusicDirector');
-    MusicDirector(dt);
-    _t();
-    _t = benchmark.trace('InputSystem');
-    InputSystem();
-    _t();
-    _t = benchmark.trace('AimSystem');
-    AimSystem();
-    _t();
-    _t = benchmark.trace('PlayerControlSystem');
-    PlayerControlSystem(dt);
-    _t();
-
-    _t = benchmark.trace('EnemySystem');
-    EnemySystem(dt, scene);
-    _t();
-
-    if (!isMultiplayer || isHost) {
-      _t = benchmark.trace('EnemyAbilitySystem');
-      EnemyAbilitySystem(dt, scene);
+      let _t: () => void;
+      _t = benchmark.trace('MusicDirector');
+      MusicDirector(dt);
       _t();
-      _t = benchmark.trace('TimelineSpawnerSystem');
-      TimelineSpawnerSystem(dt, scene);
+      _t = benchmark.trace('InputSystem');
+      InputSystem();
       _t();
-    }
-
-    // 2. Combat
-    _t = benchmark.trace('WeaponSystem');
-    WeaponSystem(dt, scene);
-    _t();
-
-    if (!isMultiplayer || isHost) {
-      _t = benchmark.trace('CollisionSystem');
-      CollisionSystem(scene);
+      _t = benchmark.trace('AimSystem');
+      AimSystem();
       _t();
-    }
-    if (!isMultiplayer) SoloDeathWatchdog();
-
-    // 3. Physics/Visuals
-    _t = benchmark.trace('PhysicsSystem');
-    PhysicsSystem(dt);
-    _t();
-    _t = benchmark.trace('LifecycleSystem');
-    LifecycleSystem(dt, scene);
-    _t();
-
-    // GPU compute systems (no-op placeholders until WebGPU compute lands;
-    // the CPU equivalents below own these updates to avoid double-applying)
-    ParticleComputeSystem(dt, renderer);
-    EnemyComputeSystem(dt, renderer);
-
-    _t = benchmark.trace('ParticleSystem');
-    ParticleSystem(dt, scene);
-    _t();
-    // Loot (XP/credit collection + leveling) is HOST-authoritative in co-op:
-    // clients running it locally double-collected the synced XP mirrors and
-    // triggered duplicate level-ups on top of the host's.
-    if (!isMultiplayer || isHost) {
-      _t = benchmark.trace('LootSystem');
-      LootSystem(dt, scene);
+      _t = benchmark.trace('PlayerControlSystem');
+      PlayerControlSystem(dt);
       _t();
-    }
-    // ...but the instanced XP/credit gems are DRAWN for everyone, or the
-    // joining player sees no orbs at all.
-    _t = benchmark.trace('LootRenderSystem');
-    LootRenderSystem(scene);
-    _t();
-    _t = benchmark.trace('PassiveEffectsSystem');
-    PassiveEffectsSystem(dt);
-    _t();
-    _t = benchmark.trace('OrbitalSystem');
-    OrbitalSystem(dt);
-    _t();
-    _t = benchmark.trace('OverloadSystem');
-    OverloadSystem(dt, scene);
-    _t();
-    _t = benchmark.trace('AnomalySystem');
-    AnomalySystem(dt, scene);
-    _t();
-    _t = benchmark.trace('ShrineSystem');
-    ShrineSystem(dt, scene);
-    _t();
-    _t = benchmark.trace('DestructibleSystem');
-    DestructibleSystem(dt, scene);
-    _t();
-    _t = benchmark.trace('PickupSystem');
-    PickupSystem(scene);
-    _t();
-    _t = benchmark.trace('MapEventSystem');
-    MapEventSystem(dt, scene);
-    _t();
-    _t = benchmark.trace('BreachSystem');
-    BreachSystem(dt, scene);
-    _t();
-    _t = benchmark.trace('updateGateFx');
-    updateGateFx(dt);
-    _t();
 
-    if (!isMultiplayer || isHost) {
-      _t = benchmark.trace('ChestSystem');
-      ChestSystem(dt, scene);
+      _t = benchmark.trace('EnemySystem');
+      EnemySystem(dt, scene);
       _t();
-      _t = benchmark.trace('FinaleBossSystem');
-      FinaleBossSystem(dt, scene);
-      _t();
-      _t = benchmark.trace('CoopSystem');
-      CoopSystem(dt);
-      _t();
-    } else {
-      // Client: ease remote players/enemies/boss toward their net targets
-      NetSmoothingSystem(dt);
-      // Cosmetic combat feedback (bullet impacts/flash) so the joiner's fight
-      // feels like single-player; damage/kills stay host-authoritative.
-      ClientCombatFxSystem(dt, scene);
-    }
 
-    // Sync network states (throttled to 30Hz to prevent packet flooding)
-    if (isMultiplayer) {
-      netSyncTimer += dt;
-      if (netSyncTimer >= NET_SYNC_INTERVAL) {
-        netSyncTimer = 0;
-        if (isHost) {
-          sendHostUpdate();
-        } else {
-          sendClientUpdate();
+      if (!isMultiplayer || isHost) {
+        _t = benchmark.trace('EnemyAbilitySystem');
+        EnemyAbilitySystem(dt, scene);
+        _t();
+        _t = benchmark.trace('TimelineSpawnerSystem');
+        TimelineSpawnerSystem(dt, scene);
+        _t();
+      }
+
+      // 2. Combat
+      _t = benchmark.trace('WeaponSystem');
+      WeaponSystem(dt, scene);
+      _t();
+
+      if (!isMultiplayer || isHost) {
+        _t = benchmark.trace('CollisionSystem');
+        CollisionSystem(scene);
+        _t();
+      }
+      if (!isMultiplayer) SoloDeathWatchdog();
+
+      // 3. Physics/Visuals
+      _t = benchmark.trace('PhysicsSystem');
+      PhysicsSystem(dt);
+      _t();
+      _t = benchmark.trace('LifecycleSystem');
+      LifecycleSystem(dt, scene);
+      _t();
+
+      // GPU compute systems (no-op placeholders until WebGPU compute lands;
+      // the CPU equivalents below own these updates to avoid double-applying)
+      ParticleComputeSystem(dt, renderer);
+      EnemyComputeSystem(dt, renderer);
+
+      _t = benchmark.trace('ParticleSystem');
+      ParticleSystem(dt, scene);
+      _t();
+      // Loot (XP/credit collection + leveling) is HOST-authoritative in co-op:
+      // clients running it locally double-collected the synced XP mirrors and
+      // triggered duplicate level-ups on top of the host's.
+      if (!isMultiplayer || isHost) {
+        _t = benchmark.trace('LootSystem');
+        LootSystem(dt, scene);
+        _t();
+      }
+      // ...but the instanced XP/credit gems are DRAWN for everyone, or the
+      // joining player sees no orbs at all.
+      _t = benchmark.trace('LootRenderSystem');
+      LootRenderSystem(scene);
+      _t();
+      _t = benchmark.trace('PassiveEffectsSystem');
+      PassiveEffectsSystem(dt);
+      _t();
+      _t = benchmark.trace('OrbitalSystem');
+      OrbitalSystem(dt);
+      _t();
+      _t = benchmark.trace('OverloadSystem');
+      OverloadSystem(dt, scene);
+      _t();
+      _t = benchmark.trace('AnomalySystem');
+      AnomalySystem(dt, scene);
+      _t();
+      _t = benchmark.trace('ShrineSystem');
+      ShrineSystem(dt, scene);
+      _t();
+      _t = benchmark.trace('DestructibleSystem');
+      DestructibleSystem(dt, scene);
+      _t();
+      _t = benchmark.trace('PickupSystem');
+      PickupSystem(scene);
+      _t();
+      _t = benchmark.trace('MapEventSystem');
+      MapEventSystem(dt, scene);
+      _t();
+      _t = benchmark.trace('BreachSystem');
+      BreachSystem(dt, scene);
+      _t();
+      _t = benchmark.trace('updateGateFx');
+      updateGateFx(dt);
+      _t();
+
+      if (!isMultiplayer || isHost) {
+        _t = benchmark.trace('ChestSystem');
+        ChestSystem(dt, scene);
+        _t();
+        _t = benchmark.trace('FinaleBossSystem');
+        FinaleBossSystem(dt, scene);
+        _t();
+        _t = benchmark.trace('CoopSystem');
+        CoopSystem(dt);
+        _t();
+      } else {
+        // Client: ease remote players/enemies/boss toward their net targets
+        NetSmoothingSystem(dt);
+        // Cosmetic combat feedback (bullet impacts/flash) so the joiner's fight
+        // feels like single-player; damage/kills stay host-authoritative.
+        ClientCombatFxSystem(dt, scene);
+      }
+
+      // Sync network states (throttled to 30Hz to prevent packet flooding)
+      if (isMultiplayer) {
+        netSyncTimer += dt;
+        if (netSyncTimer >= NET_SYNC_INTERVAL) {
+          netSyncTimer = 0;
+          if (isHost) {
+            sendHostUpdate();
+          } else {
+            sendClientUpdate();
+          }
         }
       }
-    }
 
-    // 4. UI & Camera
-    _t = benchmark.trace('RenderSystem');
-    RenderSystem(dt, scene);
-    _t();
-    _t = benchmark.trace('CameraSystem');
-    CameraSystem(dt, camera);
-    _t();
-    _t = benchmark.trace('DamageNumberSystem');
-    DamageNumberSystem(dt, camera);
-    _t();
-    _t = benchmark.trace('UISystem');
-    UISystem();
-    _t();
+      // 4. UI & Camera
+      // Skipped entirely while this client is jacked in (co-op only — solo
+      // returned long before here). The arena above still SIMULATED, but it is
+      // not on screen: the dive owns the camera and does its own render pass, and
+      // RenderSystem would fight it for the local player's transform, which is
+      // currently reparented into the dive scene.
+      if (!inDive) {
+        _t = benchmark.trace('RenderSystem');
+        RenderSystem(dt, scene);
+        _t();
+        _t = benchmark.trace('CameraSystem');
+        CameraSystem(dt, camera);
+        _t();
+        _t = benchmark.trace('DamageNumberSystem');
+        DamageNumberSystem(dt, camera);
+        _t();
+      }
+      _t = benchmark.trace('UISystem');
+      UISystem();
+      _t();
     } catch (e) {
       logLoopError(e);
     }
     if (DEBUG) DebugSystem(scene); // Debug panel (Shift+Alt+D, requires ?debug)
 
     benchmark.endFrame();
-    renderFrame();
+
+    // Co-op dive: the arena simulated headlessly above; now hand the screen to
+    // the dive, which renders itself.
+    if (inDive) {
+      try {
+        BreachDiveSystem(dt, scene, camera, renderer);
+      } catch (e) {
+        logLoopError(e);
+      }
+    } else {
+      renderFrame();
+    }
   }
 
   requestAnimationFrame(animate); // first frame gets a real vsync timestamp too

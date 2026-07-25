@@ -145,6 +145,7 @@ export const uiState = $state({
     revivePct: number; // 0-100 while being revived
     character: string;
     isLocal: boolean;
+    diving: boolean; // jacked into a breach dive — body kneeling, needs cover
   }[],
 
   // Settings
@@ -254,6 +255,10 @@ export const uiState = $state({
   // best measured P2P round-trip in ms (-1 = unknown).
   netTransport: 'relay' as 'relay' | 'p2p' | 'mixed',
   netRtt: -1,
+  // True when the P2P link had to go through a TURN relay (CGNAT / symmetric
+  // NAT). Surfaced in the HUD net chip so a TURN outage is visible rather than
+  // showing up as "some players just can't connect".
+  netRelayed: false,
 
   // Corruption dial (0-5 risk/reward, persisted)
   // v2 key: the standard threat level is now 5 (was 0). Bumping the key retires

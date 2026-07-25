@@ -14,9 +14,18 @@ const _inputVector = new THREE.Vector3();
  * @param {number} dt - delta time since last frame in seconds
  */
 export function PlayerControlSystem(dt: number) {
+  // On a CLIENT, remote players are pure mirrors: their position and velocity
+  // arrive in the host snapshot. Simulating them here recomputed their velocity
+  // from an input component nothing fills in, zeroing it every frame — and
+  // RenderSystem only re-aims a rig while it is actually moving, so remote
+  // teammates froze pointing whichever way they happened to be facing.
+  // The HOST still runs this for everyone: it is authoritative for the party.
+  const mirrorsOnly = uiState.isMultiplayer && !uiState.isHost;
+
   for (const entity of world.with('isPlayer', 'velocity', 'input', 'stats')) {
     // FIX: Guard clause
     if (!entity.input) continue;
+    if (mirrorsOnly && !entity.isLocalPlayer) continue;
 
     // Tick post-hit invulnerability window
     if (entity.invulnTimer && entity.invulnTimer > 0) {
@@ -24,8 +33,15 @@ export function PlayerControlSystem(dt: number) {
     }
 
     // Jacked into a breach: the fighter kneels at the terminal — no movement
-    // (BreachSystem maintains the shield; the mini-game owns the keys)
-    if (entity.isLocalPlayer && uiState.breach) {
+    // (BreachSystem maintains the shield; the mini-game owns the keys).
+    // `isDiving` is checked for EVERY player, not just the local one: in co-op
+    // the host simulates a remote teammate's body while they are in cyberspace,
+    // and their last-sent input must not keep walking it around the arena.
+    // A downed player is never "diving" — going down ends the session. Without
+    // the health check a stale isDiving (from a client that dropped mid-dive)
+    // would pin that body in place permanently, including after a revive.
+    const alive = !entity.health || entity.health.current > 0;
+    if ((entity.isLocalPlayer && uiState.breach) || (entity.isDiving && alive)) {
       entity.velocity.set(0, 0, 0);
       continue;
     }

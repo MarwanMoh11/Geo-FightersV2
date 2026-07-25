@@ -105,7 +105,13 @@ export function spawnPlayer(
   // 1. CREATE PLAYER with VS-style inventory
   const player = world.add({
     isPlayer: true,
-    isLocalPlayer: isLocal,
+    // Only PRESENT when true. The ECS treats a component as present when it is
+    // `!== undefined`, so `isLocalPlayer: false` put every remote player into
+    // the isLocalPlayer index — and InputSystem, which iterates
+    // world.with('input','isLocalPlayer'), then stamped the local player's
+    // input onto every remote mirror. They all derived the same velocity and
+    // therefore faced the same direction: the "players share one rotation" bug.
+    ...(isLocal ? { isLocalPlayer: true } : {}),
     connectionId: connectionId,
     position: new THREE.Vector3(startX, 0.5, startZ),
     velocity: new THREE.Vector3(0, 0, 0),
@@ -942,11 +948,36 @@ export function initializePlayerForRun(scene: THREE.Scene) {
 /**
  * Spawn a physical cyber credit item
  */
-export function spawnCredit(_scene: THREE.Scene, _x: number, _z: number, value: number = 1) {
+export function spawnCredit(
+  _scene: THREE.Scene,
+  _x: number,
+  _z: number,
+  value: number = 1,
+  earnerConnId?: string,
+) {
   // Credits now go straight to the wallet — no entities, no rendering, no
   // physics, no magnetism. This removes ~200 entities from the ECS and saves
   // roughly 0.1-0.3ms per frame at horde density (credit simulation + render).
-  uiState.creditsCollected += Math.max(1, Math.ceil(value));
+  //
+  // `uiState` is LOCAL, so in co-op a host-side grant lands in the HOST's
+  // wallet no matter who earned it — the host runs CollisionSystem for the
+  // whole party, so every joiner's kill used to pay the host. When we know the
+  // earner and it isn't us, route the payout to them instead.
+  const amount = Math.max(1, Math.ceil(value));
+  if (earnerConnId && uiState.isMultiplayer && uiState.isHost) {
+    const me = world.with('isLocalPlayer').first;
+    if (me && me.connectionId !== earnerConnId) {
+      grantCreditsRemote(earnerConnId, amount);
+      return;
+    }
+  }
+  uiState.creditsCollected += amount;
+}
+
+/** Late-bound to keep factories free of a static import on the network layer. */
+let grantCreditsRemote: (connId: string, amount: number) => void = () => {};
+export function bindCreditNet(fn: (connId: string, amount: number) => void): void {
+  grantCreditsRemote = fn;
 }
 
 // --- ENEMY VISUALS (Phase 1.8 bestiary) ---

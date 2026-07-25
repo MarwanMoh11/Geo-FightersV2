@@ -28,6 +28,56 @@ export function resetAnomalySystem(): void {
   uiState.insideLeakZone = false;
 }
 
+function isHostOrSolo(): boolean {
+  return !uiState.isMultiplayer || uiState.isHost;
+}
+
+/**
+ * Build one anomaly field. Called directly on host/solo, and from the
+ * replicated `anomaly-spawn` event on clients, so every player in the party
+ * stands in the same zones.
+ */
+export function createAnomalyZone(
+  scene: THREE.Scene,
+  type: 'overclock' | 'defrag' | 'leak',
+  ax: number,
+  az: number,
+): void {
+  let color = 0x00d5ff; // overclock cyan
+  if (type === 'defrag') color = 0xbb00ff; // defrag purple
+  if (type === 'leak') color = 0xff3300; // leak red
+
+  const mat = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.15,
+    side: THREE.DoubleSide,
+    wireframe: true,
+  });
+  const mesh = new THREE.Mesh(zoneGeo, mat);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.set(ax, 0.02, az); // flat on ground
+  scene.add(mesh);
+
+  world.add({
+    isAnomaly: true,
+    isParticle: true, // let LifecycleSystem handle cleanup automatically
+    position: new THREE.Vector3(ax, 0.02, az),
+    velocity: new THREE.Vector3(0, 0, 0),
+    transform: mesh,
+    lifeTimer: 0,
+    maxLife: 20.0, // persists 20 seconds
+    anomalyType: type,
+    size: 6.0, // 6x6 bounds
+  });
+}
+
+/** Late-bound to avoid a static import on the network layer. */
+let broadcastAnomaly: (type: string, x: number, z: number) => void = () => {};
+export function bindAnomalyNet(fn: (type: string, x: number, z: number) => void): void {
+  broadcastAnomaly = fn;
+}
+
 function spawnVault(scene: THREE.Scene, px: number, pz: number, gameTime: number): void {
   const angle = Math.random() * Math.PI * 2;
   const dist = 10 + Math.random() * 6;
@@ -103,58 +153,36 @@ export function AnomalySystem(dt: number, scene: THREE.Scene) {
   const player = world.with('isLocalPlayer', 'position', 'health').first;
   if (!player || !player.health) return;
 
-  // 0. Data vault greed event
+  // 0. Data vault greed event.
+  // Host-authoritative rather than disabled: the vault is an ordinary enemy
+  // entity, so the existing enemy sync already carries it to every client — it
+  // just needed the spawn decision to belong to one machine. It used to be
+  // switched off for the whole party the moment co-op started.
   vaultTimer -= dt;
-  if (vaultTimer <= 0 && !activeVault && !uiState.isMultiplayer) {
+  if (vaultTimer <= 0 && !activeVault && isHostOrSolo()) {
     vaultTimer = 100.0;
     spawnVault(scene, player.position.x, player.position.z, uiState.gameTime);
   }
-  tickVault(dt, scene);
+  if (isHostOrSolo()) tickVault(dt, scene);
 
-  // 1. Tick Spawner
-  spawnTimer -= dt;
-  if (spawnTimer <= 0) {
-    spawnTimer = 45.0; // reset to 45 seconds
+  // 1. Tick Spawner — host/solo picks WHERE, everyone renders it.
+  // Previously every client rolled its own Math.random() around its own player,
+  // so no two players in a party were ever standing in the same anomaly field.
+  if (isHostOrSolo()) {
+    spawnTimer -= dt;
+    if (spawnTimer <= 0) {
+      spawnTimer = 45.0; // reset to 45 seconds
 
-    // Pick type
-    const types: ('overclock' | 'defrag' | 'leak')[] = ['overclock', 'defrag', 'leak'];
-    const type = types[Math.floor(Math.random() * types.length)];
+      const types: ('overclock' | 'defrag' | 'leak')[] = ['overclock', 'defrag', 'leak'];
+      const type = types[Math.floor(Math.random() * types.length)];
 
-    // Colors
-    let color = 0x00d5ff; // overclock cyan
-    if (type === 'defrag') color = 0xbb00ff; // defrag purple
-    if (type === 'leak') color = 0xff3300; // leak red
+      // Position near the spawning player
+      const ax = player.position.x + (Math.random() - 0.5) * 16;
+      const az = player.position.z + (Math.random() - 0.5) * 16;
 
-    // Mesh setup
-    const mat = new THREE.MeshBasicMaterial({
-      color: color,
-      transparent: true,
-      opacity: 0.15,
-      side: THREE.DoubleSide,
-      wireframe: true,
-    });
-    const mesh = new THREE.Mesh(zoneGeo, mat);
-    mesh.rotation.x = -Math.PI / 2;
-
-    // Position near player
-    const ax = player.position.x + (Math.random() - 0.5) * 16;
-    const az = player.position.z + (Math.random() - 0.5) * 16;
-    mesh.position.set(ax, 0.02, az); // flat on ground
-
-    scene.add(mesh);
-
-    // Add to world
-    world.add({
-      isAnomaly: true,
-      isParticle: true, // let LifecycleSystem handle cleanup automatically
-      position: new THREE.Vector3(ax, 0.02, az),
-      velocity: new THREE.Vector3(0, 0, 0),
-      transform: mesh,
-      lifeTimer: 0,
-      maxLife: 20.0, // persists 20 seconds
-      anomalyType: type,
-      size: 6.0, // 6x6 bounds
-    });
+      createAnomalyZone(scene, type, ax, az);
+      broadcastAnomaly(type, ax, az);
+    }
   }
 
   // 2. Process Overlaps & Modifiers
@@ -184,23 +212,48 @@ export function AnomalySystem(dt: number, scene: THREE.Scene) {
   uiState.insideDefragZone = insideDefrag;
   uiState.insideLeakZone = insideLeak;
 
-  // Apply Player tick modifiers
-  if (insideDefrag) {
-    // Heal player 3 HP per second
-    player.health.current = Math.min(player.health.max, player.health.current + 3.0 * dt);
-  }
-
+  // Local HUD feedback for the leak field. The HP change itself is applied by
+  // the host (below) — a client editing its own health here would just be
+  // overwritten by the next snapshot, which is why joiners used to stand in
+  // leak pools taking no damage at all.
   if (insideLeak) {
-    // Damage player 12 HP per second
-    const damageVal = 12.0 * dt;
-    player.health.current = Math.max(0, player.health.current - damageVal);
-
-    // Flashes damage indicator overlay on HUD occasionally
     damageTimer += dt;
     if (damageTimer >= 0.45) {
       damageTimer = 0;
       uiState.damageFlash++;
-      spawnDamageNumber(player.position, Math.ceil(damageVal * 3), 'player');
+      spawnDamageNumber(player.position, Math.ceil(12.0 * dt * 3), 'player');
+    }
+  }
+
+  // Everything past this point mutates authoritative state (player HP, enemy
+  // HP, enemy velocity), so it belongs to the host alone.
+  if (!isHostOrSolo()) return;
+
+  // Apply zone tick modifiers to EVERY player, not just the local one — the
+  // host simulates the whole party's health.
+  for (const p of world.with('isPlayer', 'position', 'health')) {
+    if (!p.health || p.health.current <= 0) continue;
+    let inDefrag = false;
+    let inLeak = false;
+    for (const zone of activeAnomalies) {
+      const halfSize = (zone.size || 6.0) / 2;
+      const zx = zone.position.x;
+      const zz = zone.position.z;
+      if (
+        p.position.x >= zx - halfSize &&
+        p.position.x <= zx + halfSize &&
+        p.position.z >= zz - halfSize &&
+        p.position.z <= zz + halfSize
+      ) {
+        if (zone.anomalyType === 'defrag') inDefrag = true;
+        if (zone.anomalyType === 'leak') inLeak = true;
+      }
+    }
+    if (inDefrag) {
+      p.health.current = Math.min(p.health.max, p.health.current + 3.0 * dt);
+    }
+    if (inLeak) {
+      p.health.current = Math.max(0, p.health.current - 12.0 * dt);
     }
   }
 

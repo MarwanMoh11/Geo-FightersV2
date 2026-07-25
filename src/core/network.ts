@@ -3,8 +3,20 @@ import * as THREE from 'three';
 import { world, type Entity } from './world';
 import { uiState, showToast, announce } from './UIState.svelte';
 import { setGameState } from './GameState';
-import { spawnPlayer, spawnEnemy, spawnXP, applyCharacterModel } from './factories';
+import { spawnPlayer, spawnEnemy, spawnXP, applyCharacterModel, bindCreditNet } from './factories';
 import { spawnChest, openChestLocally } from '../systems/ChestSystem';
+import { applyPickupLocal, removePickupMesh, bindPickupNet } from '../systems/PickupSystem';
+import { createAnomalyZone, bindAnomalyNet } from '../systems/AnomalySystem';
+import {
+  bindBreachNet,
+  netApplyNodeStates,
+  netCollectNodeStates,
+  netHandleClaim,
+  netHandleResolve,
+  netOnBreachGranted,
+  netOnBreachDenied,
+  netReleaseNodesOf,
+} from '../systems/BreachSystem';
 import { spawnClientBoss, removeClientBoss } from '../systems/FinaleBoss';
 import { removeBody, createDynamicBody, isRapierInitialized } from './RapierWorld';
 
@@ -28,6 +40,45 @@ let activeScene: THREE.Scene | null = null;
 
 // Map to track remote player entities: connectionId -> entity
 export const remotePlayers = new Map<string, any>();
+
+// CLIENT: host entity id -> local mirror entity, one map per replicated kind.
+//
+// These exist so we NEVER write the host's id onto `entity.id`. world.add()
+// assigns its own id and registers it in the ECS idIndex; stomping that field
+// afterwards left idIndex pointing at another entity's slot, and remove() then
+// clobbered live entities, over-popped the array and left `undefined` holes.
+// The visible symptoms were a cascade of "can't access property 'rigidBody' of
+// undefined" out of PhysicsSystem/WeaponSystem and "last is undefined" out of
+// world.remove — i.e. the whole client sim tearing itself apart mid-run.
+const pickupMirrors = new Map<number, any>();
+const enemyMirrors = new Map<number, any>();
+const epMirrors = new Map<number, any>();
+const xpMirrors = new Map<number, any>();
+const chestMirrors = new Map<number, any>();
+
+/** Drop every mirror table (disconnect, or a fresh run in the same session). */
+function clearMirrors(): void {
+  pickupMirrors.clear();
+  enemyMirrors.clear();
+  epMirrors.clear();
+  xpMirrors.clear();
+  chestMirrors.clear();
+}
+
+/**
+ * Live network counters for the debug overlay and the co-op test harness.
+ *
+ * `sent`/`applied` are the canary pair: if the host's `sent` climbs while a
+ * client's `applied` does not, snapshots are being dropped on the wire rather
+ * than mis-parsed, which is otherwise very hard to tell apart.
+ */
+export const netDebug = {
+  sent: 0,
+  applied: 0,
+  lastSentBytes: 0,
+  lastSent: { players: 0, enemies: 0, xp: 0, chests: 0, pickups: 0, ep: 0 },
+  lastApplied: { players: 0, enemies: 0, xp: 0, chests: 0, pickups: 0, ep: 0 },
+};
 
 // --- P2P / DUAL-TRANSPORT STATE ---
 // State snapshots flow P2P-first (WebRTC, unreliable/unordered) and fall back
@@ -62,6 +113,7 @@ function rebuildPartyFromPayload(players: any[]) {
     revivePct: Math.round((p.r || 0) * 100),
     character: p.ch || 'cypher',
     isLocal: p.c === socket?.id,
+    diving: p.dv === 1,
   }));
 }
 
@@ -183,6 +235,7 @@ export function disconnectNetwork() {
   uiState.party = [];
   uiState.lobby = { players: [], started: false };
   remotePlayers.clear();
+  clearMirrors();
 }
 
 function removeRemotePlayer(connId: string) {
@@ -366,6 +419,9 @@ function setupSocketListeners() {
     clientSeq = 0;
     hostSeq = 0;
     lastHostSeqSeen = 0;
+    // A second run in the same session starts from a swept world; stale mirror
+    // entries would otherwise point at entities that no longer exist.
+    clearMirrors();
 
     // Host spawns remote avatars now, spread around the spawn point, tinted
     // by each player's chosen character.
@@ -400,6 +456,13 @@ function setupSocketListeners() {
 
     setGameState('PLAYING');
     announce('PARTY DEPLOYED');
+
+    // Seed everyone with the breach-door state so joiners' doors read the same
+    // as the host's from frame one (they are all fresh at start, but this also
+    // covers a restart into an already-dressed arena).
+    if (uiState.isHost) {
+      broadcastGameEvent('breach-nodes', { nodes: netCollectNodeStates() });
+    }
   });
 
   socket.on('start-rejected', ({ message }) => {
@@ -417,6 +480,9 @@ function setupSocketListeners() {
     if (p?.playerName) showToast(`${p.playerName} left the party`);
     closeRtcPeer(playerId);
     removeRemotePlayer(playerId);
+    // Free any breach door they were holding, or it stays locked for the rest
+    // of the run and quietly deletes a building from everyone else's map.
+    if (uiState.isHost) netReleaseNodesOf(playerId);
   });
 
   socket.on('host-disconnected', () => {
@@ -490,6 +556,7 @@ function handleClientState(playerId: string, state: any) {
   player.level = state.level;
   player.score = state.score;
   player.isUpgrading = state.isUpgrading;
+  player.isDiving = state.diving === true;
   if (state.name) player.playerName = state.name;
   if (state.character && player.character !== state.character) {
     applyCharacterTint(player, state.character);
@@ -570,6 +637,8 @@ function handleHostState(state: any) {
       player.level = pLevel;
       player.score = pScore;
       player.kills = pData.k || 0;
+      // A teammate in cyberspace: body kneels at the terminal, doesn't shoot.
+      player.isDiving = pData.dv === 1;
       if (pData.ch && player.character !== pData.ch) applyCharacterTint(player, pData.ch);
     }
   });
@@ -584,10 +653,18 @@ function handleHostState(state: any) {
 
   // 2. Sync Enemies
   // Skip the boss here — it is flagged `isEnemy` but synced separately (2b).
-  const enemyMap = new Map<number, any>();
+  const localEnemies = new Set<any>();
   for (const e of world.with('isEnemy')) {
     if (e.isBoss) continue;
-    enemyMap.set(e.id!, e);
+    localEnemies.add(e);
+  }
+  // Host id -> live local entity. Mirror entries whose entity has already left
+  // the world (killed locally, swept by a run reset) are dropped here so we
+  // never hand a dead object back or try to remove it twice.
+  const enemyMap = new Map<number, any>();
+  for (const [netId, e] of enemyMirrors) {
+    if (!localEnemies.has(e)) enemyMirrors.delete(netId);
+    else enemyMap.set(netId, e);
   }
 
   // Amortize mesh construction: a big wave can introduce 30+ new enemies in a
@@ -606,10 +683,13 @@ function handleHostState(state: any) {
     let enemy = enemyMap.get(eId);
     if (!enemy) {
       if (spawnBudget-- <= 0) return; // defer to the next snapshot
-      // Spawn local representation at the reported spot (no lerp-in from 0,0)
+      // Spawn local representation at the reported spot (no lerp-in from 0,0).
+      // The host's id is kept in a SIDE MAP, never written to entity.id — see
+      // enemyMirrors. Overwriting it desynced the ECS idIndex and eventually
+      // corrupted the entity array outright (holes, over-popping).
       enemy = spawnEnemy(activeScene!, ePos.x, ePos.z, eType);
       if (enemy) {
-        enemy.id = eId;
+        enemyMirrors.set(eId, enemy);
         enemy.position.set(ePos.x, 0.5, ePos.z);
       }
     }
@@ -635,7 +715,8 @@ function handleHostState(state: any) {
   const localForFx = world.with('isLocalPlayer', 'position').first;
   // Cap death FX per snapshot so a huge wave-clear doesn't flood particles
   let deathFxBudget = 6;
-  for (const obsoleteEnemy of enemyMap.values()) {
+  for (const [netId, obsoleteEnemy] of enemyMap) {
+    enemyMirrors.delete(netId);
     if (localForFx && obsoleteEnemy.position && deathFxBudget > 0) {
       const dx = obsoleteEnemy.position.x - localForFx.position.x;
       const dz = obsoleteEnemy.position.z - localForFx.position.z;
@@ -657,9 +738,14 @@ function handleHostState(state: any) {
   // hit by bullets they literally cannot see — dodging was impossible. Mirrors
   // fly by dead reckoning (straight lines) with a snap correction when they
   // drift, and despawn when the host stops reporting them.
-  const epMap = new Map<number, any>();
+  const liveEp = new Set<any>();
   for (const p of world.with('isEnemyProjectile')) {
-    if (p._epMirror) epMap.set(p.id!, p);
+    if (p._epMirror) liveEp.add(p);
+  }
+  const epMap = new Map<number, any>();
+  for (const [netId, p] of epMirrors) {
+    if (!liveEp.has(p)) epMirrors.delete(netId);
+    else epMap.set(netId, p);
   }
   (state.ep || []).forEach((d: any) => {
     let m = epMap.get(d.i);
@@ -682,7 +768,7 @@ function handleHostState(state: any) {
         velocity: new THREE.Vector3(d.v[0], 0, d.v[1]),
         transform: mesh,
       } as any);
-      m.id = d.i;
+      epMirrors.set(d.i, m);
     } else {
       // Dead reckoning correction: only snap when meaningfully off-course
       const ex = m.position.x - d.p[0];
@@ -692,7 +778,8 @@ function handleHostState(state: any) {
       epMap.delete(d.i);
     }
   });
-  for (const gone of epMap.values()) {
+  for (const [netId, gone] of epMap) {
+    epMirrors.delete(netId);
     if (gone.transform) activeScene?.remove(gone.transform);
     world.remove(gone);
   }
@@ -716,9 +803,12 @@ function handleHostState(state: any) {
   }
 
   // 3. Sync Loot/XP
+  const liveXp = new Set<any>();
+  for (const x of world.with('isXP')) liveXp.add(x);
   const xpMap = new Map<number, any>();
-  for (const x of world.with('isXP')) {
-    xpMap.set(x.id!, x);
+  for (const [netId, x] of xpMirrors) {
+    if (!liveXp.has(x)) xpMirrors.delete(netId);
+    else xpMap.set(netId, x);
   }
 
   state.xp.forEach((xData: any) => {
@@ -730,7 +820,7 @@ function handleHostState(state: any) {
     if (!xp) {
       xp = spawnXP(activeScene!, xPos.x, xPos.z, xValue);
       if (xp) {
-        xp.id = xId;
+        xpMirrors.set(xId, xp);
       }
     }
     if (xp) {
@@ -742,7 +832,8 @@ function handleHostState(state: any) {
     }
   });
 
-  for (const obsoleteXP of xpMap.values()) {
+  for (const [netId, obsoleteXP] of xpMap) {
+    xpMirrors.delete(netId);
     // XP removed right next to us = we just collected it → play the pickup blip.
     if (localForFx && obsoleteXP.position) {
       const dx = obsoleteXP.position.x - localForFx.position.x;
@@ -754,9 +845,12 @@ function handleHostState(state: any) {
   }
 
   // 4. Sync Chests
+  const liveChests = new Set<any>();
+  for (const c of world.with('isChest')) liveChests.add(c);
   const chestMap = new Map<number, any>();
-  for (const c of world.with('isChest')) {
-    chestMap.set(c.id!, c);
+  for (const [netId, c] of chestMirrors) {
+    if (!liveChests.has(c)) chestMirrors.delete(netId);
+    else chestMap.set(netId, c);
   }
 
   state.chests.forEach((cData: any) => {
@@ -768,7 +862,7 @@ function handleHostState(state: any) {
     if (!chest) {
       chest = spawnChest(activeScene!, cPos.x, cPos.z, cRarity);
       if (chest) {
-        chest.id = cId;
+        chestMirrors.set(cId, chest);
       }
     }
     if (chest) {
@@ -780,10 +874,53 @@ function handleHostState(state: any) {
     }
   });
 
-  for (const obsoleteChest of chestMap.values()) {
+  for (const [netId, obsoleteChest] of chestMap) {
+    chestMirrors.delete(netId);
     if (obsoleteChest.transform) activeScene?.remove(obsoleteChest.transform);
     world.remove(obsoleteChest);
   }
+
+  // 4b. Sync floor pickups. Mirrors only — PickupSystem animates them but does
+  // not collect on clients; the host owns that and tells us via 'pickup-collect'.
+  //
+  // Keyed by the HOST's id held in a side map, NOT by overwriting entity.id.
+  // world.add() assigns its own id and registers it in the ECS idIndex, so
+  // stomping that field afterwards (as the older enemy/chest sync does) points
+  // idIndex at the wrong slot and quietly corrupts removal. See AGENTS.md.
+  const seen = new Set<number>();
+  for (const d of state.pickups || []) {
+    seen.add(d.i);
+    let pickup = pickupMirrors.get(d.i);
+    if (!pickup) {
+      pickup = world.add({
+        isPickup: true,
+        position: new THREE.Vector3(d.p[0], 0.9, d.p[1]),
+        velocity: new THREE.Vector3(),
+        pickupType: d.t,
+      });
+      pickupMirrors.set(d.i, pickup);
+    } else {
+      pickup.position.set(d.p[0], 0.9, d.p[1]);
+    }
+  }
+
+  // The host stopped reporting it: collected by someone, or expired.
+  for (const [netId, entity] of pickupMirrors) {
+    if (seen.has(netId)) continue;
+    removePickupMesh(entity.id!);
+    world.remove(entity);
+    pickupMirrors.delete(netId);
+  }
+
+  netDebug.applied++;
+  netDebug.lastApplied = {
+    players: state.players?.length ?? 0,
+    enemies: state.enemies?.length ?? 0,
+    xp: state.xp?.length ?? 0,
+    chests: state.chests?.length ?? 0,
+    pickups: state.pickups?.length ?? 0,
+    ep: state.ep?.length ?? 0,
+  };
 
   // 5. Sync Global State
   uiState.gameTime = state.gameTime;
@@ -816,9 +953,50 @@ function bindRemainingListeners(socket: Socket) {
     });
   });
 
+  // HOST ONLY: a joiner asking us to arbitrate something host-authoritative.
+  // These are requests, not commands — every branch re-validates.
+  socket.on('client-request', ({ fromId, reqType, data }) => {
+    if (!uiState.isHost) return;
+    switch (reqType) {
+      case 'breach-claim': {
+        const name = remotePlayers.get(fromId)?.playerName || 'PLAYER';
+        netHandleClaim(fromId, name, data?.nodeId, data?.first === true);
+        break;
+      }
+      case 'breach-resolve':
+        netHandleResolve(fromId, data?.nodeId, data?.outcome, data?.kind);
+        break;
+    }
+  });
+
   // Game events: run ending, chest ceremonies, revives, deaths
   socket.on('game-event', ({ eventType, data }) => {
     switch (eventType) {
+      case 'breach-nodes':
+        // Host replicated breach-door state (cooldown / breached / who's inside)
+        netApplyNodeStates(data?.nodes ?? []);
+        break;
+      case 'breach-granted':
+        netOnBreachGranted(data?.nodeId, data?.security ?? 1);
+        break;
+      case 'breach-denied':
+        netOnBreachDenied(data?.reason ?? '');
+        break;
+      case 'pickup-collect':
+        // Targeted at THIS client: you walked into it, so the personal half of
+        // the pickup (magna-pulse timer, skeleton key, banner, sfx) is yours.
+        applyPickupLocal(data?.type ?? 'medkit', activeScene);
+        break;
+      case 'credits':
+        // Host resolved a payout we earned (our kill, our vault crack). uiState
+        // is local, so this is the only way credits can reach the right wallet.
+        uiState.creditsCollected += Math.max(0, Math.round(data?.n ?? 0));
+        break;
+      case 'anomaly-spawn':
+        // Host placed an anomaly field — build the identical one locally so the
+        // whole party is standing in the same overclock/defrag/leak zones.
+        if (activeScene) createAnomalyZone(activeScene, data?.t, data?.x ?? 0, data?.z ?? 0);
+        break;
       case 'game-over':
         uiState.isGameOver = true;
         submitRunToLeaderboard(); // clients end via this event, not triggerGameOver
@@ -919,6 +1097,13 @@ export function sendClientUpdate() {
         uiState.showChestCeremony ||
         uiState.showProtocolChoice ||
         uiState.gameState === 'PAUSED',
+      // Jacked into a breach dive. Deliberately NOT folded into isUpgrading:
+      // a diver is not safe, they are exposed and their team is supposed to
+      // defend them. The host needs this to park their body (no input, no
+      // firing) and to drain the breach shield from the crowd at the door.
+      // `position` above is already the terminal — the dive keeps its own
+      // dive-space coords and never writes them to the entity.
+      diving: !!uiState.dive,
       stats: localPlayer.stats,
     };
 
@@ -937,7 +1122,10 @@ function encodeAbilityState(e: Entity): number {
   const ds = dsMap[e.dashState ?? ''] ?? 0;
   const phased = e.phased ? 1 : 0;
   const tel = e.telegraph !== undefined && e.telegraph > 0 ? 1 : 0;
-  return ((kind & 7) << 5) | ((ds & 3) << 3) | (phased << 2) | (tel << 1);
+  // Bit 0 was the only spare in this byte — the data vault rides it, so the
+  // greed event costs zero extra bandwidth to replicate.
+  const vault = e.isVault ? 1 : 0;
+  return ((kind & 7) << 5) | ((ds & 3) << 3) | (phased << 2) | (tel << 1) | vault;
 }
 
 function decodeAbilityState(s: number, e: Entity): void {
@@ -950,6 +1138,21 @@ function decodeAbilityState(s: number, e: Entity): void {
   e.abilityKind = kinds[kindIdx] ?? 'ranged';
   e.dashState = (dss[dsIdx] ?? 'idle') as Entity['dashState'];
   e.phased = phased;
+  // Data vault: gold-tint it once so it reads as loot rather than as the
+  // FIREWALL it is built from. Enemy meshes share materials across instances,
+  // so the materials must be cloned before recolouring.
+  if ((s & 1) === 1 && !e.isVault) {
+    e.isVault = true;
+    e.transform?.traverse((obj: THREE.Object3D) => {
+      const mesh = obj as THREE.Mesh;
+      if (mesh.isMesh && mesh.material) {
+        const mat = (mesh.material as THREE.MeshStandardMaterial).clone();
+        if (mat.color) mat.color.setHex(0xffcc33);
+        if (mat.emissive) mat.emissive.setHex(0xaa8800);
+        mesh.material = mat;
+      }
+    });
+  }
   // On 0->active edge, seed a fresh telegraph timer so the joiner's local sim
   // can count it down. If already active, leave the existing countdown alone
   // (prediction/EnemySystem owns the decrement).
@@ -982,6 +1185,8 @@ export function sendHostUpdate() {
     x: Math.round(p.xp || 0),
     xm: Math.round(p.xpMax || 100),
     ch: p.isLocalPlayer ? uiState.selectedCharacter : p.character || 'cypher',
+    // Jacked into a dive — teammates render the kneeling pose + door marker.
+    dv: p.isDiving ? 1 : 0,
   }));
 
   // Keep the host's own party roster in sync from the same data it broadcasts.
@@ -1023,6 +1228,15 @@ export function sendHostUpdate() {
     r: c.chestRarity || 'common',
   }));
 
+  // Gather floor pickups (medkit / magna-pulse / logic bomb / skeleton key).
+  // Every spawner for these is host-gated, so without this a joiner never saw
+  // a single one — they walked over invisible loot for the whole run.
+  const pickups = Array.from(world.with('isPickup', 'position')).map((p: any) => ({
+    i: p.id,
+    p: [Math.round(p.position.x * 10) / 10, Math.round(p.position.z * 10) / 10],
+    t: p.pickupType || 'medkit',
+  }));
+
   // Gather boss (single entity, or null when not present)
   const bossE = world.with('isBoss', 'position', 'health').first;
   const boss = bossE
@@ -1040,9 +1254,20 @@ export function sendHostUpdate() {
     xp,
     ep,
     chests,
+    pickups,
     boss,
     gameTime: uiState.gameTime,
     bossHealth: uiState.bossHealth,
+  };
+
+  netDebug.sent++;
+  netDebug.lastSent = {
+    players: players.length,
+    enemies: enemies.length,
+    xp: xp.length,
+    chests: chests.length,
+    pickups: pickups.length,
+    ep: ep.length,
   };
 
   // P2P-first: push the snapshot straight to every client with an open data
@@ -1075,7 +1300,14 @@ export function broadcastShoot(projectileData: {
 
 // 7. Broadcast game events to the whole room (host only)
 export function broadcastGameEvent(
-  eventType: 'game-over' | 'victory' | 'chest-toast' | 'player-down' | 'player-revived',
+  eventType:
+    | 'game-over'
+    | 'victory'
+    | 'chest-toast'
+    | 'player-down'
+    | 'player-revived'
+    | 'breach-nodes'
+    | 'anomaly-spawn',
   data: any = {},
 ) {
   if (!socket || socket.disconnected || !uiState.isHost) return;
@@ -1096,6 +1328,40 @@ export function sendDirectEvent(targetConnId: string, eventType: string, data: a
     data,
   });
 }
+
+// 9. Client → host request. The mirror of sendDirectEvent: a joiner asking the
+// host to arbitrate host-owned state (breach node claims, dive outcomes).
+export function sendClientRequest(reqType: string, data: any = {}) {
+  if (!socket || socket.disconnected || uiState.isHost) return;
+  socket.emit('client-request', { roomCode: uiState.roomCode, reqType, data });
+}
+
+// BreachSystem owns breach-node arbitration but must not statically import this
+// module (we import it). Hand it the four seams it needs, once, at load.
+// PickupSystem tells a joiner about the personal half of a pickup the host
+// resolved on their behalf.
+bindPickupNet((connId, type) => sendDirectEvent(connId, 'pickup-collect', { type }));
+
+// Credits earned by a joiner but resolved on the host (their kills run through
+// the host's CollisionSystem) are paid out to them, not banked by the host.
+bindCreditNet((connId, amount) => sendDirectEvent(connId, 'credits', { n: amount }));
+
+// AnomalySystem places fields on the host and mirrors them to the party.
+bindAnomalyNet((t, x, z) =>
+  broadcastGameEvent('anomaly-spawn', {
+    t,
+    x: Math.round(x * 10) / 10,
+    z: Math.round(z * 10) / 10,
+  }),
+);
+
+bindBreachNet({
+  getLocalId: () => socket?.id,
+  sendRequest: sendClientRequest,
+  sendDirect: sendDirectEvent,
+  broadcast: (eventType, data) =>
+    broadcastGameEvent(eventType as Parameters<typeof broadcastGameEvent>[0], data),
+});
 
 // --- NETWORK SMOOTHING (clients) ---
 // Remote entities receive positions at ~30Hz; snapping them there looks

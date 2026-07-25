@@ -272,6 +272,17 @@ io.on('connection', (socket) => {
     }
   });
 
+  // 6d. Client → host request. The mirror of direct-event: lets a joiner ask
+  // the host to arbitrate something host-authoritative (claiming a breach node,
+  // reporting a dive outcome). The host is the only recipient, and it validates
+  // — this is a request, never a command.
+  socket.on('client-request', ({ roomCode, reqType, data }) => {
+    const room = rooms.get(roomCode);
+    if (room && room.players.has(socket.id)) {
+      io.to(room.hostId).emit('client-request', { fromId: socket.id, reqType, data });
+    }
+  });
+
   // 6c. WebRTC signaling relay: forwards SDP offers/answers + ICE candidates
   // between room members so peers can open direct P2P data channels. Once the
   // P2P link is up, gameplay traffic bypasses this server entirely.

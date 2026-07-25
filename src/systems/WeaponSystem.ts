@@ -51,10 +51,22 @@ export function WeaponSystem(dt: number, scene: THREE.Scene) {
   for (const p of world.with('isLocalPlayer', 'stats', 'overflowAccumulator')) {
     const acc = p.overflowAccumulator;
     if (acc && p.stats) {
-      if (acc.might) { p.stats.might += acc.might; acc.might = 0; }
-      if (acc.cooldown) { p.stats.cooldown += acc.cooldown; acc.cooldown = 0; }
-      if (acc.area) { p.stats.area += acc.area; acc.area = 0; }
-      if (acc.amount) { p.stats.amount += acc.amount; acc.amount = 0; }
+      if (acc.might) {
+        p.stats.might += acc.might;
+        acc.might = 0;
+      }
+      if (acc.cooldown) {
+        p.stats.cooldown += acc.cooldown;
+        acc.cooldown = 0;
+      }
+      if (acc.area) {
+        p.stats.area += acc.area;
+        acc.area = 0;
+      }
+      if (acc.amount) {
+        p.stats.amount += acc.amount;
+        acc.amount = 0;
+      }
     }
   }
 
@@ -83,6 +95,12 @@ export function WeaponSystem(dt: number, scene: THREE.Scene) {
 
     // Ghosts don't shoot: dead players roam as spectators until revived
     if (player.health && player.health.current <= 0) continue;
+
+    // Neither do divers: their pilot is in cyberspace and the body is kneeling
+    // at the terminal. This is what makes "defend the hacker" a real job.
+    // (The ghost check above already covers a downed player, so a stale
+    // isDiving on a revived player can't silently disarm them.)
+    if (player.isDiving) continue;
 
     for (const entity of world.with('weapon', 'ownerId')) {
       if (entity.ownerId !== player.id) continue;
@@ -134,7 +152,10 @@ export function WeaponSystem(dt: number, scene: THREE.Scene) {
         }
         // Apply the player's Cooldown stat (Clock Skipper / debug_suite passives,
         // Ghost's CDR quirk) — shorter base cooldown between shots.
-        const cdMult = getEffectiveCooldown(player.stats || getDefaultStats(), player.overflowAccumulator);
+        const cdMult = getEffectiveCooldown(
+          player.stats || getDefaultStats(),
+          player.overflowAccumulator,
+        );
         entity.weapon.cooldownTimer = entity.weapon.fireRate * cdMult;
 
         // If local player in multiplayer, broadcast shoot event to other clients
