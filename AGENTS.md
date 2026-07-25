@@ -45,7 +45,8 @@ Key flags and fields used by systems:
 ## ECS Perf Rules (hard-earned)
 
 - **Nested `world.with()` = slowdown**: always materialize enemies/players into arrays before nested sweeps
-- **`world.remove` was O(n) splice**: now O(1) swap-remove, but the `id` must match the auto-assigned one — network-synced entities that overwrite their `id` break removal (old `indexOf` handled reference identity)
+- **NEVER reassign `entity.id` after `world.add`**. `add()` mints the id and registers it in `idIndex`; stomping the field points `idIndex` at another entity's slot, and `remove()` then clobbers a live entity, over-pops the array and leaves `undefined` holes that every later `world.with()` trips over. Network mirrors keep the host's id in a **side map** (`enemyMirrors`/`chestMirrors`/… in `network.ts`) for exactly this reason. `remove()` now verifies the slot holds the entity before swapping, so a stray reassignment degrades to an O(n) scan instead of corrupting the world — but don't rely on that.
+- **A component counts as present when it is neither `undefined` nor `false`.** Setting an optional flag to `false` (e.g. `isLocalPlayer: false`) used to put the entity **into** that index — which is how `InputSystem` ended up stamping the local player's input onto every remote player. Omit the key instead of setting it false.
 - **ECS indexes only update at `world.add`/`world.remove`**: post-add property assignments (like `entity.rigidBody = ...`) don't affect indexes
 - **y-clamp** `entity.position.y = 0.5` in PhysicsSystem overrides particle Y movement — particles never actually bounce, despite bounce dead-code in ParticleSystem
 
@@ -64,7 +65,9 @@ All enemies are "instanced-only" — no per-enemy scene graph nodes, Rapier bodi
 - **Quality tiers** (`src/core/quality.ts`): low/medium/high control shadows (off/512/1024), bloom (high only), particle scale, minimap interval, pixel ratio caps. Dynamic resolution scaling adapts on AUTO tier
 - **Shadow map at 30Hz** (renderer.ts): `autoUpdate=false`, throttled refresh. Enemy solid mesh has `castShadow=false` (blob shadows handle it)
 - **Rapier is initialized at runtime** — `isRapierInitialized()` can return false early in the startup sequence. Guard every Rapier call
-- **Network sync overwrites entity.id**: `spawnEnemy` assigns an auto-id, then `network.ts` overwrites it with the host's id — breaks `world.get()` and `world.remove()` (which now uses id→slot map instead of reference identity)
+- **Network mirrors key off side maps, not `entity.id`** (fixed 2026-07-26): clients keep `hostId -> entity` in `enemyMirrors`/`epMirrors`/`xpMirrors`/`chestMirrors`/`pickupMirrors` in `network.ts`. The old code overwrote `entity.id` with the host's id and corrupted the ECS — see the hot-earned rules above before touching this.
+- **Co-op authority split**: the host simulates every player (it runs `PlayerControlSystem`/`CollisionSystem` for the whole party); a client simulates ONLY its local player and treats remote players as mirrors. Anything player-scoped that lives in `uiState` (credits, skeleton keys, magna-pulse) must be routed to the earner with `sendDirectEvent`, or it silently lands in the host's wallet.
+- **`window.__coop`** (`?debug`) exposes the network/breach/anomaly/pickup module instances the game loop actually uses. Vite dev serves `'./core/network'` and `'/src/core/network.ts'` as *separate* instances, so a test that imports the path directly drives a second copy with its own socket and sees zero traffic.
 
 ## Model routing
 
