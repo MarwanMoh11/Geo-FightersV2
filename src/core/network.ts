@@ -523,13 +523,32 @@ function handleClientState(playerId: string, state: any) {
   // Dead players are host-authoritative: ignore client-reported position
   // while dead so the ghost stays where it fell for revives... actually
   // ghosts may roam; accept position but never health.
+  // The client owns its own position, so this report is TRUTH. Store it as a
+  // smoothing target rather than only snapping: between packets the host used
+  // to extrapolate the remote body forward on their last-known input
+  // (PlayerControlSystem velocity -> PhysicsSystem kinematic step), which
+  // overshoots every time that player turns or stops. Contact damage is
+  // resolved against this body, so the overshoot is felt as being hit by
+  // enemies that are nowhere near you on the joiner's own screen.
   if (player.position) {
-    player.position.set(state.position.x, 0.5, state.position.z);
-    if (player.transform) {
-      player.transform.position.copy(player.position);
+    player.netX = state.position.x;
+    player.netZ = state.position.z;
+    // Snap on first sight or a big desync (teleport, respawn); otherwise let
+    // the host-side easing converge so the teammate still renders smoothly.
+    const dx = state.position.x - player.position.x;
+    const dz = state.position.z - player.position.z;
+    if (player._netSeen !== true || dx * dx + dz * dz > 6 * 6) {
+      player._netSeen = true;
+      player.position.set(state.position.x, 0.5, state.position.z);
+      if (player.transform) player.transform.position.copy(player.position);
+      player.rigidBody?.setTranslation(
+        { x: player.position.x, y: 0.5, z: player.position.z },
+        true,
+      );
     }
   }
   if (player.velocity) {
+    // Kept for facing + rebroadcast only; it no longer drives their movement.
     player.velocity.set(state.velocity.x, 0, state.velocity.z);
   }
   if (player.aimTarget) {
@@ -1368,6 +1387,34 @@ bindBreachNet({
 // stuttery. Instead updates write netX/netZ targets and this system eases
 // positions toward them every frame.
 const NET_LERP_RATE = 12; // higher = snappier, lower = floatier
+/** Host-side convergence on a teammate's reported position (~one 30Hz tick). */
+const HOST_PLAYER_LERP_RATE = 30;
+
+/**
+ * HOST: ease each remote player's body toward the position they last reported.
+ *
+ * Interpolation, never extrapolation — the body converges on the client's own
+ * truth and can never run past it. This is what the host resolves contact
+ * damage against, so any overshoot here is damage the joiner cannot see coming.
+ */
+export function HostPlayerSmoothingSystem(dt: number) {
+  if (!uiState.isMultiplayer || !uiState.isHost) return;
+  // Converge within roughly one 30Hz packet interval. The visual-smoothing rate
+  // clients use (NET_LERP_RATE = 12, ~80ms) would trade the old overshoot for
+  // an equally large trailing error, and this body is what contact damage is
+  // resolved against — it should sit on the client's reported truth, not a
+  // pleasantly-smoothed approximation of it.
+  const t = Math.min(1, dt * HOST_PLAYER_LERP_RATE);
+  for (const p of remotePlayers.values()) {
+    if (!p?.position || p.netX === undefined || p.netZ === undefined) continue;
+    p.position.x += (p.netX - p.position.x) * t;
+    p.position.z += (p.netZ - p.position.z) * t;
+    p.position.y = 0.5;
+    if (p.transform) p.transform.position.copy(p.position);
+    // Keep the collider on the same spot the damage sweep uses.
+    p.rigidBody?.setTranslation({ x: p.position.x, y: 0.5, z: p.position.z }, true);
+  }
+}
 
 export function NetSmoothingSystem(dt: number) {
   if (!uiState.isMultiplayer || uiState.isHost) return;

@@ -6,6 +6,7 @@ import {
   sendClientUpdate,
   sendHostUpdate,
   NetSmoothingSystem,
+  HostPlayerSmoothingSystem,
 } from './core/network';
 
 import {
@@ -485,6 +486,13 @@ function startGameLoop(
       _t = benchmark.trace('InputSystem');
       InputSystem();
       _t();
+      // Host: ease teammate bodies toward the positions those clients reported,
+      // BEFORE collision resolves against them. They are never extrapolated.
+      if (isMultiplayer && isHost) {
+        _t = benchmark.trace('HostPlayerSmoothingSystem');
+        HostPlayerSmoothingSystem(dt);
+        _t();
+      }
       _t = benchmark.trace('AimSystem');
       AimSystem();
       _t();

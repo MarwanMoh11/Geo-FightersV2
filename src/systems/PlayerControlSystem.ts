@@ -14,23 +14,31 @@ const _inputVector = new THREE.Vector3();
  * @param {number} dt - delta time since last frame in seconds
  */
 export function PlayerControlSystem(dt: number) {
-  // On a CLIENT, remote players are pure mirrors: their position and velocity
-  // arrive in the host snapshot. Simulating them here recomputed their velocity
-  // from an input component nothing fills in, zeroing it every frame — and
-  // RenderSystem only re-aims a rig while it is actually moving, so remote
-  // teammates froze pointing whichever way they happened to be facing.
-  // The HOST still runs this for everyone: it is authoritative for the party.
-  const mirrorsOnly = uiState.isMultiplayer && !uiState.isHost;
+  // Remote players are never *driven* here, on either side. Each client owns its
+  // own position and reports it; the network layer eases their body toward that
+  // report (NetSmoothingSystem on a client, HostPlayerSmoothingSystem on the
+  // host). Deriving their movement from replicated input instead meant:
+  //   - on a client, recomputing velocity from an input component nothing fills,
+  //     zeroing it — and RenderSystem only re-aims a rig while it is moving, so
+  //     teammates froze pointing whichever way they happened to be facing;
+  //   - on the host, EXTRAPOLATING them forward on their last-known input
+  //     between packets. Contact damage is resolved against that body, so every
+  //     overshoot became a hit the joiner never saw coming.
+  const remoteIsMirror = uiState.isMultiplayer;
 
   for (const entity of world.with('isPlayer', 'velocity', 'input', 'stats')) {
     // FIX: Guard clause
     if (!entity.input) continue;
-    if (mirrorsOnly && !entity.isLocalPlayer) continue;
 
-    // Tick post-hit invulnerability window
+    // Tick post-hit invulnerability window. This must run for EVERY player,
+    // including mirrors — the host stamps invulnTimer on remote players when
+    // they take contact damage, and if nothing decremented it they would be
+    // permanently immune after their first hit.
     if (entity.invulnTimer && entity.invulnTimer > 0) {
       entity.invulnTimer -= dt;
     }
+
+    if (remoteIsMirror && !entity.isLocalPlayer) continue;
 
     // Jacked into a breach: the fighter kneels at the terminal — no movement
     // (BreachSystem maintains the shield; the mini-game owns the keys).

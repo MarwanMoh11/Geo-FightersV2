@@ -22,6 +22,12 @@ export function PhysicsSystem(dt: number) {
   // --- RAPIER PHYSICS STEP (players only — enemies/projectiles are body-free) ---
   if (isRapierInitialized()) {
     for (const entity of world.with('rigidBody', 'position', 'velocity')) {
+      // A remote player's body is placed by HostPlayerSmoothingSystem from the
+      // position that client actually reported. Integrating its velocity here
+      // too would extrapolate them forward on stale input between packets —
+      // and since contact damage is resolved against this body, the joiner
+      // gets hit by enemies that are nowhere near them on their own screen.
+      if (entity.isPlayer && !entity.isLocalPlayer) continue;
       entity.rigidBody!.setNextKinematicTranslation({
         x: entity.position.x + entity.velocity.x * dt,
         y: 0.5,
@@ -32,6 +38,7 @@ export function PhysicsSystem(dt: number) {
     stepPhysics(dt);
 
     for (const entity of world.with('rigidBody', 'position')) {
+      if (entity.isPlayer && !entity.isLocalPlayer) continue;
       const pos = entity.rigidBody!.translation();
       entity.position.set(pos.x, 0.5, pos.z);
 
@@ -46,8 +53,13 @@ export function PhysicsSystem(dt: number) {
   // ChestSystem moves chests, FinaleBoss moves the boss. This system integrates
   // ONLY projectiles and particles (nothing else owns them), then clamps.
   for (const entity of world.with('position', 'velocity')) {
-    const ownedElsewhere = entity.isEnemy || entity.isXP || entity.isChest;
-    if (entity.rigidBody) {
+    // Remote players are owned by the network smoothing on BOTH sides (the host
+    // eases them toward the position that client reported; a client eases them
+    // toward the host snapshot). Integrating their replicated velocity here as
+    // well extrapolates them past that target every frame.
+    const isRemotePlayer = !!entity.isPlayer && !entity.isLocalPlayer;
+    const ownedElsewhere = entity.isEnemy || entity.isXP || entity.isChest || isRemotePlayer;
+    if (entity.rigidBody && !isRemotePlayer) {
       const pos = entity.rigidBody.translation();
       entity.position.set(pos.x, 0.5, pos.z);
     } else if (!ownedElsewhere) {
