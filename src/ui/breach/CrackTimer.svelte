@@ -29,7 +29,10 @@
     penalty,
   }: Props = $props();
 
-  const totalLocks = Math.min(6, 2 + sec + (overclock ? 1 : 0));
+  // Capped at 5, not 6. Every lock is an independent chance to eat a trace
+  // penalty, so the count multiplies the per-lock difficulty rather than
+  // adding to it — six near-frame-perfect taps in a row was a coin flip.
+  const totalLocks = Math.min(5, 2 + sec + (overclock ? 1 : 0));
   const useDecoys = decoys || sec >= 2;
 
   let locksDone = $state(0);
@@ -41,11 +44,26 @@
   let hitFlash = $state<'' | 'good' | 'bad'>('');
   let done = false;
 
+  /**
+   * Marker sweep speed (deg/s) and target arc width (deg). What actually
+   * matters is the quotient — arc/speed is how many milliseconds the marker
+   * spends inside the target, i.e. the entire window the player has to react.
+   *
+   * The old curve collapsed at the top end: at security 3 with overclock the
+   * last of six locks was a 14deg arc at 325deg/s, a 43ms window. Touch input
+   * latency alone is 50-100ms, so that lock was not difficult, it was a
+   * lottery — and a miss there costs trace, on the game mode gating the run's
+   * only exploit source.
+   *
+   * Retuned so the window stays inside human range across the whole curve:
+   * ~200ms on the first lock at max security, ~127ms on the last. Demanding,
+   * still losable, no longer decided by luck.
+   */
   function speedFor(lock: number): number {
-    return 150 + sec * 35 + lock * 14;
+    return 130 + sec * 22 + lock * 10;
   }
   function arcFor(lock: number): number {
-    return Math.max(14, 46 - sec * 6 - lock * 3);
+    return Math.max(24, 52 - sec * 4 - lock * 2.5);
   }
 
   function rollArcs(): void {

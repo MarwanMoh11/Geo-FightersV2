@@ -30,8 +30,13 @@
 
   const GLYPHS = ['◆', '▲', '●', '★', '✚', '☰', '⚡', '◼', '☾'];
   const rounds = 2 + (sec >= 2 ? 1 : 0) + (overclock ? 1 : 0);
-  const doShuffle = shuffle || sec >= 2;
-  const showMs = Math.max(260, 520 - sec * 70);
+  // Scrambling the keypad destroys the spatial-motor memory players lean on to
+  // recall a sequence, so it roughly doubles the difficulty of the same
+  // length. Held back to the top security band instead of the middle one.
+  const doShuffle = shuffle || sec >= 3;
+  // Encoding time per glyph. 310ms (the old floor at sec 3) is under what it
+  // takes to reliably commit an abstract symbol to memory.
+  const showMs = Math.max(340, 560 - sec * 55);
 
   let pads = $state([...GLYPHS]);
   let round = $state(0);
@@ -48,8 +53,19 @@
     timers.push(setTimeout(fn, ms));
   }
 
+  /**
+   * Sequence length for round `r`, hard-capped at 6.
+   *
+   * Uncapped this reached 8 random glyphs at security 3 with overclock. Human
+   * working memory for unfamiliar, unchunkable items is about 7 plus or minus
+   * 2 under ideal conditions — and these are abstract symbols, shown once,
+   * recalled against a keypad that may have just been scrambled. Round 4 was
+   * therefore not a skill check most players could pass at any level of play.
+   * Six is at the edge of achievable, which is where the top of the curve
+   * should sit.
+   */
   function lenFor(r: number): number {
-    return 3 + Math.ceil(sec / 2) + r;
+    return Math.min(6, 3 + Math.floor(sec / 2) + r);
   }
 
   function shufflePads(): void {
