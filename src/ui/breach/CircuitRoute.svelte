@@ -20,8 +20,14 @@
 
   const W = 5 + (sec >= 2 ? 1 : 0);
   const H = 4 + (sec >= 3 ? 1 : 0);
-  const doCorrupt = corrupt || sec >= 2;
-  const corruptEvery = (sec >= 3 ? 4.5 : 6.5) / (overclock ? 1.4 : 1);
+  // Corruption undoes work the player already did, so it punishes the slow
+  // solving that a bigger grid forces — the two escalations compounded, and
+  // both switched on in the same security band. Corruption now waits for the
+  // top band, and the overclock multiplier is gentler: at security 3 with
+  // overclock the cadence goes 3.2s -> 4.4s, which is the difference between
+  // re-routing faster than you can read the board and actually planning.
+  const doCorrupt = corrupt || sec >= 3;
+  const corruptEvery = (sec >= 3 ? 5.5 : 7.5) / (overclock ? 1.25 : 1);
 
   // Tile connections as [N, E, S, W]
   type Conn = [boolean, boolean, boolean, boolean];
