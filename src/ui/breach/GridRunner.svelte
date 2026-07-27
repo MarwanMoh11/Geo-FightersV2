@@ -339,24 +339,66 @@
     keysDown.delete(e.code);
   }
 
-  // --- INPUT: swipe on the maze ---
+  /* --- INPUT: swipe on the maze ---
+     Two things made this finicky on a phone:
+
+     1. It read `e.touches[0]` unconditionally. `touches` is every active
+        finger on the screen, not "the finger that started this gesture" — so
+        the moment a second finger landed (holding the D-pad, resting a thumb,
+        a stray palm) `touches[0]` could become a DIFFERENT finger and dx/dy
+        was suddenly measured between two unrelated points. That produced a
+        huge delta and an instant jump in whatever direction the gap happened
+        to point, which is the packet teleporting for no reason.
+
+     2. There was no rate limit. The keyboard path steps at MOVE_INTERVAL, but
+        a swipe re-anchored on every threshold crossing and moved again
+        immediately — one fast flick walked the packet several cells before
+        you could react, usually into a chaser.
+
+     The gesture now locks onto one touch identifier for its whole life and
+     shares the keyboard's step cooldown, so a drag runs at a readable pace. */
   let gridEl: HTMLDivElement;
+  let touchId: number | null = null;
   let touchX = 0;
   let touchY = 0;
+  const SWIPE_THRESHOLD = 24;
+
   function onTouchStart(e: TouchEvent): void {
-    const t = e.touches[0];
+    if (touchId !== null) return; // a gesture already owns the board
+    const t = e.changedTouches[0];
+    if (!t) return;
+    touchId = t.identifier;
     touchX = t.clientX;
     touchY = t.clientY;
   }
+
+  function activeTouch(list: TouchList): Touch | null {
+    if (touchId === null) return null;
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].identifier === touchId) return list[i];
+    }
+    return null;
+  }
+
+  function onTouchEnd(e: TouchEvent): void {
+    if (activeTouch(e.changedTouches)) touchId = null;
+  }
+
   function onTouchMove(e: TouchEvent): void {
     e.preventDefault();
-    const t = e.touches[0];
+    const t = activeTouch(e.touches);
+    if (!t) return;
+
     const dx = t.clientX - touchX;
     const dy = t.clientY - touchY;
-    const TH = 24;
-    if (Math.abs(dx) < TH && Math.abs(dy) < TH) return;
+    if (Math.abs(dx) < SWIPE_THRESHOLD && Math.abs(dy) < SWIPE_THRESHOLD) return;
+    // Re-anchor even when the step is rate-limited below, or the pending delta
+    // keeps re-firing the same direction the instant the cooldown lapses.
     touchX = t.clientX;
     touchY = t.clientY;
+    if (moveCooldown > 0) return;
+    moveCooldown = MOVE_INTERVAL;
+
     if (Math.abs(dx) > Math.abs(dy)) {
       if (activeGate !== null) gateInput(dx > 0 ? '→' : '←');
       else tryMove(0, Math.sign(dx));
@@ -371,7 +413,13 @@
     typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
   let padRepeat: ReturnType<typeof setInterval> | null = null;
 
-  function padPress(dr: number, dc: number, arrow: string): void {
+  function padPress(e: PointerEvent, dr: number, dc: number, arrow: string): void {
+    /* Capture the pointer so a finger that rolls a few pixels off a 52px
+       button keeps running. Without it `pointerleave` fired on the smallest
+       drift and the packet stopped dead mid-corridor — the single most
+       common "the D-pad didn't respond" on a phone. Capture also means
+       `pointerup` still lands on this button wherever the finger lifts. */
+    (e.currentTarget as HTMLElement)?.setPointerCapture?.(e.pointerId);
     if (activeGate !== null) {
       gateInput(arrow);
       return;
@@ -395,6 +443,11 @@
     window.addEventListener('keyup', onKeyUp, true);
     gridEl?.addEventListener('touchstart', onTouchStart, { passive: true });
     gridEl?.addEventListener('touchmove', onTouchMove, { passive: false });
+    // End/cancel release the gesture lock. Bound on window, not the grid: a
+    // finger that lifts after drifting off the board still ends its gesture,
+    // and without this the lock would strand and the board go dead to touch.
+    window.addEventListener('touchend', onTouchEnd, { passive: true });
+    window.addEventListener('touchcancel', onTouchEnd, { passive: true });
 
     let last = performance.now();
     let chaserClock = 0;
@@ -429,6 +482,8 @@
       window.removeEventListener('keyup', onKeyUp, true);
       gridEl?.removeEventListener('touchstart', onTouchStart);
       gridEl?.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+      window.removeEventListener('touchcancel', onTouchEnd);
     };
   });
 </script>
@@ -485,33 +540,31 @@
 
   {#if isTouch}
     <div class="dpad">
+      <!-- No `onpointerleave` release: padPress captures the pointer, so a
+           finger rolling off the button no longer cancels the run. -->
       <button
         class="dp up"
-        onpointerdown={() => padPress(-1, 0, '↑')}
+        onpointerdown={(e) => padPress(e, -1, 0, '↑')}
         onpointerup={padRelease}
-        onpointercancel={padRelease}
-        onpointerleave={padRelease}>▲</button
+        onpointercancel={padRelease}>▲</button
       >
       <button
         class="dp left"
-        onpointerdown={() => padPress(0, -1, '←')}
+        onpointerdown={(e) => padPress(e, 0, -1, '←')}
         onpointerup={padRelease}
-        onpointercancel={padRelease}
-        onpointerleave={padRelease}>◀</button
+        onpointercancel={padRelease}>◀</button
       >
       <button
         class="dp right"
-        onpointerdown={() => padPress(0, 1, '→')}
+        onpointerdown={(e) => padPress(e, 0, 1, '→')}
         onpointerup={padRelease}
-        onpointercancel={padRelease}
-        onpointerleave={padRelease}>▶</button
+        onpointercancel={padRelease}>▶</button
       >
       <button
         class="dp down"
-        onpointerdown={() => padPress(1, 0, '↓')}
+        onpointerdown={(e) => padPress(e, 1, 0, '↓')}
         onpointerup={padRelease}
-        onpointercancel={padRelease}
-        onpointerleave={padRelease}>▼</button
+        onpointercancel={padRelease}>▼</button
       >
     </div>
   {/if}
