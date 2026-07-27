@@ -340,6 +340,7 @@ export function bankRunCredits(
   const collected = Math.max(0, Math.round(uiState.creditsCollected));
   const bonus = computeExtractionBonus(runTime, level, victory);
   const total = collected + bonus;
+  uiState.payoutDoubled = false; // a fresh payout is doublable again
   if (total > 0) {
     uiState.credits += total;
     saveLocal('geo_credits', JSON.stringify(uiState.credits));
@@ -347,6 +348,31 @@ export function bankRunCredits(
     checkAchievements();
   }
   return { collected, bonus, total };
+}
+
+/**
+ * Pay the run's payout a second time, after the player watched a rewarded ad.
+ *
+ * Rewarded ads are the one placement that costs no retention: the player opts
+ * in for value they wanted anyway. Doubling an already-earned payout is the
+ * highest-converting version of that in this genre, because the number is
+ * already on screen and already feels like theirs.
+ *
+ * Guarded by `payoutDoubled` rather than trusting the caller — an ad SDK can
+ * fire its completion callback more than once, and this writes to the wallet.
+ *
+ * @returns the credits actually granted (0 if already doubled or nothing owed).
+ */
+export function doubleRunPayout(): number {
+  if (uiState.payoutDoubled) return 0;
+  const amount = Math.max(0, Math.round(uiState.lastPayout.total));
+  if (amount <= 0) return 0;
+  uiState.payoutDoubled = true;
+  uiState.credits += amount;
+  saveLocal('geo_credits', JSON.stringify(uiState.credits));
+  recordCredits(amount);
+  checkAchievements();
+  return amount;
 }
 
 export function recordVaultCracked(): void {

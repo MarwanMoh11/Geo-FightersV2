@@ -1,14 +1,44 @@
 <script lang="ts">
   import { uiState } from '../../core/UIState.svelte.ts';
-  import { getNearestLocked, ACHIEVEMENTS } from '../../core/ProgressManager';
+  import { getNearestLocked, ACHIEVEMENTS, doubleRunPayout } from '../../core/ProgressManager';
   import { resetRun } from '../../core/runReset';
   import { setGameState } from '../../core/GameState';
-  import { requestMidgameAd } from '../../core/portal';
+  import { requestMidgameAd, requestRewardedAd, isRewardedAvailable } from '../../core/portal';
   import { playMenuClick } from '../../core/audio';
   import { haptics } from '../../core/haptics';
   import Modal from '../Modal.svelte';
 
   let leaving = $state(false);
+  // Guard against double taps while the rewarded request is in flight.
+  let doubling = $state(false);
+
+  /**
+   * Offer the double only when a portal can actually serve the ad and there is
+   * something to double. Hiding it beats showing a button that fails —
+   * `isRewardedAvailable` also covers adblock, which is common on desktop web.
+   */
+  let canDouble = $derived(
+    uiState.lastPayout.total > 0 && !uiState.payoutDoubled && isRewardedAvailable(),
+  );
+
+  function doublePayout() {
+    if (doubling || uiState.payoutDoubled) return;
+    playMenuClick();
+    haptics.select();
+    doubling = true;
+    requestRewardedAd(
+      () => {
+        doubling = false;
+        doubleRunPayout();
+        haptics.select();
+      },
+      () => {
+        // Portal rule: an ad that failed pays nothing. The offer stays up so
+        // the player can retry rather than silently losing the opportunity.
+        doubling = false;
+      },
+    );
+  }
 
   /**
    * End of a run is the portal's natural interstitial break. Requested HERE
@@ -117,10 +147,28 @@
           <span>{uiState.isVictory ? 'Extraction bonus' : 'Depth bonus'}</span>
           <span class="tnum">+{uiState.lastPayout.bonus}</span>
         </div>
+        {#if uiState.payoutDoubled}
+          <div class="payout-row doubled">
+            <span>Ad bonus</span>
+            <span class="tnum">+{uiState.lastPayout.total}</span>
+          </div>
+        {/if}
         <div class="payout-row wallet">
           <span>Wallet</span><span class="tnum">🪙 {uiState.credits}</span>
         </div>
       </div>
+
+      {#if canDouble}
+        <button class="double-btn" disabled={doubling} onclick={doublePayout}>
+          <span class="double-glyph" aria-hidden="true">▶</span>
+          <span class="double-text">
+            <span class="double-label">Double it</span>
+            <span class="double-sub">
+              {doubling ? 'Loading…' : `Watch an ad · +${uiState.lastPayout.total} credits`}
+            </span>
+          </span>
+        </button>
+      {/if}
     </div>
   {/if}
 
@@ -277,12 +325,71 @@
     font-size: var(--fs-caption);
     color: var(--color-text-dim);
   }
+  .payout-row.doubled {
+    color: var(--color-gold);
+    font-weight: 700;
+  }
   .payout-row.wallet {
     margin-top: 0.3rem;
     padding-top: 0.35rem;
     border-top: 1px dashed rgba(255, 216, 77, 0.22);
     color: var(--color-text-main);
     font-weight: 700;
+  }
+
+  /* Rewarded-ad offer. Gold rather than the usual cyan so it reads as part of
+     the payout it doubles, and full-width at --tap height because this is the
+     one control on the screen we actively want thumbed on a phone. */
+  .double-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    width: 100%;
+    min-height: var(--tap);
+    margin-top: 0.6rem;
+    padding: 0.45rem 0.7rem;
+    border-radius: var(--r-md);
+    border: 1px solid rgba(255, 216, 77, 0.55);
+    background: rgba(255, 216, 77, 0.14);
+    color: var(--color-text-main);
+    cursor: pointer;
+    text-align: left;
+    transition: background var(--transition-fast);
+  }
+  .double-btn:hover:not(:disabled) {
+    background: rgba(255, 216, 77, 0.22);
+  }
+  .double-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+  .double-glyph {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border-radius: var(--r-pill);
+    background: var(--color-gold);
+    color: #1a1400;
+    font-size: 0.7rem;
+  }
+  .double-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.25;
+  }
+  .double-label {
+    font-family: var(--font-heading);
+    font-size: var(--fs-label);
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-gold);
+  }
+  .double-sub {
+    font-size: var(--fs-caption);
+    color: var(--color-text-dim);
   }
 
   /* ---- Global rank ---- */

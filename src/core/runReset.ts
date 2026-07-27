@@ -77,6 +77,8 @@ export function resetRun(): void {
   uiState.isGameOver = false;
   uiState.isVictory = false;
   uiState.lastPayout = { collected: 0, bonus: 0, total: 0 };
+  uiState.payoutDoubled = false; // paired with lastPayout — clearing one without
+  // the other would leave a stale "already doubled" on the next payout
   uiState.exploitTutorial = null;
   uiState.showSecondChance = false;
   uiState.secondChanceUsed = false;

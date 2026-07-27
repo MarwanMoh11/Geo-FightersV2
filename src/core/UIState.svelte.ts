@@ -53,6 +53,12 @@ export const uiState = $state({
   creditsCollected: 0,
   /** Payout breakdown for the run that just ended (set by bankRunCredits). */
   lastPayout: { collected: 0, bonus: 0, total: 0 },
+  /**
+   * Whether this run's payout has already been doubled by a rewarded ad. Lives
+   * here rather than in the game-over modal so it survives a remount and is
+   * reset by the next bankRunCredits — one double per run, always.
+   */
+  payoutDoubled: false,
   selectedCharacter: getLocalVal<string>('geo_selected_character', 'cypher'),
   permanentUpgrades: getUpgradeDefaults(),
   showGrimoire: false,
