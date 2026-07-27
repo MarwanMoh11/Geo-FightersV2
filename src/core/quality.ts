@@ -24,6 +24,23 @@ export interface QualityProfile {
   minimapInterval: number;
   /** Adaptive resolution scaling to hold frame rate */
   dynamicResolution: boolean;
+  /**
+   * Threshold bloom over emissive materials. This is not a garnish — the game
+   * is untextured primitives, so the glow IS the art direction. Without it the
+   * same geometry reads as an unfinished grey blockout rather than neon.
+   * That makes bloom the last thing to cut, not the first.
+   */
+  bloom: boolean;
+  /**
+   * Render scale for the bloom pass alone (1 = full res). Bloom is a blur, so
+   * resolving it at half res is nearly invisible while quartering the fill cost
+   * of its mip chain — the standard way to afford this effect on a phone.
+   */
+  bloomScale: number;
+  /** Bloom strength / radius / luminance threshold, fed to UnrealBloomPass. */
+  bloomStrength: number;
+  bloomRadius: number;
+  bloomThreshold: number;
 }
 
 export const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
@@ -42,6 +59,13 @@ const PROFILES: Record<QualityTier, QualityProfile> = {
     neonLights: false,
     minimapInterval: 0.25,
     dynamicResolution: true, // can still drop further on truly ancient hardware
+    // The only tier without bloom. LOW means 2GB RAM or a dual-core — a device
+    // already leaning on the adaptive scaler to hold frame rate.
+    bloom: false,
+    bloomScale: 0,
+    bloomStrength: 0,
+    bloomRadius: 0,
+    bloomThreshold: 1,
   },
   medium: {
     tier: 'medium',
@@ -54,6 +78,15 @@ const PROFILES: Record<QualityTier, QualityProfile> = {
     neonLights: true,
     minimapInterval: 0.12,
     dynamicResolution: false,
+    // Where every phone lands (detectTier sends all mobile here), so this is
+    // the config most players actually see. Half-res pass, and a slightly
+    // higher threshold so only the true neon sources feed the mip chain
+    // instead of every mid-bright surface.
+    bloom: true,
+    bloomScale: 0.5,
+    bloomStrength: 0.5,
+    bloomRadius: 0.5,
+    bloomThreshold: 0.9,
   },
   high: {
     tier: 'high',
@@ -66,6 +99,11 @@ const PROFILES: Record<QualityTier, QualityProfile> = {
     neonLights: true,
     minimapInterval: 0.08,
     dynamicResolution: false,
+    bloom: true,
+    bloomScale: 1.0,
+    bloomStrength: 0.5,
+    bloomRadius: 0.4,
+    bloomThreshold: 0.85,
   },
 };
 
@@ -110,6 +148,11 @@ export function getQualityProfile(): QualityProfile {
       neonLights: true,
       minimapInterval: 0.04,
       dynamicResolution: false,
+      bloom: true,
+      bloomScale: 1.0,
+      bloomStrength: 0.6,
+      bloomRadius: 0.4,
+      bloomThreshold: 0.8,
     };
   }
 
@@ -151,6 +194,21 @@ let fastAccum = 0;
 let cooldown = 0;
 let resolutionScale = 1.0;
 
+/**
+ * Last-resort bloom kill switch, owned by the adaptive scaler.
+ *
+ * Bloom is the art direction on untextured geometry, so it is the last thing
+ * cut and the first thing restored — resolution has to bottom out at MIN_SCALE
+ * and frames must STILL be slow before this trips. This is what makes it safe
+ * to hand every phone a bloom pass by default: a device that genuinely cannot
+ * afford it opts itself out within a couple of seconds instead of chugging.
+ */
+let bloomSuppressed = false;
+
+export function isBloomSuppressed(): boolean {
+  return bloomSuppressed;
+}
+
 function currentBasePixelRatio(): number {
   const profile = getQualityProfile();
   return Math.min(window.devicePixelRatio || 1, profile.pixelRatioCap) * profile.baseRenderScale;
@@ -164,12 +222,14 @@ export function applyPixelRatio(): void {
 export function initDynamicResolution(renderer: ResizableRenderer): void {
   registeredRenderer = renderer;
   resolutionScale = 1.0;
+  bloomSuppressed = false;
   frameTimeEma = 16.7;
   applyPixelRatio();
 
   // Re-apply base ratio (and reset adaptation) when the user changes quality
   onSettingsChange(() => {
     resolutionScale = 1.0;
+    bloomSuppressed = false;
     slowAccum = 0;
     fastAccum = 0;
     applyPixelRatio();
@@ -202,12 +262,24 @@ export function updateDynamicResolution(dt: number): void {
       applyPixelRatio();
       cooldown = ADJUST_COOLDOWN_S;
       slowAccum = 0;
+    } else if (slowAccum > 1.5 && !bloomSuppressed && getQualityProfile().bloom) {
+      // Resolution has nothing left to give and we are still missing frames.
+      // Longer fuse than a resolution step (1.5s vs 0.5s) so a brief spike
+      // never costs the look.
+      bloomSuppressed = true;
+      cooldown = ADJUST_COOLDOWN_S;
+      slowAccum = 0;
     }
   } else if (frameTimeEma < FAST_FRAME_MS) {
     fastAccum += dt;
     slowAccum = 0;
-    // Three seconds of headroom → step back up slowly
-    if (fastAccum > 3.0 && resolutionScale < MAX_SCALE) {
+    // Three seconds of headroom → give it back. Bloom returns BEFORE
+    // resolution: it is worth more per GPU millisecond than a sharper image.
+    if (fastAccum > 3.0 && bloomSuppressed) {
+      bloomSuppressed = false;
+      cooldown = ADJUST_COOLDOWN_S;
+      fastAccum = 0;
+    } else if (fastAccum > 3.0 && resolutionScale < MAX_SCALE) {
       resolutionScale = Math.min(MAX_SCALE, resolutionScale + STEP_UP);
       applyPixelRatio();
       cooldown = ADJUST_COOLDOWN_S;

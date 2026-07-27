@@ -3,7 +3,13 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { getQualityProfile, initDynamicResolution, applyPixelRatio, isMobile } from './quality';
+import {
+  getQualityProfile,
+  initDynamicResolution,
+  applyPixelRatio,
+  isBloomSuppressed,
+  isMobile,
+} from './quality';
 import { onSettingsChange } from './SettingsManager';
 import { isPortalEmbed } from './portal';
 
@@ -115,40 +121,61 @@ export async function initRenderer() {
     }
   }
 
-  // --- BLOOM (Phase 1.8, strictly gated) ---
-  // Threshold bloom so emissive parts genuinely glow. HIGH tier, desktop
-  // only — every other configuration renders exactly as before with zero
-  // added cost. Two implementations: node-based PostProcessing for the
-  // WebGPURenderer class (works on both its backends), classic
-  // EffectComposer for the plain-WebGL fallback.
+  // --- BLOOM ---
+  // The game draws untextured primitives, so the glow is not a garnish — it IS
+  // the art direction. Without it the same geometry reads as a grey blockout.
+  // This used to be gated `high && !isMobile`, which meant no phone could ever
+  // reach it by any path (detectTier sends all mobile to MEDIUM), and portal
+  // traffic is mostly phones. Now it is a quality-profile property: LOW opts
+  // out, MEDIUM gets a half-res pass, HIGH gets full res.
+  //
+  // Two implementations: node-based PostProcessing for the WebGPURenderer
+  // class, classic EffectComposer for plain WebGL. Mobile and portal embeds
+  // both land on WebGLRenderer, so the EffectComposer path is the one that
+  // carries the traffic.
   let composer: EffectComposer | null = null;
   let postProcessing: { render: () => void } | null = null;
+  // Held so the resize handler can restore its scaled resolution — see applySize.
+  let bloomPass: UnrealBloomPass | null = null;
   let bloomEnabled = false;
-  if (quality.tier === 'high' && !isMobile) {
+  if (quality.bloom) {
     try {
       if (isWebGPUClass) {
         const { PostProcessing } = await import('three/webgpu');
         const { pass } = await import('three/tsl');
         const { bloom } = await import('three/addons/tsl/display/BloomNode.js');
         const scenePass = pass(scene, camera);
-        const bloomPass = bloom(scenePass, 0.35, 0.4, 0.85); // strength, radius, threshold
+        const bloomPass = bloom(
+          scenePass,
+          quality.bloomStrength,
+          quality.bloomRadius,
+          quality.bloomThreshold,
+        );
         const post = new PostProcessing(renderer);
         post.outputNode = scenePass.add(bloomPass);
         postProcessing = post;
       } else {
         composer = new EffectComposer(renderer);
         composer.addPass(new RenderPass(scene, camera));
-        composer.addPass(
-          new UnrealBloomPass(
-            new THREE.Vector2(window.innerWidth, window.innerHeight),
-            0.35, // strength: a glow, not a smear
-            0.4, // radius
-            0.85, // threshold: only genuinely bright emissives bloom
+        // Resolution drives the mip chain this pass blurs through, so scaling
+        // it down is what makes bloom affordable on a phone. It is a blur
+        // either way — half res costs roughly a quarter of the fill and reads
+        // almost identically.
+        bloomPass = new UnrealBloomPass(
+          new THREE.Vector2(
+            Math.max(1, Math.round(window.innerWidth * quality.bloomScale)),
+            Math.max(1, Math.round(window.innerHeight * quality.bloomScale)),
           ),
+          quality.bloomStrength,
+          quality.bloomRadius,
+          quality.bloomThreshold,
         );
+        composer.addPass(bloomPass);
       }
       bloomEnabled = true;
-      console.log('[Renderer] Bloom enabled (high tier)');
+      console.log(
+        `[Renderer] Bloom enabled (${quality.tier} tier, ${Math.round(quality.bloomScale * 100)}% scale)`,
+      );
     } catch (err) {
       composer = null;
       postProcessing = null;
@@ -156,10 +183,34 @@ export async function initRenderer() {
     }
   }
 
-  // Live quality switches toggle bloom off/on without a reload
+  /**
+   * Re-assert the bloom pass's own scaled resolution.
+   *
+   * EffectComposer.setSize resizes every pass it owns to the full viewport,
+   * and setPixelRatio calls setSize internally — so BOTH the resize handler
+   * and the adaptive-resolution scaler silently reset the bloom pass to full
+   * res. Without this, bloomScale would be discarded within 400ms of boot
+   * (applySize runs on a timer) and again on every adaptive step, and MEDIUM
+   * would be paying full-res bloom cost on exactly the phones it was scaled
+   * down for. Anything that touches the composer must call this afterwards.
+   */
+  const syncBloomResolution = () => {
+    if (!bloomPass) return;
+    const w = window.visualViewport?.width ?? window.innerWidth;
+    const h = window.visualViewport?.height ?? window.innerHeight;
+    bloomPass.setSize(
+      Math.max(1, Math.round(w * quality.bloomScale)),
+      Math.max(1, Math.round(h * quality.bloomScale)),
+    );
+  };
+
+  // Live quality switches toggle bloom off/on without a reload. Only the
+  // on/off flag is live: strength and pass resolution are baked into the
+  // composer at construction, so dropping to LOW mid-session turns bloom off
+  // (the win that matters for frame rate) while moving MEDIUM -> HIGH keeps
+  // the half-res pass until the next reload.
   onSettingsChange(() => {
-    bloomEnabled =
-      (composer !== null || postProcessing !== null) && getQualityProfile().tier === 'high';
+    bloomEnabled = (composer !== null || postProcessing !== null) && getQualityProfile().bloom;
   });
 
   // Shadow map refresh is capped at 30Hz: the arena is static and the only
@@ -181,8 +232,12 @@ export async function initRenderer() {
         renderer.shadowMap.needsUpdate = true;
       }
     }
-    if (bloomEnabled && postProcessing) postProcessing.render();
-    else if (bloomEnabled && composer) composer.render();
+    // isBloomSuppressed is the adaptive scaler's last-resort opt-out for a
+    // device that bottomed out on resolution and is still dropping frames.
+    // Skipping the composer for a frame is safe — it holds no per-frame state.
+    const useBloom = bloomEnabled && !isBloomSuppressed();
+    if (useBloom && postProcessing) postProcessing.render();
+    else if (useBloom && composer) composer.render();
     else renderer.render(scene, camera);
   };
 
@@ -192,6 +247,7 @@ export async function initRenderer() {
     setPixelRatio: (ratio: number) => {
       renderer.setPixelRatio(ratio);
       composer?.setPixelRatio(ratio);
+      syncBloomResolution(); // setPixelRatio calls setSize, which resets the pass
     },
   });
 
@@ -255,6 +311,7 @@ export async function initRenderer() {
     camera.updateProjectionMatrix();
     renderer.setSize(w, h);
     composer?.setSize(w, h);
+    syncBloomResolution();
     applyPixelRatio(); // devicePixelRatio can change when moving across monitors
   };
   window.addEventListener('resize', applySize);
