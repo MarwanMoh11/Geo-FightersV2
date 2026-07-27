@@ -103,7 +103,7 @@ function createDebugUI() {
 
   // 3. SPAWN ENEMY DROPDOWN
   const enemySelect = document.createElement('select');
-  // Populate with known types (will gather from HordeSystem)
+  // Populate with the enemy ids the spawner pools draw from.
   const enemyTypes = [
     'cyber_wolf',
     'drone_eye',

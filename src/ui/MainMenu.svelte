@@ -684,8 +684,8 @@
         />
         <p class="corruption-desc">
           {#if uiState.corruption === 0}
-            Level zero — the baseline run. Raise the dial for tougher enemies and far richer
-            XP and credit payouts.
+            Level zero — the baseline run. Raise the dial for tougher enemies and far richer XP and
+            credit payouts.
           {:else}
             +{Math.round((corruptionHp(uiState.corruption) - 1) * 100)}% enemy HP · +{Math.round(
               (corruptionXp(uiState.corruption) - 1) * 100,
