@@ -1,11 +1,19 @@
 import { world } from '../core/world';
-import { getBlockingObstacles, checkAABBCollision, getCurrentLevel } from '../core/LevelData';
+import {
+  getBlockingObstacles,
+  collideAABB,
+  getCurrentLevel,
+  type PushOut,
+} from '../core/LevelData';
 import { stepPhysics, isRapierInitialized } from '../core/RapierWorld';
 
 // Entity collision radius (hitbox size)
 const PLAYER_RADIUS = 0.8;
 const ENEMY_RADIUS = 0.5;
 const PROJECTILE_RADIUS = 0.3;
+
+/** Shared separation scratch — this loop runs tens of thousands of times a frame. */
+const _push: PushOut = { x: 0, z: 0 };
 
 /**
  * Per-frame physics tick: step Rapier for player bodies, integrate projectile
@@ -73,13 +81,7 @@ export function PhysicsSystem(dt: number) {
     // around the player and should not be killed by building proximity)
     if (entity.isProjectile && !entity.isOrbital) {
       for (const obstacle of obstacles) {
-        const collision = checkAABBCollision(
-          entity.position.x,
-          entity.position.z,
-          PROJECTILE_RADIUS,
-          obstacle,
-        );
-        if (collision.colliding) {
+        if (collideAABB(entity.position.x, entity.position.z, PROJECTILE_RADIUS, obstacle, _push)) {
           if (entity.lifeTimer !== undefined && entity.maxLife !== undefined) {
             entity.lifeTimer = entity.maxLife; // Die instantly
           }
@@ -96,15 +98,9 @@ export function PhysicsSystem(dt: number) {
     if (entity.isPlayer || entity.isEnemy || entity.isBoss) {
       const radius = entity.isPlayer ? PLAYER_RADIUS : entity.isBoss ? 1.2 : ENEMY_RADIUS;
       for (const obstacle of obstacles) {
-        const collision = checkAABBCollision(
-          entity.position.x,
-          entity.position.z,
-          radius,
-          obstacle,
-        );
-        if (collision.colliding) {
-          entity.position.x += collision.pushX;
-          entity.position.z += collision.pushZ;
+        if (collideAABB(entity.position.x, entity.position.z, radius, obstacle, _push)) {
+          entity.position.x += _push.x;
+          entity.position.z += _push.z;
         }
       }
     }

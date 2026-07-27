@@ -11,6 +11,7 @@
   import ProtocolModal from './modals/ProtocolModal.svelte';
   import ChestCeremonyModal from './modals/ChestCeremonyModal.svelte';
   import VictoryChoiceModal from './modals/VictoryChoiceModal.svelte';
+  import ExploitUnlockModal from './modals/ExploitUnlockModal.svelte';
   import RecordsModal from './modals/RecordsModal.svelte';
   import MobileControls from './MobileControls.svelte';
   import Onboarding from './Onboarding.svelte';
@@ -59,6 +60,7 @@
   <ProtocolModal />
   <ChestCeremonyModal />
   <VictoryChoiceModal />
+  <ExploitUnlockModal />
   <RecordsModal />
 
   <!-- Teaching layer: the one-time briefing, the always-available reference,

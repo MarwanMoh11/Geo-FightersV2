@@ -6,7 +6,7 @@
  * there" teases. Stats persist in localStorage and accumulate across runs.
  */
 
-import { showToast, uiState } from './UIState.svelte.ts';
+import { showToast, uiState, saveLocal } from './UIState.svelte.ts';
 import { playLevelUp } from './audio';
 
 // --- LIFETIME STATS ---
@@ -300,6 +300,53 @@ export function recordEvolution(): void {
 
 export function recordCredits(amount: number): void {
   stats.creditsEarned += amount;
+  save();
+}
+
+/**
+ * EXTRACTION BONUS — paid on top of what the run dropped on the floor.
+ *
+ * Kill drops alone are a trickle (a clean 10-minute clear used to net a few
+ * hundred), while the cheapest permanent upgrade is 80 credits and the curve
+ * doubles every level. The bonus makes the RUN itself the earner: depth (time
+ * survived) and build (final level) both pay, and finishing pays a multiplier
+ * on top so extracting is always worth more than dying.
+ */
+export function computeExtractionBonus(runTime: number, level: number, victory: boolean): number {
+  const minutes = runTime / 60;
+  const depth = Math.round(minutes * 45); // 45/min survived
+  const build = Math.round(Math.max(0, level - 1) * 12); // 12 per level earned
+  return Math.round((depth + build) * (victory ? 1.5 : 1));
+}
+
+/**
+ * Move this run's collected credits (plus the extraction bonus) into the
+ * persistent wallet.
+ *
+ * This did not exist. `uiState.creditsCollected` ticked up all run and was
+ * shown in the HUD, then `resetRun` zeroed it and the wallet never changed —
+ * the ONLY thing that ever paid into `uiState.credits` was a daily quest. The
+ * shop was effectively unreachable and the "earn 1,000 lifetime credits"
+ * achievement (BEAM LANCER) could never fire, because `recordCredits` had no
+ * callers either.
+ *
+ * @returns the breakdown, so the game-over screen can show the payout.
+ */
+export function bankRunCredits(
+  runTime: number,
+  level: number,
+  victory: boolean,
+): { collected: number; bonus: number; total: number } {
+  const collected = Math.max(0, Math.round(uiState.creditsCollected));
+  const bonus = computeExtractionBonus(runTime, level, victory);
+  const total = collected + bonus;
+  if (total > 0) {
+    uiState.credits += total;
+    saveLocal('geo_credits', JSON.stringify(uiState.credits));
+    recordCredits(total);
+    checkAchievements();
+  }
+  return { collected, bonus, total };
 }
 
 export function recordVaultCracked(): void {

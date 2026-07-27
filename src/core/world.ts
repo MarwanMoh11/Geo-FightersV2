@@ -351,10 +351,23 @@ function createECS() {
 
       const source = bestKey ? indexes.get(bestKey)! : entities;
 
+      // Explicit loop, not `components.every(c => has(e, c))`. `every` with an
+      // arrow closing over `e` allocates a fresh closure FOR EVERY ENTITY
+      // VISITED, and the hottest queries in the game are the un-indexed ones
+      // (PhysicsSystem's `with('position','velocity')` falls back to scanning
+      // the whole entity array). At horde density that was thousands of
+      // throwaway closures per frame, per query, feeding the GC for nothing.
+      const matches = (e: Entity): boolean => {
+        for (let i = 0; i < components.length; i++) {
+          if (!has(e, components[i])) return false;
+        }
+        return true;
+      };
+
       return {
         get first() {
           for (const e of source) {
-            if (e !== undefined && components.every((c) => has(e, c))) {
+            if (e !== undefined && matches(e)) {
               return e;
             }
           }
@@ -362,7 +375,7 @@ function createECS() {
         },
         [Symbol.iterator]: function* () {
           for (const e of source) {
-            if (e !== undefined && components.every((c) => has(e, c))) {
+            if (e !== undefined && matches(e)) {
               yield e;
             }
           }

@@ -302,23 +302,45 @@ export const LEVEL_DEBUG: LevelConfig = {
 
 // Helper: Get current level config (for future multi-level support)
 let currentLevel: LevelConfig = LEVEL_THE_PIT;
+let blockingObstacles: Obstacle[] = [];
+
+/**
+ * Precompute the half-extents and the blocking subset ONCE per level.
+ *
+ * Both used to be recomputed on every call: `getCurrentLevel` walked all ~20
+ * obstacles to fill in halfWidth/halfDepth, and `getBlockingObstacles`
+ * allocated a fresh filtered array. `getCurrentLevel` is called from
+ * `edgeSpawnPos`, i.e. once per spawned enemy — up to 120 per spawn tick — so
+ * a plain accessor was doing thousands of redundant writes a second and
+ * handing the GC a new array every frame.
+ */
+function prepareLevel(level: LevelConfig): void {
+  for (const obs of level.obstacles) {
+    obs.halfWidth = obs.width / 2;
+    obs.halfDepth = obs.depth / 2;
+  }
+  blockingObstacles = level.obstacles.filter((obs) => obs.blocking);
+}
+
+prepareLevel(currentLevel);
 
 export function getCurrentLevel(): LevelConfig {
-  // Precalculate halfWidth/halfDepth for obstacles if not present
-  for (const obs of currentLevel.obstacles) {
-    if (obs.halfWidth === undefined) obs.halfWidth = obs.width / 2;
-    if (obs.halfDepth === undefined) obs.halfDepth = obs.depth / 2;
-  }
   return currentLevel;
 }
 
 export function setCurrentLevel(level: LevelConfig): void {
   currentLevel = level;
+  prepareLevel(level);
 }
 
-// Helper: Get all blocking obstacles for collision
+/**
+ * All blocking obstacles for collision.
+ *
+ * SHARED, CACHED ARRAY — do not mutate the result, and re-run `setCurrentLevel`
+ * if a level's obstacle list ever changes at runtime.
+ */
 export function getBlockingObstacles(): Obstacle[] {
-  return currentLevel.obstacles.filter((obs) => obs.blocking);
+  return blockingObstacles;
 }
 
 // Helper: Check if a point is inside an obstacle (AABB)
@@ -333,25 +355,37 @@ export function isPointInObstacle(x: number, z: number, obstacle: Obstacle): boo
   );
 }
 
-// Helper: Check AABB collision between entity and obstacle
-export function checkAABBCollision(
+/** Caller-owned scratch for `collideAABB`, so the hot path allocates nothing. */
+export interface PushOut {
+  x: number;
+  z: number;
+}
+
+/**
+ * Circle-vs-AABB test. Returns whether they overlap and, if so, writes the
+ * separation vector into `out`.
+ *
+ * ALLOCATION-FREE by design. This runs for every player/enemy/boss AND every
+ * projectile against every blocking obstacle, every frame — at horde density
+ * that is tens of thousands of calls per frame, and the previous
+ * object-literal return meant tens of thousands of short-lived objects per
+ * frame handed straight to the GC.
+ */
+export function collideAABB(
   entityX: number,
   entityZ: number,
   entityRadius: number,
   obstacle: Obstacle,
-): { colliding: boolean; pushX: number; pushZ: number } {
+  out: PushOut,
+): boolean {
   const halfW = obstacle.halfWidth ?? obstacle.width / 2;
   const halfD = obstacle.halfDepth ?? obstacle.depth / 2;
 
   // Early-out broadphase: check if the circle can possibly intersect the AABB
   const dx = entityX - obstacle.x;
-  if (Math.abs(dx) >= halfW + entityRadius) {
-    return { colliding: false, pushX: 0, pushZ: 0 };
-  }
+  if (Math.abs(dx) >= halfW + entityRadius) return false;
   const dz = entityZ - obstacle.z;
-  if (Math.abs(dz) >= halfD + entityRadius) {
-    return { colliding: false, pushX: 0, pushZ: 0 };
-  }
+  if (Math.abs(dz) >= halfD + entityRadius) return false;
 
   // Find closest point on obstacle to entity center
   const closestX = Math.max(obstacle.x - halfW, Math.min(entityX, obstacle.x + halfW));
@@ -361,23 +395,37 @@ export function checkAABBCollision(
   const cdx = entityX - closestX;
   const cdz = entityZ - closestZ;
   const distSq = cdx * cdx + cdz * cdz;
+  if (distSq >= entityRadius * entityRadius) return false;
 
-  if (distSq < entityRadius * entityRadius) {
-    // Collision! Calculate push vector
-    const dist = Math.sqrt(distSq);
-    if (dist === 0) {
-      // Entity center is inside obstacle, push in any direction
-      return { colliding: true, pushX: entityRadius, pushZ: 0 };
-    }
-    const overlap = entityRadius - dist;
-    const nx = cdx / dist;
-    const nz = cdz / dist;
-    return {
-      colliding: true,
-      pushX: nx * overlap,
-      pushZ: nz * overlap,
-    };
+  const dist = Math.sqrt(distSq);
+  if (dist === 0) {
+    // Entity center is inside obstacle, push in any direction
+    out.x = entityRadius;
+    out.z = 0;
+    return true;
   }
+  const overlap = entityRadius - dist;
+  out.x = (cdx / dist) * overlap;
+  out.z = (cdz / dist) * overlap;
+  return true;
+}
 
-  return { colliding: false, pushX: 0, pushZ: 0 };
+const _checkOut: PushOut = { x: 0, z: 0 };
+
+/**
+ * Allocating convenience wrapper around `collideAABB`. Fine for one-off
+ * queries; use `collideAABB` directly in any per-entity loop.
+ */
+export function checkAABBCollision(
+  entityX: number,
+  entityZ: number,
+  entityRadius: number,
+  obstacle: Obstacle,
+): { colliding: boolean; pushX: number; pushZ: number } {
+  const hit = collideAABB(entityX, entityZ, entityRadius, obstacle, _checkOut);
+  return {
+    colliding: hit,
+    pushX: hit ? _checkOut.x : 0,
+    pushZ: hit ? _checkOut.z : 0,
+  };
 }

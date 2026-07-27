@@ -213,12 +213,33 @@ export const STAGE_1_WAVES: Wave[] = [
   },
 ];
 
-// Endless mode: the last wave keeps growing past 10:00
+/**
+ * Endless mode: the last wave keeps growing past 10:00, forever.
+ *
+ * The player's build has a hard ceiling — six weapons, six passives, level 8
+ * each, and the STAT_CAPS in PlayerStats — so endless cannot be a race the
+ * player eventually wins. It has to be a curve that always, eventually, wins.
+ *
+ * HP therefore COMPOUNDS rather than adding a flat 0.35/minute. The old linear
+ * step was +3.5% of the wave-9 multiplier per minute: a maxed build simply
+ * farmed forever and the mode had no ending, just an attention span. At ×1.12
+ * per minute the horde is ~1.8× tougher five minutes in, ~3× at ten and ~5.5×
+ * at fifteen, so how deep you get is a straight readout of how well your three
+ * rootkits and your build synergise.
+ *
+ * Contact damage rides the same number (factories stamps `wavePower = hpMult`
+ * and CollisionSystem multiplies contact damage by it), so the horde hits
+ * harder on exactly the same curve.
+ */
 export const ENDLESS_GROWTH = {
   minAlivePerMinute: 60,
   minAliveCap: 950,
-  hpMultPerMinute: 0.35,
+  /** Compounding rate: hpMult ×= (1 + this) per minute past 10:00. */
+  hpMultPerMinute: 0.12,
   intervalFloor: 0.2,
+  /** Move speed creeps too — capped, so the horde never simply outruns you. */
+  speedPerMinute: 0.03,
+  speedCap: 1.7,
 };
 
 // --- SCRIPTED SWARMS (every minute at :30, alternating trap shapes) ---

@@ -100,6 +100,30 @@
     </div>
   </div>
 
+  <!-- The payout. Credits earned in a run used to vanish at the game-over
+       screen — nothing ever moved them into the wallet, so the shop was
+       unreachable. Now it banks, and the screen says so. -->
+  {#if uiState.lastPayout.total > 0}
+    <div class="payout">
+      <div class="payout-head">
+        <span class="payout-label">Credits banked</span>
+        <strong class="payout-total tnum">🪙 {uiState.lastPayout.total}</strong>
+      </div>
+      <div class="payout-rows">
+        <div class="payout-row">
+          <span>Collected in run</span><span class="tnum">{uiState.lastPayout.collected}</span>
+        </div>
+        <div class="payout-row">
+          <span>{uiState.isVictory ? 'Extraction bonus' : 'Depth bonus'}</span>
+          <span class="tnum">+{uiState.lastPayout.bonus}</span>
+        </div>
+        <div class="payout-row wallet">
+          <span>Wallet</span><span class="tnum">🪙 {uiState.credits}</span>
+        </div>
+      </div>
+    </div>
+  {/if}
+
   {#if uiState.lastRunRank > 0}
     <div class="rank-badge" class:podium={uiState.lastRunRank <= 3}>
       <span aria-hidden="true">🌐</span> Global rank
@@ -211,6 +235,54 @@
   }
   .pink {
     color: var(--color-secondary);
+  }
+
+  /* ---- Payout ---- */
+  .payout {
+    margin-bottom: var(--sp-4);
+    padding: 0.7rem 0.85rem;
+    border-radius: var(--r-md);
+    border: 1px solid rgba(255, 216, 77, 0.45);
+    background: rgba(255, 216, 77, 0.08);
+  }
+  .payout-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding-bottom: 0.45rem;
+    margin-bottom: 0.45rem;
+    border-bottom: 1px solid rgba(255, 216, 77, 0.22);
+  }
+  .payout-label {
+    font-size: var(--fs-micro);
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-text-dim);
+  }
+  .payout-total {
+    font-size: var(--fs-heading);
+    color: var(--color-gold);
+  }
+  .payout-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+  .payout-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: var(--fs-caption);
+    color: var(--color-text-dim);
+  }
+  .payout-row.wallet {
+    margin-top: 0.3rem;
+    padding-top: 0.35rem;
+    border-top: 1px dashed rgba(255, 216, 77, 0.22);
+    color: var(--color-text-main);
+    font-weight: 700;
   }
 
   /* ---- Global rank ---- */

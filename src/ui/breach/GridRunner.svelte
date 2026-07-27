@@ -201,8 +201,21 @@
     if (r === exit.r && c === exit.c) return true;
     return Math.max(Math.abs(r - player.r), Math.abs(c - player.c)) <= 2;
   }
+  /* Cell geometry for the sprite layer.
+     The packet/chasers/breadcrumbs are absolutely positioned, so a naive
+     `left: c/COLS * 100%` resolves against the grid's PADDING box and ignores
+     the 2px gaps entirely — the sprites drew a full cell wider than the cells
+     themselves and crept out of alignment across the board, so the packet
+     visibly overlapped walls it wasn't standing on. These calcs subtract the
+     gutters first, and the sprite layer is inset to the content box. */
+  const GAP = 2; // must match .gr-grid `gap`
+  const CELL_W = `calc((100% - ${(COLS - 1) * GAP}px) / ${COLS})`;
+  const CELL_H = `calc((100% - ${(ROWS - 1) * GAP}px) / ${ROWS})`;
   function posStyle(r: number, c: number): string {
-    return `left:${(c / COLS) * 100}%; top:${(r / ROWS) * 100}%; width:${100 / COLS}%; height:${100 / ROWS}%;`;
+    return (
+      `left:calc(${CELL_W} * ${c} + ${c * GAP}px); top:calc(${CELL_H} * ${r} + ${r * GAP}px);` +
+      `width:${CELL_W}; height:${CELL_H};`
+    );
   }
 
   let done = false;
@@ -434,16 +447,19 @@
         </div>
       {/each}
     {/each}
-    {#each trail as [tr, tc], i (i)}
-      <div
-        class="crumb"
-        style={`${posStyle(tr, tc)} animation-delay:${i * 110}ms; opacity:${0.85 - i * 0.13};`}
-      ></div>
-    {/each}
-    <div class="packet" style={posStyle(player.r, player.c)}></div>
-    {#each chasers as ch (ch.id)}
-      <div class="chaser" class:frozen={ch.frozen > 0} style={posStyle(ch.r, ch.c)}></div>
-    {/each}
+    <!-- Sprite layer, inset to the grid's CONTENT box so cell maths line up -->
+    <div class="gr-sprites" aria-hidden="true">
+      {#each trail as [tr, tc], i (i)}
+        <div
+          class="crumb"
+          style={`${posStyle(tr, tc)} animation-delay:${i * 110}ms; opacity:${0.85 - i * 0.13};`}
+        ></div>
+      {/each}
+      <div class="packet" style={posStyle(player.r, player.c)}></div>
+      {#each chasers as ch (ch.id)}
+        <div class="chaser" class:frozen={ch.frozen > 0} style={posStyle(ch.r, ch.c)}></div>
+      {/each}
+    </div>
 
     {#if activeGate !== null}
       <div class="gate-panel">
@@ -546,6 +562,15 @@
   .gate {
     font-size: 0.8rem;
     filter: drop-shadow(0 0 4px #ffaa00);
+  }
+
+  /* Sprite layer sits exactly over the cell area (the grid's content box), so
+     `posStyle`'s percentages resolve against the same box the cells do. */
+  .gr-sprites {
+    position: absolute;
+    inset: 3px; /* must match .gr-grid `padding` */
+    pointer-events: none;
+    z-index: 1;
   }
 
   /* Coaching breadcrumbs — a chevron of light running toward the exit. They

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { world } from '../core/world';
-import { getCurrentLevel, isPointInObstacle } from '../core/LevelData';
+import { getCurrentLevel, getBlockingObstacles, isPointInObstacle } from '../core/LevelData';
 import { spawnXP } from '../core/factories';
 import { playCollect } from '../core/audio';
 import { uiState } from '../core/UIState.svelte.ts';
@@ -129,7 +129,19 @@ export function DestructibleSystem(dt: number, scene: THREE.Scene): void {
         const dx = x - player.position.x;
         const dz = z - player.position.z;
         if (dx * dx + dz * dz < 25 * 25) continue; // not on top of the player
-        if (isPointInObstacle(x, z, getCurrentLevel().obstacles[0])) continue;
+        // Every blocking obstacle, not just `obstacles[0]` (the north wall).
+        // Testing one obstacle let crates spawn INSIDE the armory, the data
+        // bank, the vending machines and the cargo containers, where they
+        // render half-buried in a wall and no projectile can ever reach them —
+        // a permanent un-breakable crate sitting in the level.
+        let blocked = false;
+        for (const obs of getBlockingObstacles()) {
+          if (isPointInObstacle(x, z, obs)) {
+            blocked = true;
+            break;
+          }
+        }
+        if (blocked) continue;
         spawnCrate(x, z);
         break;
       }
@@ -163,8 +175,23 @@ export function DestructibleSystem(dt: number, scene: THREE.Scene): void {
 
 /**
  * Reset all destructible state (meshes, timers) for a fresh run.
+ *
+ * The mesh refs MUST be detached from the scene, not just nulled. Dropping the
+ * reference alone left the old InstancedMesh pair parented to the arena scene,
+ * still holding the last frame's crate matrices and instance count — so every
+ * restart painted the previous run's crates as un-hittable ghosts (the ECS
+ * entities behind them were swept, so nothing could break them or clear them)
+ * and leaked another pair on top. Two or three runs in, the arena was littered
+ * with crates that did nothing, which is exactly the "item crate glitches out"
+ * report.
  */
 export function resetDestructibles(): void {
+  for (const mesh of [solidMesh, glowMesh]) {
+    if (!mesh) continue;
+    mesh.parent?.remove(mesh);
+    mesh.geometry.dispose();
+    (mesh.material as THREE.Material).dispose();
+  }
   solidMesh = null;
   glowMesh = null;
   dirty = true;

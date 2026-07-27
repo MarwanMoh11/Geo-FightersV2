@@ -377,6 +377,11 @@
     backdrop-filter: blur(2px);
   }
 
+  /* The card chrome belongs to EVERY phase, not just the rules card.
+     It briefly lived only on `.panel-rules`, which left the actual mini-game
+     with no background, no border, no padding and no flex column — the
+     header, timer bar, board and hint all sat as loose blocks directly on the
+     blurred backdrop, touching each other. */
   .breach-panel {
     /* Positioning context for the full-panel rules overlay */
     position: relative;
@@ -385,12 +390,6 @@
     width: min(94vw, 580px, 82vh);
     margin: auto;
     flex: 0 0 auto;
-  }
-  /* While the rules show, the stage is collapsed — so the 13:9 height cap
-     that the third term exists for doesn't apply and the card can use the
-     full comfortable width. */
-  .breach-panel.panel-rules {
-    width: min(94vw, 580px);
     border: 1px solid var(--bcolor);
     border-radius: 12px;
     background: rgba(6, 12, 20, 0.96);
@@ -401,6 +400,12 @@
     display: flex;
     flex-direction: column;
     gap: 0.45rem;
+  }
+  /* While the rules show, the stage is collapsed — so the 13:9 height cap
+     that the third term exists for doesn't apply and the card can use the
+     full comfortable width. */
+  .breach-panel.panel-rules {
+    width: min(94vw, 580px);
   }
 
   .b-head {

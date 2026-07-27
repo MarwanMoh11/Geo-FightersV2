@@ -51,6 +51,8 @@ export const uiState = $state({
   // Persistent Progression & Customization
   credits: getLocalVal('geo_credits', 0),
   creditsCollected: 0,
+  /** Payout breakdown for the run that just ended (set by bankRunCredits). */
+  lastPayout: { collected: 0, bonus: 0, total: 0 },
   selectedCharacter: getLocalVal<string>('geo_selected_character', 'cypher'),
   permanentUpgrades: getUpgradeDefaults(),
   showGrimoire: false,
@@ -78,6 +80,18 @@ export const uiState = $state({
   weaponSlots: [] as WeaponSlot[],
   passiveSlots: [] as PassiveSlot[],
   exploitSlots: [] as (ExploitDef | null)[],
+  // ROOTKITS. The exploit row of the loadout bar stays completely hidden until
+  // the player has earned one — three permanently-empty dashed slots taught
+  // nothing except that something was missing. The first grant opens
+  // ExploitUnlockModal, and dismissing it reveals the row for good.
+  exploitsRevealed: getLocalVal('geo_exploits_revealed', false),
+  exploitTutorial: null as null | {
+    name: string;
+    icon: string;
+    desc: string;
+    tag: string;
+    rarity: string;
+  },
   // Weapon readiness (0 = just fired, 1 = ready), parallel to weaponSlots
   weaponReadiness: [] as number[],
 
@@ -178,6 +192,8 @@ export const uiState = $state({
     color: string;
     security: number;
     hasKey: boolean;
+    /** This vault can hand out a ROOTKIT on a won dive (the only exploit source). */
+    rootkit?: boolean;
     opened?: boolean; // true when the node has been permanently breached
   },
   // Co-op defend-the-hacker meter (1 = intact; solo never drains)
@@ -260,11 +276,12 @@ export const uiState = $state({
   // showing up as "some players just can't connect".
   netRelayed: false,
 
-  // Corruption dial (0-5 risk/reward, persisted)
-  // v2 key: the standard threat level is now 5 (was 0). Bumping the key retires
-  // every old saved "0" so existing players also start at the new standard;
-  // anyone who wants it easy dials down to 0.
-  corruption: getLocalVal('geo_corruption_v2', CORRUPTION_DEFAULT),
+  // Threat dial (0-10 risk/reward, persisted)
+  // v3 key: LEVEL ZERO is the default again. The v2 key retired old zeroes to
+  // force everyone onto 5; bumping to v3 retires those fives symmetrically, so
+  // returning players land on the new default instead of keeping a dial they
+  // never chose. Anyone who wants pressure raises it and that choice sticks.
+  corruption: getLocalVal('geo_corruption_v3', CORRUPTION_DEFAULT),
 
   // FLUX Chaos Surge: which effect the roulette rolled ('' = none active)
   fluxEffect: '' as '' | 'nuke' | 'frenzy' | 'heal' | 'gold',

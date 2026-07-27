@@ -90,6 +90,7 @@
       uiState.showVictoryChoice ||
       uiState.showOnboarding ||
       uiState.showHowTo ||
+      !!uiState.exploitTutorial ||
       !!uiState.breach ||
       uiState.gameState !== 'PLAYING',
   );
@@ -193,15 +194,18 @@
     }
   });
 
+  /* The FIRST rootkit is taught by ExploitUnlockModal, which is a full stop —
+     this tip would just repeat it a beat later. It fires on the SECOND one
+     instead, where the actual lesson is stacking. */
   $effect(() => {
     if (uiState.gameState !== 'PLAYING') return;
-    if (uiState.exploitSlots.some((s) => !!s)) {
+    if (uiState.exploitSlots.filter((s) => !!s).length >= 2) {
       offer({
-        id: 'exploit',
+        id: 'exploit_stack',
         icon: '💀',
-        title: 'Exploit installed',
+        title: 'Two rules running',
         anchor: ['.loadout'],
-        body: 'Exploits rewrite a rule of the run rather than adding numbers. You can hold three.',
+        body: 'Rootkits compound — ricochet feeding a chain, pools under a pierce proc. Find the third and the combination is your whole endless build.',
       });
     }
   });
