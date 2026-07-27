@@ -112,12 +112,12 @@
           get surrounded.
         </li>
         <li>
-          <strong>Collect shards.</strong> Everything you kill drops XP. Walk over it — the gold bar
-          across the top of the screen is your progress to the next level.
+          <strong>Collect shards.</strong> Everything you kill drops XP. Walk over it — the gold bar across
+          the top of the screen is your progress to the next level.
         </li>
         <li>
-          <strong>Pick an upgrade.</strong> Every level offers three. New weapons early, levels into
-          what's working later.
+          <strong>Pick an upgrade.</strong> Every level offers three. New weapons early, levels into what's
+          working later.
         </li>
         <li>
           <strong>Open chests.</strong> Elites drop caches full of upgrades — and late-game chests can

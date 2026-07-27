@@ -122,7 +122,11 @@
     height: 26px;
     margin: -13px 0 0 -13px;
     border-radius: 50%;
-    background: radial-gradient(circle at 34% 30%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.4));
+    background: radial-gradient(
+      circle at 34% 30%,
+      rgba(255, 255, 255, 0.95),
+      rgba(255, 255, 255, 0.4)
+    );
     border: 1.5px solid rgba(255, 255, 255, 0.85);
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
     opacity: 0;

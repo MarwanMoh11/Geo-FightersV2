@@ -75,9 +75,7 @@
   open={uiState.gameState === 'GAME_OVER'}
   eyebrow={uiState.isVictory ? 'Run complete' : 'Run ended'}
   title={uiState.isVictory ? 'Corruption purged' : 'Fatal error'}
-  subtitle={uiState.isVictory
-    ? 'You survived the system.'
-    : 'System integrity compromised.'}
+  subtitle={uiState.isVictory ? 'You survived the system.' : 'System integrity compromised.'}
   size="md"
   tone={uiState.isVictory ? 'green' : 'pink'}
   dismissible={false}

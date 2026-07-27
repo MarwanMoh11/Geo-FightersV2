@@ -196,7 +196,6 @@ export interface HazardResult {
   dot: number;
 }
 
-
 /**
  * Advance every hazard and resolve the player against them.
  */

@@ -61,7 +61,9 @@
             <span class="operator" aria-hidden="true">=</span>
 
             <div class="element evolved">
-              <div class="element-icon evolved-glow">{@html getWeaponIcon(evo.evolvedWeaponId)}</div>
+              <div class="element-icon evolved-glow">
+                {@html getWeaponIcon(evo.evolvedWeaponId)}
+              </div>
               <div class="element-name evolved-name">{evolvedW.name}</div>
               <div class="element-tag evolved-tag">Evolved</div>
             </div>

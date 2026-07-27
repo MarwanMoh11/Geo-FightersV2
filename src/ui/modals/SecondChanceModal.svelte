@@ -41,9 +41,7 @@
       <span class="revive-glyph" aria-hidden="true">▶</span>
       <span class="revive-text">
         <span class="revive-label">Second chance</span>
-        <span class="revive-sub"
-          >{requesting ? 'Loading…' : 'Watch an ad · revive at 50% HP'}</span
-        >
+        <span class="revive-sub">{requesting ? 'Loading…' : 'Watch an ad · revive at 50% HP'}</span>
       </span>
     </button>
   </div>

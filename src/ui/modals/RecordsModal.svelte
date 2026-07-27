@@ -86,12 +86,7 @@
 
   <div class="ui-tabs" role="tablist" aria-label="Records sections">
     {#each TABS as t (t.id)}
-      <button
-        class="ui-tab"
-        role="tab"
-        aria-selected={tab === t.id}
-        onclick={() => (tab = t.id)}
-      >
+      <button class="ui-tab" role="tab" aria-selected={tab === t.id} onclick={() => (tab = t.id)}>
         {t.label}
       </button>
     {/each}

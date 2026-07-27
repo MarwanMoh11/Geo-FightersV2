@@ -111,9 +111,7 @@
         class="slot weapon"
         class:maxed
         class:evo-ready={evo?.state === 'ready'}
-        title={evo
-          ? `${name} — evolves with ${evo.partnerName} → ${evo.evolvedName}`
-          : name}
+        title={evo ? `${name} — evolves with ${evo.partnerName} → ${evo.evolvedName}` : name}
       >
         <div class="art">
           {#if icon.startsWith('<svg')}

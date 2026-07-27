@@ -5,7 +5,13 @@ import { createCustomProjectileMesh } from './projectileVisuals';
 
 const _dirVec = new THREE.Vector3();
 
-export function cypherRebootSurgeActivate({ player }: { player: any; scene: THREE.Scene; dt: number }) {
+export function cypherRebootSurgeActivate({
+  player,
+}: {
+  player: any;
+  scene: THREE.Scene;
+  dt: number;
+}) {
   for (const w of world.with('isWeapon', 'ownerId')) {
     if (w.ownerId === player.id && w.weapon) {
       w.weapon.cooldownTimer = 0;
@@ -23,7 +29,15 @@ export function titanAftershockActivate(_ctx: { player: any; scene: THREE.Scene;
   titanAftershockTimer = 0;
 }
 
-export function titanAftershockTick({ player, scene, dt }: { player: any; scene: THREE.Scene; dt: number }) {
+export function titanAftershockTick({
+  player,
+  scene,
+  dt,
+}: {
+  player: any;
+  scene: THREE.Scene;
+  dt: number;
+}) {
   titanAftershockTimer += dt;
   if (titanAftershockTimer < 0.5) return;
   titanAftershockTimer = 0;
@@ -50,7 +64,14 @@ export function titanAftershockTick({ player, scene, dt }: { player: any; scene:
   }
 }
 
-export function fluxChaosEchoActivate({ player, scene }: { player: any; scene: THREE.Scene; dt: number }) {
+export function fluxChaosEchoActivate({
+  player,
+  scene,
+}: {
+  player: any;
+  scene: THREE.Scene;
+  dt: number;
+}) {
   const wpns = Array.from(world.with('isWeapon', 'ownerId'));
   let weaponDamage = 25;
   for (const w of wpns) {
