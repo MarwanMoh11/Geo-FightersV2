@@ -8,10 +8,16 @@
 
   let weapons = $derived(uiState.weaponSlots);
   let passives = $derived(uiState.passiveSlots);
-  // 3 fixed slots (null = empty) so the player can always see the limit and
-  // which slots are open, not just the ones currently filled.
+  /* 3 fixed slots (null = empty) so the player can see the limit and which
+     slots are open — but ONLY once they have ever earned a rootkit. On a fresh
+     profile the row was three permanently-empty dashed boxes under a heading
+     for a mechanic the game never mentioned; there was no way to learn what
+     they were for, and nothing ever filled them. ExploitUnlockModal flips
+     `exploitsRevealed` the first time one drops, and the row appears with the
+     exploit already in it. */
+  let showExploits = $derived(uiState.exploitsRevealed);
   let exploitSlots = $derived<(ExploitDef | null)[]>(
-    Array.from({ length: 3 }, (_, i) => uiState.exploitSlots?.[i] ?? null),
+    showExploits ? Array.from({ length: 3 }, (_, i) => uiState.exploitSlots?.[i] ?? null) : [],
   );
 
   function getName(id: string, type: 'weapon' | 'passive') {

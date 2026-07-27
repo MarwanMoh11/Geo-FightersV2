@@ -454,6 +454,9 @@ function startGameLoop(
         // teammates are mid-run, and onboarding is skipped there anyway.)
         !uiState.showOnboarding &&
         !uiState.showHowTo &&
+        // First rootkit ever: the reveal has to land, not scroll past while a
+        // horde eats the player who just earned it.
+        !uiState.exploitTutorial &&
         !uiState.dive;
     }
 
@@ -479,10 +482,12 @@ function startGameLoop(
     // (see logLoopError). The UI/Camera/Render phase below stays outside the
     // try so the screen always advances even if a gameplay system errors.
     try {
+      // NOTE: MusicDirector is NOT called here. It already ran unconditionally
+      // near the top of the frame (it has to score menus and win screens too),
+      // and calling it again inside the gate advanced its `lastPoll`
+      // accumulator twice per frame while playing — the cue scheduler ran at
+      // double rate for the entire run, and the work was paid twice.
       let _t: () => void;
-      _t = benchmark.trace('MusicDirector');
-      MusicDirector(dt);
-      _t();
       _t = benchmark.trace('InputSystem');
       InputSystem();
       _t();

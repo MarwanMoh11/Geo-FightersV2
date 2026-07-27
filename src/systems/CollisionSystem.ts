@@ -46,6 +46,19 @@ const _weavers: any[] = [];
 const AURA_RADIUS_SQ = 4.5 * 4.5;
 const ABILITY_ENEMY_CAP = 2500;
 
+// Elite/miniboss deaths punch a shockwave ring into the ground — trash keeps
+// the cheap particle burst. Module scope, not a literal inside
+// handleEnemyDeath: that ran on EVERY kill, allocating a six-key object
+// hundreds of times a second at horde density to answer one lookup.
+const ELITE_DEATH_RING: Record<string, number> = {
+  enforcer: 0x00ffcc,
+  colossus: 0xffaa00,
+  warden: 0xff00cc,
+  weaver: 0x66ffaa,
+  hydra: 0xff2244,
+  overseer: 0xaa44ff,
+};
+
 // --- SPATIAL GRID over living enemies ---
 // Cell size 4u ≥ the largest interaction radius (boss hit-reach ~2.7u, contact
 // reach ~3.4u), so a 3×3 neighborhood query can never miss a pair. Cells are
@@ -828,16 +841,6 @@ export function handleEnemyDeath(
     }
   }
 
-  // Elite/miniboss deaths punch a shockwave ring into the ground — trash
-  // keeps the cheap particle burst (this fires at elite rates only).
-  const ELITE_DEATH_RING: Record<string, number> = {
-    enforcer: 0x00ffcc,
-    colossus: 0xffaa00,
-    warden: 0xff00cc,
-    weaver: 0x66ffaa,
-    hydra: 0xff2244,
-    overseer: 0xaa44ff,
-  };
   if (type && ELITE_DEATH_RING[type] !== undefined) {
     spawnBlastFX(enemy.position, (enemy.size ?? 3) * 1.1, scene, ELITE_DEATH_RING[type]);
   }
@@ -854,7 +857,7 @@ export function handleEnemyDeath(
     announce('VAULT CRACKED');
     for (let i = 0; i < 12; i++) {
       const a = (i / 12) * Math.PI * 2;
-      spawnCredit(scene, px + Math.cos(a) * 1.2, pz + Math.sin(a) * 1.2, 2, killerConnId);
+      spawnCredit(scene, px + Math.cos(a) * 1.2, pz + Math.sin(a) * 1.2, 8, killerConnId);
     }
     registerGuaranteedChestDrop();
     const vaultRarity = rollChestRarity(luckMult + 0.5);
@@ -887,22 +890,28 @@ export function handleEnemyDeath(
   const scavengerMult = uiState.activeProtocolId === 'scavenger_daemon' ? 3 : 1;
   const creditMultiplier = (insideLeakZone ? 5 : 1) * scavengerMult;
 
-  // Basic: 5% * luck chance to drop 1 Credit
-  if (Math.random() < 0.05 * luckMult) {
-    spawnCredit(scene, px, pz, 1 * creditMultiplier, killerConnId);
+  // Basic: 12% * luck chance to drop 2 Credits.
+  //
+  // Trash is 95% of everything you kill, so it has to carry the wallet — at
+  // the old 5%-for-1 a full 10-minute clear paid barely 100 credits while the
+  // cheapest shop line costs 80 and the curve doubles per level. The run-end
+  // extraction bonus (ProgressManager.computeExtractionBonus) carries the
+  // rest; between them a clean run is worth roughly 2,000.
+  if (Math.random() < 0.12 * luckMult) {
+    spawnCredit(scene, px, pz, 2 * creditMultiplier, killerConnId);
   }
 
   // Elites & Mini-bosses drop credits 100% of the time
   if (type === 'firewall' || type === 'enforcer' || type === 'warden') {
-    const amt = (Math.floor(Math.random() * 6) + 5) * creditMultiplier; // 5-10 base
+    const amt = (Math.floor(Math.random() * 11) + 12) * creditMultiplier; // 12-22 base
     spawnCredit(scene, px, pz, amt, killerConnId);
   } else if (type === 'colossus') {
-    const amt = (Math.floor(Math.random() * 11) + 20) * creditMultiplier; // 20-30 base
+    const amt = (Math.floor(Math.random() * 26) + 50) * creditMultiplier; // 50-75 base
     spawnCredit(scene, px, pz, amt, killerConnId);
   } else if (type === 'hydra') {
-    spawnCredit(scene, px, pz, 50 * creditMultiplier, killerConnId);
+    spawnCredit(scene, px, pz, 125 * creditMultiplier, killerConnId);
   } else if (type === 'overseer') {
-    spawnCredit(scene, px, pz, 100 * creditMultiplier, killerConnId);
+    spawnCredit(scene, px, pz, 250 * creditMultiplier, killerConnId);
   }
 
   // === CHEST DROPS BY ENEMY TYPE ===
@@ -913,7 +922,7 @@ export function handleEnemyDeath(
     if (tryDropEliteChest(scene, px, pz, luckMult)) {
       dlog(`[Chest] ${type} dropped a chest`);
     } else {
-      spawnCredit(scene, px, pz, 3 * creditMultiplier, killerConnId);
+      spawnCredit(scene, px, pz, 10 * creditMultiplier, killerConnId);
     }
   }
   // Mid-tier elite: also gated, but pays a bigger consolation.
@@ -921,7 +930,7 @@ export function handleEnemyDeath(
     if (tryDropEliteChest(scene, px, pz, luckMult + 0.5)) {
       dlog(`[Chest] ${type} dropped a chest`);
     } else {
-      spawnCredit(scene, px, pz, 8 * creditMultiplier, killerConnId);
+      spawnCredit(scene, px, pz, 25 * creditMultiplier, killerConnId);
     }
   }
   // Mini-boss HYDRA: one guaranteed epic (was 3 rares — chained 3 ceremony
@@ -930,7 +939,7 @@ export function handleEnemyDeath(
     registerGuaranteedChestDrop();
     spawnChest(scene, px, pz, 'epic');
     for (let i = 0; i < 4; i++) {
-      spawnCredit(scene, px + (i - 1.5) * 1.2, pz + 1.2, 6 * creditMultiplier, killerConnId);
+      spawnCredit(scene, px + (i - 1.5) * 1.2, pz + 1.2, 20 * creditMultiplier, killerConnId);
     }
     dlog(`[Chest] HYDRA dropped an epic chest`);
   }
@@ -946,7 +955,7 @@ export function handleEnemyDeath(
         scene,
         px + Math.cos(angle) * 2.2,
         pz + Math.sin(angle) * 2.2,
-        8 * creditMultiplier,
+        30 * creditMultiplier,
         killerConnId,
       );
     }

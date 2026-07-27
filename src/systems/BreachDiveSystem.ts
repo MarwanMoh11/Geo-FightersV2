@@ -597,28 +597,43 @@ const DIVE_FOV_MAX = 60;
 let savedFov: number | null = null;
 
 /**
- * Fog is authored in world units against the DESKTOP rig, and THREE.Fog is
- * measured from the camera — so pulling the camera back for mobile pushed the
- * whole arena past the fog's far plane.
+ * Fog is authored in world units, but THREE.Fog measures from the CAMERA — and
+ * the dive camera sits ~46 units from the player on desktop and ~63 on mobile.
+ * Against an authored 26-62 range that meant the arena was already deep into
+ * the fog before the player's own feet:
  *
- *   desktop  camDist 45.9  fog 26-62  ->  55% fogged
- *   mobile   camDist 63.2  fog 26-62  -> 100% fogged
+ *   desktop  camDist 45.9  fog 26-62  ->  55% fogged at the player, 84% at the far rim
+ *   mobile   camDist 63.2  fog 26-62  -> 100% fogged everywhere
  *
- * At 100% every construct resolves to exactly the background colour: the ICE
- * were being spawned, steered, rendered and dealing contact damage the whole
- * time, but painted in the sky's own colour. Scaling the range by the rig's
- * camera distance reproduces the authored look at any rig.
+ * Scaling the authored range by the rig distance fixed mobile but left desktop
+ * exactly as murky as it was authored — the far half of several scenes (the
+ * stash den worst of all) washed out to flat background colour and the
+ * containment rim, the landmarks and the ICE beyond mid-field all vanished.
+ *
+ * The range is now DERIVED from the rig instead: fog begins at the player's own
+ * depth (so nothing you are standing next to is ever hazed) and reaches full
+ * density several arena-radii past the far rim. The authored numbers survive
+ * only as a per-theme density ratio, so the stash den still reads smokier than
+ * the bank without swallowing the room.
  */
-const REF_CAM_DIST = Math.hypot(CAM_HEIGHT, CAM_DISTANCE);
+/** Fog starts this fraction of the way to the player's own camera depth. */
+const FOG_NEAR_K = 0.98;
+/** ...and reaches full density this many arena radii beyond that. */
+const FOG_SPAN_RADII = 3.2;
+/** Authored span treated as "density 1.0" (the depot/bank profile). */
+const FOG_REF_SPAN = 36;
 let baseFogNear = 0;
 let baseFogFar = 0;
 
 function applyRigFog(dist: number): void {
   const fog = diveScene?.fog as THREE.Fog | null | undefined;
   if (!fog || !baseFogFar) return;
-  const k = dist / REF_CAM_DIST;
-  fog.near = baseFogNear * k;
-  fog.far = baseFogFar * k;
+  // The authored span carries the theme's relative haziness: a shorter span
+  // (the stash den's 18-48) scales the derived span down, which reads thicker.
+  const spanScale = Math.max(0.5, (baseFogFar - baseFogNear) / FOG_REF_SPAN);
+  const near = dist * FOG_NEAR_K;
+  fog.near = near;
+  fog.far = near + DIVE_ARENA_R * FOG_SPAN_RADII * spanScale;
 }
 
 function setDiveCamera(camera: THREE.Camera, px: number, pz: number): void {

@@ -1,13 +1,13 @@
 /**
  * Corruption — the run's threat-level dial (single source of truth).
  *
- * The scale is 0–10. Level 5 is the NEW STANDARD: with the player touching
- * nothing, a run starts at 5, which is exactly the old maximum (full swarm
- * density + tankier enemies + richer payouts). Level 0 remains the old gentle
- * baseline for anyone who wants it very easy.
+ * The scale is 0–10. LEVEL ZERO IS THE DEFAULT: a run starts with the dial at
+ * the bottom and the player opts into pressure. 5 is still the reference
+ * "standard" the balance is authored against (it is the point where the extra
+ * teeth below switch on), it is just no longer where you begin.
  *
- *   0 ─────────── 5 (default) ─────────── 10
- *   relaxed        standard                nightmare
+ *   0 (default) ── 5 (standard) ────────── 10
+ *   relaxed         reference               nightmare
  *
  * Levels 0–5 scale density, enemy HP and rewards (the original knobs). Levels
  * 6–10 additionally ramp enemy CONTACT DAMAGE and MOVE SPEED — teeth that only
@@ -19,7 +19,7 @@
  */
 
 export const CORRUPTION_MAX = 10;
-export const CORRUPTION_DEFAULT = 5; // the new standard threat level
+export const CORRUPTION_DEFAULT = 0; // level zero is where every run starts
 export const CORRUPTION_STANDARD = 5; // where "new teeth" (damage/speed) begin
 
 /** Spawn-quota (swarm density) multiplier. Saturates at the horde ceiling. */

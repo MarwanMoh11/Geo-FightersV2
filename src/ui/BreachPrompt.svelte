@@ -28,6 +28,15 @@
       {/if}
     </div>
 
+    <!-- Rootkits are the only exploits in the game and nothing used to say
+         where they came from. Vault doors now advertise it up front. -->
+    {#if p.rootkit}
+      <div class="bp-rootkit">
+        <span aria-hidden="true">💀</span>
+        ROOTKIT VAULT — win the dive to pull an exploit
+      </div>
+    {/if}
+
     <div class="bp-sec">
       {#if p.security === 0}
         Security zero — first breach is free
@@ -124,6 +133,22 @@
     border-radius: var(--r-pill);
     background: rgba(56, 245, 168, 0.16);
     color: var(--color-accent);
+  }
+
+  .bp-rootkit {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: var(--r-pill);
+    background: rgba(255, 61, 119, 0.14);
+    border: 1px solid rgba(255, 61, 119, 0.55);
+    font-family: var(--font-mono);
+    font-size: 0.5rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    color: #ffb3c9;
+    text-align: center;
   }
 
   .bp-sec {

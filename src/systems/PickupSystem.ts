@@ -32,6 +32,9 @@ function isHostOrSolo(): boolean {
   return !uiState.isMultiplayer || uiState.isHost;
 }
 
+/** Ids seen this frame — reused so the orphan sweep below costs no GC. */
+const _liveIds = new Set<number>();
+
 export function PickupSystem(scene: THREE.Scene): void {
   const now = performance.now() / 1000;
   // Collection is host-authoritative. Clients still run the loop for the mesh
@@ -39,14 +42,19 @@ export function PickupSystem(scene: THREE.Scene): void {
   // a client removing one locally would just have it reappear on the next
   // snapshot while the host still considered it uncollected.
   const collects = isHostOrSolo();
+  _liveIds.clear();
 
   for (const pickup of [...world.with('isPickup', 'position')]) {
     const id = pickup.id as number;
+    _liveIds.add(id);
     let mesh = pickupMeshes.get(id);
     if (!mesh) {
       mesh = buildPickupMesh(scene, pickup.pickupType ?? 'medkit');
       pickupMeshes.set(id, mesh);
     }
+    // The mesh may be parented to a scene that has since been torn down (a
+    // breach dive swaps the whole scene out and disposes it). Re-adopt it.
+    if (mesh.parent !== scene) scene.add(mesh);
     mesh.position.set(pickup.position.x, 0.9 + Math.sin(now * 3 + id) * 0.15, pickup.position.z);
     mesh.rotation.y = now * 1.5;
 
@@ -59,9 +67,20 @@ export function PickupSystem(scene: THREE.Scene): void {
       if (dx * dx + dz * dz < PICKUP_RADIUS * PICKUP_RADIUS) {
         applyPickup(pickup.pickupType ?? 'medkit', p, scene);
         removePickupMesh(id);
+        _liveIds.delete(id);
         world.remove(pickup);
         break;
       }
+    }
+  }
+
+  // Orphan sweep: the mesh cache is keyed by entity id and only ever pruned on
+  // collection. Any other path that drops a pickup entity (a run reset, a
+  // co-op mirror expiring, a dive teardown) used to strand its mesh in the
+  // scene as a permanently-hovering, permanently-uncollectable pickup.
+  if (pickupMeshes.size !== _liveIds.size) {
+    for (const id of pickupMeshes.keys()) {
+      if (!_liveIds.has(id)) removePickupMesh(id);
     }
   }
 }
@@ -97,7 +116,12 @@ function applyPickup(type: string, player: any, scene: THREE.Scene): void {
     case 'bomb': {
       const playerPos = player.position!;
       spawnBombRing(scene, playerPos, style.color);
-      for (const enemy of world.with('isEnemy', 'position', 'health')) {
+      // Materialized: handleEnemyDeath both removes the current enemy AND can
+      // ADD entities (a VIRUS splits into two fragments) to the very index Set
+      // being iterated. Newly-inserted entries are visited by a live Set
+      // iterator, so the fragments spawned inside the blast were being deleted
+      // by the same blast on the frame they appeared.
+      for (const enemy of [...world.with('isEnemy', 'position', 'health')]) {
         if (!enemy.health) continue;
         const dx = enemy.position.x - playerPos.x;
         const dz = enemy.position.z - playerPos.z;

@@ -78,6 +78,8 @@ export function resetRun(): void {
   // Reset the run-scoped UI state the modals key off
   uiState.isGameOver = false;
   uiState.isVictory = false;
+  uiState.lastPayout = { collected: 0, bonus: 0, total: 0 };
+  uiState.exploitTutorial = null;
   uiState.showSecondChance = false;
   uiState.secondChanceUsed = false;
   uiState.showVictoryChoice = false;

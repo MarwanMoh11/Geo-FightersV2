@@ -200,7 +200,7 @@
   // --- Corruption dial (0-10 risk/reward, 5 = standard, persisted) ---
   function setCorruption(next: number) {
     uiState.corruption = Math.max(0, Math.min(CORRUPTION_MAX, Math.round(next)));
-    saveLocal('geo_corruption_v2', JSON.stringify(uiState.corruption));
+    saveLocal('geo_corruption_v3', JSON.stringify(uiState.corruption));
   }
 
   let corruptionTone = $derived(
@@ -684,7 +684,8 @@
         />
         <p class="corruption-desc">
           {#if uiState.corruption === 0}
-            The gentlest run — learn the arena with the pressure off.
+            Level zero — the baseline run. Raise the dial for tougher enemies and far richer
+            XP and credit payouts.
           {:else}
             +{Math.round((corruptionHp(uiState.corruption) - 1) * 100)}% enemy HP · +{Math.round(
               (corruptionXp(uiState.corruption) - 1) * 100,

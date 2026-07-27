@@ -142,6 +142,7 @@ export function TimelineSpawnerSystem(dt: number, scene: THREE.Scene): void {
   let minAlive: number;
   let interval: number;
   let hpMult: number;
+  let speedMult: number;
   // Guard against TS "used before assigned" in the fill tick below (wave is
   // only assigned in the non-max branch, but never accessed in the max branch).
   const wave = getWave(Math.min(gameTime, STAGE_END - 1));
@@ -150,6 +151,7 @@ export function TimelineSpawnerSystem(dt: number, scene: THREE.Scene): void {
     minAlive = MAX_ENEMIES - 10;
     interval = 0.05;
     hpMult = 15.0;
+    speedMult = 1;
   } else {
     const corruptionMult = corruptionDensity(uiState.corruption);
     const curseMult = (player as { stats?: { curse?: number } }).stats?.curse ?? 1.0;
@@ -160,14 +162,24 @@ export function TimelineSpawnerSystem(dt: number, scene: THREE.Scene): void {
     minAlive = wave.minAlive;
     interval = wave.interval;
     hpMult = wave.hpMult;
+    speedMult = wave.speedMult;
     if (uiState.endlessMode && gameTime > STAGE_END) {
       const extraMin = (gameTime - STAGE_END) / 60;
       minAlive = Math.min(
         ENDLESS_GROWTH.minAliveCap,
         minAlive + extraMin * ENDLESS_GROWTH.minAlivePerMinute,
       );
-      hpMult += extraMin * ENDLESS_GROWTH.hpMultPerMinute;
+      // COMPOUNDING, not additive — the player's build has a hard ceiling, so
+      // a flat step per minute just meant endless never ended. See
+      // ENDLESS_GROWTH for the curve this produces.
+      hpMult *= Math.pow(1 + ENDLESS_GROWTH.hpMultPerMinute, extraMin);
       interval = Math.max(ENDLESS_GROWTH.intervalFloor, interval - extraMin * 0.02);
+      // Speed was frozen at wave 9's 1.3 forever. Capped, so the squeeze comes
+      // from bulk and density rather than an unoutrunnable horde.
+      speedMult = Math.min(
+        ENDLESS_GROWTH.speedCap,
+        speedMult + extraMin * ENDLESS_GROWTH.speedPerMinute,
+      );
     }
     minAlive = Math.min(MAX_ENEMIES - 20, Math.round(minAlive * pressure));
     interval = interval / Math.max(1, (pressure - 1) * 0.5 + 1);
@@ -190,7 +202,7 @@ export function TimelineSpawnerSystem(dt: number, scene: THREE.Scene): void {
     // THE VS RULE: the quota is a floor. Fill the deficit now — dropped just
     // off-screen all around the player so the horde is instantly ON you, not
     // trickling in from a far wall.
-    const spd = isMaxMode ? 1 : wave.speedMult;
+    const spd = speedMult;
     const deficit = Math.min(minAlive - alive, MAX_FILL_PER_TICK, MAX_ENEMIES - alive);
     for (let i = 0; i < deficit; i++) {
       const type = isMaxMode
@@ -202,7 +214,7 @@ export function TimelineSpawnerSystem(dt: number, scene: THREE.Scene): void {
     }
   } else {
     // At quota: one of each pool type per tick keeps pressure creeping up
-    const spd = isMaxMode ? 1 : wave.speedMult;
+    const spd = speedMult;
     for (const entry of (wave ?? { pool: [{ type: EnemyType.VIRUS, weight: 100 }] }).pool) {
       if (world.count('isEnemy') >= MAX_ENEMIES) break;
       spawnAtEdge(scene, player, entry.type, hpMult, spd);

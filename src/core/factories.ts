@@ -10,7 +10,7 @@ import { getTierForValue, bankXP, MAX_ACTIVE_XP } from './XPManager';
 import { createDynamicBody, createKinematicBody, isRapierInitialized } from './RapierWorld';
 import { uiState, announce } from './UIState.svelte';
 import { createCustomProjectileMesh } from './projectileVisuals';
-import { corruptionHp, corruptionSpeed } from './corruption';
+import { corruptionHp, corruptionSpeed, corruptionCredits } from './corruption';
 import { partyHpMultiplier } from './difficulty';
 import { getCurrentLevel as getLevelConfig } from './LevelData';
 import { getQualityProfile, isMobile } from './quality';
@@ -963,7 +963,12 @@ export function spawnCredit(
   // wallet no matter who earned it — the host runs CollisionSystem for the
   // whole party, so every joiner's kill used to pay the host. When we know the
   // earner and it isn't us, route the payout to them instead.
-  const amount = Math.max(1, Math.ceil(value));
+  //
+  // The threat dial's credit bonus is applied HERE, at the single choke point
+  // every payout passes through. It used to be advertised in the menu
+  // ("+125% credits" at threat 5) and then never applied anywhere — the dial
+  // paid extra XP but the wallet never saw a cent of it.
+  const amount = Math.max(1, Math.ceil(value * corruptionCredits(uiState.corruption)));
   if (earnerConnId && uiState.isMultiplayer && uiState.isHost) {
     const me = world.with('isLocalPlayer').first;
     if (me && me.connectionId !== earnerConnId) {

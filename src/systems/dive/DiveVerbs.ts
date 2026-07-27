@@ -57,18 +57,47 @@ const BUDGET: Record<BreachKind, number> = {
   stashden: 44,
 };
 
-/** Each security level shortens the clock by this fraction. s=3 → 70% budget. */
-const SECURITY_SQUEEZE = 0.1;
+/**
+ * Extra seconds of clock granted for each EXTRA objective security adds.
+ *
+ * Three verbs scale their WORKLOAD with security — the substation's pad count,
+ * the armory's crate count and the depot's drop count are all `n + security`.
+ * The clock, meanwhile, only ever got shorter. At security 3 the substation
+ * asked for six pads spread around a 13-unit ring plus an 8-second capacitor
+ * hold (~31s of pure travel and channelling, before a single construct is
+ * fought) inside a 37.8s budget — and 32s if overclocked. Every one of those
+ * verbs was unwinnable at depth, which is exactly where the rootkit gate
+ * lives, so the reward the dive exists to hand out sat behind a wall.
+ *
+ * Security now buys the horde, the emplacements, the tougher constructs and
+ * the tighter margin — it no longer silently also buys a longer route for
+ * free. Fixed-workload verbs (bank, relay, stashden) grant nothing.
+ */
+const BUDGET_PER_EXTRA_OBJECTIVE: Record<BreachKind, number> = {
+  substation: 9, // one more pad: the leg between pads plus its 1.2s channel
+  armory: 7, // one more crate on the sweep
+  depot: 8, // one more airdrop leg (telegraph + run)
+  bank: 0, // fixed 10s hold
+  relay: 0, // fixed three towers
+  stashden: 0, // player chooses how deep to push
+};
+
+/**
+ * Each security level shortens the clock by this fraction. s=3 → 85% budget.
+ * Was 0.1 (s=3 → 70%), which stacked with the growing objective counts above.
+ */
+const SECURITY_SQUEEZE = 0.05;
 /** Overclock trades a shorter clock for the better payout. */
-const OVERCLOCK_SQUEEZE = 0.15;
+const OVERCLOCK_SQUEEZE = 0.12;
 
 /**
  * Base trace points per second for a dive. The verb may add a multiplier on
  * top (the stash den's stack heat).
  */
 export function baseTraceRate(kind: BreachKind, security: number, overclock: boolean): number {
+  const workload = (BUDGET_PER_EXTRA_OBJECTIVE[kind] ?? 0) * Math.max(0, security);
   const budget =
-    (BUDGET[kind] ?? 45) *
+    ((BUDGET[kind] ?? 45) + workload) *
     (1 - SECURITY_SQUEEZE * security) *
     (overclock ? 1 - OVERCLOCK_SQUEEZE : 1);
   return TRACE_MAX / Math.max(8, budget);
@@ -479,7 +508,12 @@ function makeGrabAndRun(ctx: DiveCtx): DiveVerb {
           // The exit is not a free walk. The alarm drops a wall of ICE between
           // you and the door, arms a third sweep, and posts two turrets on the
           // pad itself — the run leg is the hardest part of the verb.
-          c.spawnICEAt(10 + ctx.security * 4, exit.x, exit.z, 9);
+          //
+          // Was `10 + security*4` inside a 9-unit ring: 22 constructs packed
+          // onto the pad at security 3, which is not a wall to fight through
+          // but a solid body-block on the only winning tile. Fewer, and pushed
+          // out to a ring you can read and flank.
+          c.spawnICEAt(8 + ctx.security * 2, exit.x, exit.z, 12);
           const ex = Math.hypot(exit.x, exit.z) || 1;
           c.addTurret(exit.x - (exit.z / ex) * 4, exit.z + (exit.x / ex) * 4);
           c.addTurret(exit.x + (exit.z / ex) * 4, exit.z - (exit.x / ex) * 4);

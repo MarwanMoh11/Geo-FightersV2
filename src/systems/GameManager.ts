@@ -4,7 +4,7 @@ import { broadcastGameEvent } from '../core/network';
 import { uiState, announce } from '../core/UIState.svelte.ts';
 import { stopMusic, playExplosion, playGameOver, playVictory, playLevelUp } from '../core/audio';
 import { addTrauma } from './CameraSystem';
-import { recordRunEnd } from '../core/ProgressManager';
+import { recordRunEnd, bankRunCredits } from '../core/ProgressManager';
 import { onRunEnded } from '../core/DailyManager';
 import { submitRunToLeaderboard } from '../core/leaderboard';
 import { isRewardedAvailable } from '../core/portal';
@@ -117,6 +117,9 @@ export function triggerGameOver() {
   // happened; endless is a bonus score chase.
   uiState.isVictory = uiState.endlessMode;
   recordRunEnd(uiState.gameTime, uiState.level, uiState.endlessMode);
+  // Pay the run out BEFORE onRunEnded(), so a daily quest reward lands on top
+  // of the banked total rather than being wiped by the wallet write.
+  uiState.lastPayout = bankRunCredits(uiState.gameTime, uiState.level, uiState.endlessMode);
   onRunEnded();
   submitRunToLeaderboard();
 
@@ -161,6 +164,7 @@ export function endRunAsVictory() {
 
   captureFinalStats();
   uiState.isVictory = true;
+  uiState.lastPayout = bankRunCredits(uiState.gameTime, uiState.level, true);
   onRunEnded();
   submitRunToLeaderboard();
   setGameState('GAME_OVER');

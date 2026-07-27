@@ -36,10 +36,13 @@ import { upgradeRandomOwnedWeapon, flushDeferredLevelUps } from './UpgradeSystem
 import { resetVirtualJoystick } from './InputSystem';
 import type { Poi } from './WayfindingSystem';
 import { enterDive, ejectDive, resetBreachDiveSystem } from './BreachDiveSystem';
+import { ROOTKIT_KINDS, qualifiesForRootkit } from '../core/ExploitRegistry';
 
 // --- ROOTKIT SOFT-COUPLING ---
 // build-depth's `ExploitRegistry.ts` exports `tryGrantRootkit(player, kind, overclock): boolean`.
 // Its absence here is expected — we gracefully degrade to scaled loot only.
+// (The KIND TABLE itself is a plain data export with no side effects, so it is
+// imported statically — the door prompt needs it every frame and cannot await.)
 const EXPLOIT_MOD_PATH = '../core/ExploitRegistry';
 async function getExploitModule(): Promise<any> {
   const path: string = EXPLOIT_MOD_PATH;
@@ -818,34 +821,35 @@ export function completeBreachWin(node: BreachNode, outcome: DiveOutcome): void 
     try {
       const mod = await getExploitModule();
       if (!mod?.tryGrantRootkit) return;
-      // ROOTKIT GATE — hard, but reachable. This is the ONLY source of
-      // exploits in the whole game, so an unreachable gate means the build
-      // system silently loses an entire mechanic.
-      //   • security >= 2   → mid-run onward (~2.5min+)
-      //   • trace <= 60%    → finished with real budget left over, which now
-      //                       means scrubbing trace by clearing ICE, not just
-      //                       walking fast
-      //   • bank/armory/stashden → the three high-value "vault" buildings
-      //   • overclock       → the player opted into the harder breach (Q)
+      // ROOTKIT GATE. This is the ONLY source of exploits in the whole game,
+      // so the gate has to be reachable AND legible — see
+      // ExploitRegistry.qualifiesForRootkit for the rule and why the old one
+      // (security >= 2 AND trace <= 60% AND a vault kind AND an OVERCLOCKED
+      // breach, none of it stated anywhere) never fired for real players.
       //
-      // The previous gate required security 3 AND trace <= 35%. Under the old
-      // trace curve, security-3 trace filled in 10-17 SECONDS depending on the
-      // building, so 35% was 4-6 seconds — less time than any verb's objective
-      // physically took. The gate could never fire once, for anyone.
-      // First-breach is intentionally NOT required: exploit slots already
-      // hard-cap the total at 3 (tryGrantRootkit returns false when full), so
-      // re-hackable vaults can't be farmed for more.
-      if (
-        outcome.security >= 2 &&
-        outcome.trace <= outcome.traceMax * 0.6 &&
-        (node.kind === 'bank' || node.kind === 'armory' || node.kind === 'stashden') &&
-        outcome.overclock
-      ) {
-        const player = world.with('isLocalPlayer', 'position').first;
-        if (player && mod.tryGrantRootkit(player, node.kind, outcome.overclock)) {
-          announce('ROOTKIT ACQUIRED — ' + node.name);
-          playLevelUp();
-        }
+      // Slots still hard-cap the total at 3, so a re-hackable vault cannot be
+      // farmed past the ceiling.
+      const player = world.with('isLocalPlayer', 'position').first;
+      if (!player) return;
+      const traceFraction = outcome.traceMax > 0 ? outcome.trace / outcome.traceMax : 1;
+      const owned = (player.exploitSlots ?? []).filter(Boolean).length;
+      if (!qualifiesForRootkit(node.kind, outcome.security, traceFraction, owned)) return;
+      const granted = mod.tryGrantRootkit(player, node.kind, outcome.overclock);
+      if (!granted) return;
+
+      announce('ROOTKIT ACQUIRED — ' + granted.name);
+      playLevelUp();
+
+      // First one ever: stop the run and explain what just happened. The slot
+      // only appears in the loadout bar once this has been read.
+      if (!uiState.exploitsRevealed) {
+        uiState.exploitTutorial = {
+          name: granted.name,
+          icon: granted.icon,
+          desc: granted.desc,
+          tag: mod.formatBehaviourTag ? mod.formatBehaviourTag(granted) : '',
+          rarity: granted.rarity ?? 'rare',
+        };
       }
     } catch {
       // ExploitRegistry absent or broken — degrade silently to scaled loot
@@ -1205,12 +1209,23 @@ export function BreachSystem(dt: number, scene: THREE.Scene): void {
   if (best) {
     const security = computeSecurity();
     const hasKey = uiState.skeletonKeys > 0;
+    // Rootkits were undiscoverable partly because nothing ever said which
+    // doors could hold one. The prompt now names it before you commit, using
+    // the SAME predicate the grant runs so the door can never lie. (Trace is
+    // unknowable before the dive, so it is asserted clean here — the promise
+    // is "this vault can hold one", not "you have already earned it".)
+    const owned = uiState.exploitSlots.filter(Boolean).length;
+    const rootkit =
+      ROOTKIT_KINDS.has(best.kind) &&
+      owned < 3 &&
+      qualifiesForRootkit(best.kind, security, 0, owned);
     const p = uiState.breachPrompt;
     if (
       !p ||
       p.nodeId !== best.id ||
       p.security !== security ||
       p.hasKey !== hasKey ||
+      p.rootkit !== rootkit ||
       p.opened !== best.opened
     ) {
       uiState.breachPrompt = {
@@ -1220,6 +1235,7 @@ export function BreachSystem(dt: number, scene: THREE.Scene): void {
         color: cssColor(best.color),
         security,
         hasKey,
+        rootkit,
         opened: best.opened,
       };
     }
