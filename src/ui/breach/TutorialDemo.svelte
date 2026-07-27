@@ -722,12 +722,25 @@
   .cell.wall {
     background: rgba(120, 140, 175, 0.32);
   }
+  /*
+   * Positioned by transform, not by top/left, for the same percentage-basis
+   * reason as .packet — but the trap here was worse. `left: %` resolves
+   * against the container's WIDTH while `top: %` resolves against its HEIGHT,
+   * and this maze is 6 wide by 4 tall (24 cells), so the two are not the same
+   * number. The old `top` recomputed a "cell" from the short axis and landed
+   * the exit roughly a full cell above the tile the packet finishes on.
+   *
+   * Anchoring at cell 0,0 and translating by whole pitches keeps one basis —
+   * the element's own box, which is exactly one cell — for both axes.
+   */
   .goal {
+    --pitch: calc(100% + 2px); /* goal is a full cell wide, so just add the gap */
     position: absolute;
     width: calc((100% - 10px) / 6);
     aspect-ratio: 1;
-    left: calc(((100% - 10px) / 6 + 2px) * 5);
-    top: calc(((100% - 10px) / 6 + 2px) * 3);
+    left: 0;
+    top: 0;
+    transform: translate(calc(var(--pitch) * 5), calc(var(--pitch) * 3));
     border-radius: 3px;
     background: rgba(77, 255, 136, 0.28);
     border: 1px solid #4dff88;
@@ -738,7 +751,19 @@
       box-shadow: 0 0 12px rgba(77, 255, 136, 0.9);
     }
   }
+  /*
+   * PITCH — the distance between two cell centres: one cell plus the grid's
+   * 2px gap.
+   *
+   * The catch is that percentages inside `transform: translate()` resolve
+   * against the ELEMENT'S OWN border box, not the grid's. The packet is
+   * `cell - 4px` wide, so its `100%` is `cell - 4px` and `100% + 4px` is one
+   * cell exactly — the gap was never added, every step fell 2px short, and the
+   * error accumulated to a full 10px by the last column. That is the drift
+   * that made the demo packet sit off its tiles.
+   */
   .packet {
+    --pitch: calc(100% + 6px); /* (cell - 4px) + 4px + 2px gap */
     position: absolute;
     width: calc((100% - 10px) / 6 - 4px);
     aspect-ratio: 1;
@@ -755,32 +780,35 @@
       transform: translate(0, 0);
     }
     12% {
-      transform: translate(calc(((100% + 4px) / 1) * 1), 0);
+      transform: translate(calc(var(--pitch) * 1), 0);
     }
     24% {
-      transform: translate(calc(((100% + 4px) / 1) * 2), 0);
+      transform: translate(calc(var(--pitch) * 2), 0);
     }
     36% {
-      transform: translate(calc(((100% + 4px) / 1) * 2), calc(((100% + 4px) / 1) * 1));
+      transform: translate(calc(var(--pitch) * 2), calc(var(--pitch) * 1));
     }
     48% {
-      transform: translate(calc(((100% + 4px) / 1) * 3), calc(((100% + 4px) / 1) * 1));
+      transform: translate(calc(var(--pitch) * 3), calc(var(--pitch) * 1));
     }
     60% {
-      transform: translate(calc(((100% + 4px) / 1) * 3), calc(((100% + 4px) / 1) * 2));
+      transform: translate(calc(var(--pitch) * 3), calc(var(--pitch) * 2));
     }
     72% {
-      transform: translate(calc(((100% + 4px) / 1) * 4), calc(((100% + 4px) / 1) * 2));
+      transform: translate(calc(var(--pitch) * 4), calc(var(--pitch) * 2));
     }
     84% {
-      transform: translate(calc(((100% + 4px) / 1) * 5), calc(((100% + 4px) / 1) * 2));
+      transform: translate(calc(var(--pitch) * 5), calc(var(--pitch) * 2));
     }
     92%,
     100% {
-      transform: translate(calc(((100% + 4px) / 1) * 5), calc(((100% + 4px) / 1) * 3));
+      transform: translate(calc(var(--pitch) * 5), calc(var(--pitch) * 3));
     }
   }
+  /* Same correction as .packet, offset by its own inset: the chaser is
+     `cell - 6px` wide, so one pitch is 100% + 6px + the 2px gap. */
   .chaser {
+    --pitch: calc(100% + 8px);
     position: absolute;
     width: calc((100% - 10px) / 6 - 6px);
     aspect-ratio: 1;
@@ -789,21 +817,21 @@
     border-radius: 50%;
     background: #ff3d55;
     box-shadow: 0 0 8px rgba(255, 61, 85, 0.9);
-    transform: translate(calc(((100% + 6px) / 1) * 5), 0);
+    transform: translate(calc(var(--pitch) * 5), 0);
     animation: chaser-run 4s steps(1, end) infinite;
   }
   @keyframes chaser-run {
     0% {
-      transform: translate(calc(((100% + 6px) / 1) * 5), 0);
+      transform: translate(calc(var(--pitch) * 5), 0);
     }
     30% {
-      transform: translate(calc(((100% + 6px) / 1) * 4), 0);
+      transform: translate(calc(var(--pitch) * 4), 0);
     }
     60% {
-      transform: translate(calc(((100% + 6px) / 1) * 3), 0);
+      transform: translate(calc(var(--pitch) * 3), 0);
     }
     100% {
-      transform: translate(calc(((100% + 6px) / 1) * 3), calc(((100% + 6px) / 1) * 1));
+      transform: translate(calc(var(--pitch) * 3), calc(var(--pitch) * 1));
     }
   }
   /* Swipe streak: a short dash that sweeps right, the gesture spelled out */
