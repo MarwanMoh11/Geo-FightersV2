@@ -36,23 +36,12 @@ import { upgradeRandomOwnedWeapon, flushDeferredLevelUps } from './UpgradeSystem
 import { resetVirtualJoystick } from './InputSystem';
 import type { Poi } from './WayfindingSystem';
 import { enterDive, ejectDive, resetBreachDiveSystem } from './BreachDiveSystem';
-import { ROOTKIT_KINDS, qualifiesForRootkit } from '../core/ExploitRegistry';
-
-// --- ROOTKIT SOFT-COUPLING ---
-// build-depth's `ExploitRegistry.ts` exports `tryGrantRootkit(player, kind, overclock): boolean`.
-// Its absence here is expected — we gracefully degrade to scaled loot only.
-// (The KIND TABLE itself is a plain data export with no side effects, so it is
-// imported statically — the door prompt needs it every frame and cannot await.)
-const EXPLOIT_MOD_PATH = '../core/ExploitRegistry';
-async function getExploitModule(): Promise<any> {
-  const path: string = EXPLOIT_MOD_PATH;
-  try {
-    const mod = await import(/* @vite-ignore */ path);
-    return mod ?? null;
-  } catch {
-    return null;
-  }
-}
+import {
+  ROOTKIT_KINDS,
+  qualifiesForRootkit,
+  tryGrantRootkit,
+  formatBehaviourTag,
+} from '../core/ExploitRegistry';
 
 export type BreachKind = 'depot' | 'armory' | 'bank' | 'relay' | 'substation' | 'stashden';
 
@@ -799,9 +788,15 @@ function computeDiveQuality(outcome: DiveOutcome): number {
  * cooldown + setNodeReadyLook) and additionally marks the node permanently
  * BREACHED. `grantReward` stays module-private; this is the public seam.
  *
- * The rootkit grant fires as a fire-and-forget async IIFE so that a missing
- * or broken ExploitRegistry module can never throw into the dive-exit flow.
- * The win path (cooldown + loot + opened flag) is always synchronous.
+ * The rootkit grant is synchronous. It used to run in a fire-and-forget async
+ * IIFE around `await import(/* @vite-ignore *\/ path)` with a runtime variable
+ * path, to "gracefully degrade" if ExploitRegistry were absent. It is not
+ * absent — this module already imports it statically — and the indirection
+ * silently broke every production build: @vite-ignore leaves the specifier
+ * alone, so the bundle shipped a literal '../core/ExploitRegistry' that the
+ * browser resolved against /assets/ to /core/ExploitRegistry, which 404s. The
+ * catch swallowed it and returned null, so the ONLY source of exploits in the
+ * game never fired for anyone who played a real build.
  */
 export function completeBreachWin(node: BreachNode, outcome: DiveOutcome): void {
   const quality = computeDiveQuality(outcome);
@@ -817,44 +812,38 @@ export function completeBreachWin(node: BreachNode, outcome: DiveOutcome): void 
   // Skeleton-key bypassed wins skip this entirely (useSkeletonKey calls
   // grantReward directly — exploits are hard to get, skeleton keys give
   // loot but NOT rootkits).
-  (async () => {
-    try {
-      const mod = await getExploitModule();
-      if (!mod?.tryGrantRootkit) return;
-      // ROOTKIT GATE. This is the ONLY source of exploits in the whole game,
-      // so the gate has to be reachable AND legible — see
-      // ExploitRegistry.qualifiesForRootkit for the rule and why the old one
-      // (security >= 2 AND trace <= 60% AND a vault kind AND an OVERCLOCKED
-      // breach, none of it stated anywhere) never fired for real players.
-      //
-      // Slots still hard-cap the total at 3, so a re-hackable vault cannot be
-      // farmed past the ceiling.
-      const player = world.with('isLocalPlayer', 'position').first;
-      if (!player) return;
-      const traceFraction = outcome.traceMax > 0 ? outcome.trace / outcome.traceMax : 1;
-      const owned = (player.exploitSlots ?? []).filter(Boolean).length;
-      if (!qualifiesForRootkit(node.kind, outcome.security, traceFraction, owned)) return;
-      const granted = mod.tryGrantRootkit(player, node.kind, outcome.overclock);
-      if (!granted) return;
+  // ROOTKIT GATE. This is the ONLY source of exploits in the whole game,
+  // so the gate has to be reachable AND legible — see
+  // ExploitRegistry.qualifiesForRootkit for the rule and why the old one
+  // (security >= 2 AND trace <= 60% AND a vault kind AND an OVERCLOCKED
+  // breach, none of it stated anywhere) never fired for real players.
+  //
+  // Slots still hard-cap the total at 3, so a re-hackable vault cannot be
+  // farmed past the ceiling.
+  const player = world.with('isLocalPlayer', 'position').first;
+  if (player) {
+    const traceFraction = outcome.traceMax > 0 ? outcome.trace / outcome.traceMax : 1;
+    const owned = (player.exploitSlots ?? []).filter(Boolean).length;
+    if (qualifiesForRootkit(node.kind, outcome.security, traceFraction, owned)) {
+      const granted = tryGrantRootkit(player, node.kind, outcome.overclock);
+      if (granted) {
+        announce('ROOTKIT ACQUIRED — ' + granted.name);
+        playLevelUp();
 
-      announce('ROOTKIT ACQUIRED — ' + granted.name);
-      playLevelUp();
-
-      // First one ever: stop the run and explain what just happened. The slot
-      // only appears in the loadout bar once this has been read.
-      if (!uiState.exploitsRevealed) {
-        uiState.exploitTutorial = {
-          name: granted.name,
-          icon: granted.icon,
-          desc: granted.desc,
-          tag: mod.formatBehaviourTag ? mod.formatBehaviourTag(granted) : '',
-          rarity: granted.rarity ?? 'rare',
-        };
+        // First one ever: stop the run and explain what just happened. The slot
+        // only appears in the loadout bar once this has been read.
+        if (!uiState.exploitsRevealed) {
+          uiState.exploitTutorial = {
+            name: granted.name,
+            icon: granted.icon,
+            desc: granted.desc,
+            tag: formatBehaviourTag(granted),
+            rarity: granted.rarity ?? 'rare',
+          };
+        }
       }
-    } catch {
-      // ExploitRegistry absent or broken — degrade silently to scaled loot
     }
-  })();
+  }
 
   node.cooldown = node.kind === 'depot' ? COOLDOWN_WIN_DEPOT : COOLDOWN_WIN;
   node.opened = true;
