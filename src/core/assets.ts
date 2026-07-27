@@ -1,41 +1,21 @@
-import * as THREE from 'three';
-
-const textures = new Map<string, THREE.Texture>();
-
-// Helper to create a fallback 2x2 solid white texture
-function createDummyTexture(): THREE.Texture {
-  if (typeof document === 'undefined') {
-    return new THREE.Texture();
-  }
-  const canvas = document.createElement('canvas');
-  canvas.width = 2;
-  canvas.height = 2;
-  const ctx = canvas.getContext('2d');
-  if (ctx) {
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, 2, 2);
-  }
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.magFilter = THREE.NearestFilter;
-  texture.minFilter = THREE.NearestFilter;
-  return texture;
-}
-
-// Preload all textures and return a promise
+/**
+ * Boot gate for the loading screen.
+ *
+ * There is deliberately nothing to preload: level textures are fetched lazily
+ * by LevelSystem's own loader as each level builds, and everything else the
+ * game draws is generated at runtime (canvas textures, geometry, procedural
+ * audio). This resolves immediately and exists only so main.ts has one async
+ * seam to hang renderer init off, and one place to reinstate real progress
+ * reporting if we ever do ship a preload manifest.
+ *
+ * This file used to also export a `loadTexture` that handed back a 2x2 white
+ * dummy for every path. Nothing imported it — LevelSystem has always had its
+ * own real TextureLoader — but it read like the texture pipeline was stubbed
+ * out globally, which is misleading enough to be worth deleting.
+ */
 export function preloadTextures(
   onProgress?: (loaded: number, total: number) => void,
 ): Promise<void> {
   if (onProgress) onProgress(0, 1);
   return Promise.resolve();
-}
-
-// Helper to get a cached texture (returns solid fallback for geometry-only style)
-export function loadTexture(path: string): THREE.Texture {
-  const cached = textures.get(path);
-  if (cached) {
-    return cached;
-  }
-  const texture = createDummyTexture();
-  textures.set(path, texture);
-  return texture;
 }

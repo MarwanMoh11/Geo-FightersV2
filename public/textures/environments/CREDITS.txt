@@ -3,4 +3,9 @@ Environment textures: CC0 from ambientCG.com
 - deck_metalplates.jpg = MetalPlates006 (1K color)
 - prop_metal.jpg      = Metal032 (1K color)
 - prop_rust.jpg       = Rust004 (1K color)
+- ground_grid.jpg     = MetalWalkway013 (1K color, resized to 512)
+- prop_vending.jpg    = PaintedMetal016 (1K color, resized to 512)
 License: Creative Commons CC0 1.0 Universal (no attribution required; credited anyway).
+
+Everything here is 512x512 JPEG. The ambientCG source files are 0.8-1.7 MB each
+at 1K, which the portal build budget does not allow — resize on the way in.

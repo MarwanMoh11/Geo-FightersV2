@@ -165,7 +165,7 @@ export const LEVEL_THE_PIT: LevelConfig = {
       height: 7,
       type: 'wall',
       blocking: true,
-      asset: '/textures/environments/prop_vending.png',
+      asset: '/textures/environments/prop_vending.jpg',
     },
 
     // === SUPPLY DEPOTS: wall-inset vending machines, one per wall ===
@@ -178,7 +178,7 @@ export const LEVEL_THE_PIT: LevelConfig = {
       height: 5,
       type: 'prop',
       blocking: true,
-      asset: '/textures/environments/prop_vending.png',
+      asset: '/textures/environments/prop_vending.jpg',
     },
     {
       id: 'vending_2',
@@ -189,7 +189,7 @@ export const LEVEL_THE_PIT: LevelConfig = {
       height: 5,
       type: 'prop',
       blocking: true,
-      asset: '/textures/environments/prop_vending.png',
+      asset: '/textures/environments/prop_vending.jpg',
     },
     {
       id: 'vending_3',
@@ -200,7 +200,7 @@ export const LEVEL_THE_PIT: LevelConfig = {
       height: 5,
       type: 'prop',
       blocking: true,
-      asset: '/textures/environments/prop_vending.png',
+      asset: '/textures/environments/prop_vending.jpg',
     },
     {
       id: 'vending_4',
@@ -211,7 +211,7 @@ export const LEVEL_THE_PIT: LevelConfig = {
       height: 5,
       type: 'prop',
       blocking: true,
-      asset: '/textures/environments/prop_vending.png',
+      asset: '/textures/environments/prop_vending.jpg',
     },
 
     // === MID-FIELD COVER (sparse — the horde needs room to flow) ===
@@ -257,7 +257,7 @@ export const LEVEL_DEBUG: LevelConfig = {
   mapWidth: 2000,
   mapHeight: 2000,
   spawnPoint: { x: 0, z: 0 },
-  groundTexture: '/textures/environments/ground_grid.png', // Fallback to solid if missing
+  groundTexture: '/textures/environments/ground_grid.jpg',
   backgroundColor: 0x222222,
   obstacles: [
     // Just border walls to prevent falling off world

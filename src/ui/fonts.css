@@ -1,0 +1,94 @@
+/* Self-hosted webfonts — no external origin.
+ *
+ * These used to come from a render-blocking `@import` off fonts.googleapis.com
+ * at the top of tokens.css. Portals are the reason they don't anymore:
+ * CrazyGames QA flags external requests, and Google Fonts is unreliable in
+ * RU/CIS, where Yandex Games lives. A third-party origin also costs a DNS +
+ * TLS handshake before the first glyph byte moves, on the critical path for
+ * the loading screen.
+ *
+ * Files come from @fontsource (SIL OFL-1.1, redistribution is fine). We point
+ * at the latin subsets by hand rather than importing the packages' own CSS,
+ * because those entry points pull cyrillic/greek/vietnamese too — the browser
+ * skips them at runtime via unicode-range, but Vite still copies every woff2
+ * into dist/ and the portal zip carries them. Six files, ~136 KB.
+ *
+ * Family names are declared as 'Orbitron' / 'Inter' / 'JetBrains Mono' so the
+ * --font-* tokens read the same as they did on the Google-hosted stack (the
+ * variable package would otherwise call itself 'Inter Variable').
+ *
+ * Adding a weight means adding an @font-face here — there is no fallback to a
+ * CDN that quietly covers a missing one anymore. Weights below are exactly
+ * what the UI uses: Orbitron 600/800, Inter 400-800, JetBrains Mono 400/500/700.
+ */
+
+/* --- Orbitron (headings) — static 600 + 800 --- */
+@font-face {
+  font-family: 'Orbitron';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('@fontsource/orbitron/files/orbitron-latin-600-normal.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Orbitron';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('@fontsource/orbitron/files/orbitron-latin-800-normal.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* --- Inter (body) — one variable file covers the whole 400..800 range the
+ * UI asks for, which is why this is 48 KB instead of five static cuts. --- */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('@fontsource-variable/inter/files/inter-latin-wght-normal.woff2')
+    format('woff2-variations');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* --- JetBrains Mono (HUD readouts, stat blocks) — static 400/500/700 --- */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('@fontsource/jetbrains-mono/files/jetbrains-mono-latin-700-normal.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
