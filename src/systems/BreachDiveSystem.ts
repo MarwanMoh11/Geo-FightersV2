@@ -18,6 +18,7 @@
 
 import * as THREE from 'three';
 import { uiState } from '../core/UIState.svelte.ts';
+import { dlog } from '../core/debug';
 import { buildDiveSceneFor, disposeDiveScene, tickDiveScene, THEME } from '../core/DiveScenes';
 import {
   completeBreachWin,
@@ -1042,6 +1043,21 @@ export function ejectDive(): void {
 export function exitDive(outcome: 'win' | 'fail' | 'abort'): void {
   if (exiting) return;
   exiting = true;
+
+  // Beating the mini-game only jacks you IN — resolveBreach returns early and
+  // hands off to the dive. Only a dive WIN reaches completeBreachWin, which is
+  // the sole rootkit source. "I beat the vault and got nothing" is therefore
+  // ambiguous from the outside, so name the exit under ?debug.
+  dlog(
+    '[dive] exit',
+    outcome,
+    'node:',
+    diveNode?.kind,
+    'trace:',
+    Math.round(traceValue),
+    '/',
+    TRACE_MAX,
+  );
 
   const node = diveNode;
   const dive = uiState.dive;

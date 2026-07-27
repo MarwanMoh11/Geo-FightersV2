@@ -19,6 +19,7 @@
 import * as THREE from 'three';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import { world } from '../core/world';
+import { dlog } from '../core/debug';
 import { uiState, announce } from '../core/UIState.svelte.ts';
 import { spawnCredit, spawnEnemy, EnemyType } from '../core/factories';
 import { spawnChest } from './ChestSystem';
@@ -824,8 +825,21 @@ export function completeBreachWin(node: BreachNode, outcome: DiveOutcome): void 
   if (player) {
     const traceFraction = outcome.traceMax > 0 ? outcome.trace / outcome.traceMax : 1;
     const owned = (player.exploitSlots ?? []).filter(Boolean).length;
-    if (qualifiesForRootkit(node.kind, outcome.security, traceFraction, owned)) {
+    const qualifies = qualifiesForRootkit(node.kind, outcome.security, traceFraction, owned);
+    // Every rejection below this point is silent by design — a player who
+    // "beat the vault" and got nothing has no way to tell whether they missed
+    // the gate, filled their slots, or hit a bug. Under ?debug, say which.
+    dlog('[rootkit] gate', {
+      kind: node.kind,
+      kindEligible: ROOTKIT_KINDS.has(node.kind),
+      security: outcome.security,
+      traceFraction: Number(traceFraction.toFixed(2)),
+      owned,
+      qualifies,
+    });
+    if (qualifies) {
       const granted = tryGrantRootkit(player, node.kind, outcome.overclock);
+      dlog('[rootkit] grant', granted ? granted.id : 'NONE (slots full or all owned)');
       if (granted) {
         announce('ROOTKIT ACQUIRED — ' + granted.name);
         playLevelUp();
