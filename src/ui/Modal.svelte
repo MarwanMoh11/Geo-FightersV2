@@ -120,11 +120,7 @@
 </script>
 
 {#if open}
-  <div
-    class="modal-root {extraClass}"
-    class:as-sheet={isSheet}
-    transition:fade={{ duration: 160 }}
-  >
+  <div class="modal-root {extraClass}" class:as-sheet={isSheet} transition:fade={{ duration: 160 }}>
     <!-- Scrim. Only a real button when it does something, so assistive tech
          isn't told about a control that ignores it. -->
     {#if backdropClose && dismissible}

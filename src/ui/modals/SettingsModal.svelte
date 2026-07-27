@@ -180,7 +180,11 @@
         <div class="keymap">
           <h3 class="keymap-title">Keyboard</h3>
           <div class="keymap-row">
-            <span class="keys"><kbd class="kbd">W</kbd><kbd class="kbd">A</kbd><kbd class="kbd">S</kbd><kbd class="kbd">D</kbd></span>
+            <span class="keys"
+              ><kbd class="kbd">W</kbd><kbd class="kbd">A</kbd><kbd class="kbd">S</kbd><kbd
+                class="kbd">D</kbd
+              ></span
+            >
             <span class="keymap-desc">Move (arrow keys also work)</span>
           </div>
           <div class="keymap-row">

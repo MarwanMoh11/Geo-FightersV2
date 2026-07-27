@@ -331,9 +331,7 @@
   let focusedGate = $derived(focusedLocked ? getUnlockCondition('character', focusedChar) : null);
   let focusedGatePct = $derived(
     focusedGate
-      ? Math.floor(
-          Math.min(1, focusedGate.progress(getLifetimeStats()) / focusedGate.target) * 100,
-        )
+      ? Math.floor(Math.min(1, focusedGate.progress(getLifetimeStats()) / focusedGate.target) * 100)
       : 0,
   );
   let unlockedCount = $derived(CHARACTERS.filter((c) => isCharacterUnlocked(c.id)).length);
@@ -380,9 +378,7 @@
               </span>
               <span class="play-text">
                 <span class="play-label">PLAY</span>
-                <span class="play-sub tnum"
-                  >{selectedName} · CORRUPTION {uiState.corruption}</span
-                >
+                <span class="play-sub tnum">{selectedName} · CORRUPTION {uiState.corruption}</span>
               </span>
             </button>
 
@@ -407,7 +403,13 @@
                 <span class="tile-label">Fighters</span>
                 <span class="tile-meta tnum">{unlockedCount}/{CHARACTERS.length}</span>
               </button>
-              <button class="tile" onclick={() => { playMenuClick(); panel = 'shop'; }}>
+              <button
+                class="tile"
+                onclick={() => {
+                  playMenuClick();
+                  panel = 'shop';
+                }}
+              >
                 <span class="tile-icon" aria-hidden="true">🛠️</span>
                 <span class="tile-label">Upgrades</span>
                 <span class="tile-meta tnum">🪙 {uiState.credits}</span>
@@ -575,8 +577,7 @@
                 </button>
               {/if}
 
-              <button class="ui-btn ghost danger block" onclick={handleCancelMp}
-                >Leave party</button
+              <button class="ui-btn ghost danger block" onclick={handleCancelMp}>Leave party</button
               >
             </div>
           {/if}
@@ -697,11 +698,7 @@
 
       {#snippet footer()}
         <button class="ui-btn ghost back" onclick={() => (panel = 'none')}>Back</button>
-        <button
-          class="ui-btn primary lg deploy"
-          disabled={focusedLocked}
-          onclick={confirmRoster}
-        >
+        <button class="ui-btn primary lg deploy" disabled={focusedLocked} onclick={confirmRoster}>
           {focusedLocked ? 'Locked' : `Deploy ${focused.name}`}
         </button>
       {/snippet}
@@ -1523,7 +1520,11 @@
     );
   }
   .stat-fill {
-    background: linear-gradient(90deg, color-mix(in srgb, var(--char-color) 45%, #000), var(--char-color));
+    background: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--char-color) 45%, #000),
+      var(--char-color)
+    );
   }
   .stat-val {
     font-size: var(--fs-micro);

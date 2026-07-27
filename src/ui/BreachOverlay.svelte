@@ -104,7 +104,8 @@
 
   const RULES_KEY = `geo_breach_rules_${plan.game}`;
   const rulesSeen =
-    typeof window !== 'undefined' && (() => {
+    typeof window !== 'undefined' &&
+    (() => {
       try {
         return localStorage.getItem(RULES_KEY) === '1';
       } catch {

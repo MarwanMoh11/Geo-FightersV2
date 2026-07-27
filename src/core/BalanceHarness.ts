@@ -23,7 +23,11 @@ import * as THREE from 'three';
 import { world } from './world';
 import { uiState } from './UIState.svelte.ts';
 import { updateVirtualJoystick, resetVirtualJoystick } from '../systems/InputSystem';
-import { debugGrantWeapon, upgradeRandomOwnedWeapon, grantAllExploitsDebug } from '../systems/UpgradeSystem';
+import {
+  debugGrantWeapon,
+  upgradeRandomOwnedWeapon,
+  grantAllExploitsDebug,
+} from '../systems/UpgradeSystem';
 import { getSpawnerDebugInfo } from '../systems/TimelineSpawner';
 import { spawnEnemy, EnemyType } from './factories';
 import { getExploitById } from './ExploitRegistry';

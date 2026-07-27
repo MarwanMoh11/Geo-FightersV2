@@ -44,8 +44,11 @@ export function grantAllExploitsDebug(): void {
   if (!DEBUG_GRANT_EXPLOITS) return;
   const player = world.with('isLocalPlayer', 'weaponSlots', 'passiveSlots', 'stats').first;
   if (!player) return;
-  const slots: (import('../core/ExploitRegistry').ExploitDef | null)[] =
-    player.exploitSlots || [null, null, null];
+  const slots: (import('../core/ExploitRegistry').ExploitDef | null)[] = player.exploitSlots || [
+    null,
+    null,
+    null,
+  ];
   const seen = new Set<string>();
   for (const def of EXPLOITS) {
     if (seen.has(def.id)) continue;
@@ -58,11 +61,7 @@ export function grantAllExploitsDebug(): void {
   dlog('[ExploitDBG] granted', seen.size, 'exploits to player');
 }
 
-console.log(
-  '[ExploitDBG] roster:',
-  EXPLOITS.length,
-  'granted via debug after Chest UI impl',
-);
+console.log('[ExploitDBG] roster:', EXPLOITS.length, 'granted via debug after Chest UI impl');
 
 // --- UPGRADE TYPES ---
 export type UpgradeType =
@@ -519,8 +518,11 @@ function addNewExploit(player: any, exploitId: string) {
   const def = EXPLOITS.find((e) => e.id === exploitId);
   if (!def) return;
 
-  const slots: (import('../core/ExploitRegistry').ExploitDef | null)[] =
-    player.exploitSlots || [null, null, null];
+  const slots: (import('../core/ExploitRegistry').ExploitDef | null)[] = player.exploitSlots || [
+    null,
+    null,
+    null,
+  ];
   const freeIdx = slots.findIndex((s) => s == null);
   if (freeIdx === -1) return;
   slots[freeIdx] = def;

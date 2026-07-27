@@ -248,7 +248,6 @@ function makeExtraction(ctx: DiveCtx): DiveVerb {
   ctx.addTurret(Math.cos(ta) * 7.5, Math.sin(ta) * 7.5);
   ctx.addTurret(Math.cos(ta + Math.PI) * 7.5, Math.sin(ta + Math.PI) * 7.5);
 
-
   return {
     markers: [pad],
     traceMult: 1,
