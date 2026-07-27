@@ -17,7 +17,6 @@ import { removeBody } from './RapierWorld';
 import { startMusic, resetMusicCue } from './audio';
 import { disconnectNetwork } from './network';
 import { resetRunSubmission } from './leaderboard';
-import { resetFlowState } from './FlowStateManager';
 import { resetGameTime } from '../systems/ChestSystem';
 import { resetTimelineSpawner } from '../systems/TimelineSpawner';
 import { resetFinaleBoss } from '../systems/FinaleBoss';
@@ -69,7 +68,6 @@ export function resetRun(): void {
   resetPickups();
   resetMapEvents();
   resetBreachSystem();
-  resetFlowState();
   resetGameFlags();
   resetUpgradeState();
   resetRunSubmission();

@@ -16,7 +16,6 @@ import { WEAPONS } from '../core/WeaponRegistry';
 import { spawnXP, spawnCredit, spawnEnemy, EnemyType } from '../core/factories';
 import { offerSecondChanceOrEnd } from './GameManager';
 import { playExplosion, playHurt, playCollect } from '../core/audio';
-import { reportDamageTaken, reportKill } from '../core/FlowStateManager';
 import { recordKill, recordDamage, recordVaultCracked } from '../core/ProgressManager';
 import {
   spawnChest,
@@ -517,7 +516,6 @@ function applyPlayerHitFeedback(
   player.hitFlashTimer = 0.15; // flash the avatar on this machine's screen
 
   if (player.isLocalPlayer) {
-    reportDamageTaken(damage);
     addTrauma(trauma);
     playHurt();
     haptics.hit();
@@ -812,7 +810,6 @@ export function handleEnemyDeath(
   bulletColor = 0xb0b0b0,
   killerConnId?: string,
 ) {
-  reportKill();
   creditKill(killerConnId);
   recordKill();
   chainCombo();
