@@ -32,9 +32,7 @@ self.addEventListener('activate', (event) => {
       .keys()
       .then((keys) =>
         Promise.all(
-          keys
-            .filter((k) => k !== SHELL_CACHE && k !== RUNTIME_CACHE)
-            .map((k) => caches.delete(k)),
+          keys.filter((k) => k !== SHELL_CACHE && k !== RUNTIME_CACHE).map((k) => caches.delete(k)),
         ),
       )
       .then(() => self.clients.claim()),
@@ -46,12 +44,11 @@ self.addEventListener('message', (event) => {
   if (event.data === 'SKIP_WAITING') self.skipWaiting();
 });
 
+// Same-origin only. Fonts used to be an exception here, back when they came
+// from fonts.googleapis.com / fonts.gstatic.com; they are bundled now, so they
+// arrive on our own origin and need no special case.
 function isCacheableAsset(url) {
-  return (
-    url.origin === self.location.origin ||
-    url.origin === 'https://fonts.googleapis.com' ||
-    url.origin === 'https://fonts.gstatic.com'
-  );
+  return url.origin === self.location.origin;
 }
 
 self.addEventListener('fetch', (event) => {
