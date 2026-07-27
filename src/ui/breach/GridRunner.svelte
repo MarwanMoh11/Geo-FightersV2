@@ -585,6 +585,34 @@
     border-radius: 8px;
     padding: 3px;
     touch-action: none;
+    /* The board must never lose height to the pad. Stacked, a short viewport
+       shrank the 13x9 maze until cells were a few pixels across and the packet
+       was indistinguishable from a chaser. */
+    min-width: 0;
+  }
+
+  /* Landscape phones: the board and the pad compete for the same scarce
+     vertical space when stacked, and both lose. Side by side, the maze gets
+     the full panel height and the pad sits under the thumb already holding
+     the device. Mirrors the same breakpoint .b-rules-card uses in
+     BreachOverlay so the whole breach UI changes shape at one width. */
+  @media (max-height: 560px) and (orientation: landscape) {
+    .gr-wrap {
+      flex-direction: row;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .gr-grid {
+      flex: 1 1 auto;
+      height: 100%;
+      max-height: 62vh;
+      /* Height-driven here, so let the aspect ratio derive the width. */
+      width: auto;
+    }
+    .dpad {
+      flex: 0 0 auto;
+      margin-top: 0;
+    }
   }
   .cell {
     position: relative;
@@ -677,6 +705,10 @@
     opacity: 0.7;
   }
 
+  /* Overlays the board, which on a portrait phone is only ~250px tall. Title +
+     sequence + four pads + STEP BACK does not fit that at fixed sizes, so
+     everything here shrinks against the available height rather than
+     overflowing the rounded panel and clipping the STEP BACK button. */
   .gate-panel {
     position: absolute;
     inset: 0;
@@ -685,9 +717,12 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 0.6rem;
-    background: rgba(4, 8, 14, 0.88);
+    gap: clamp(0.3rem, 2.2vh, 0.6rem);
+    padding: 0.4rem;
+    background: rgba(4, 8, 14, 0.9);
     border-radius: 8px;
+    overflow: auto;
+    touch-action: pan-y;
   }
   .gp-title {
     font-family: var(--font-mono);
@@ -697,12 +732,16 @@
   }
   .gp-seq {
     display: flex;
-    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.35rem;
   }
   .gp-arrow {
-    font-size: 1.4rem;
-    width: 2.2rem;
-    height: 2.2rem;
+    /* The sequence is read, not tapped, so it yields space to the pads first. */
+    font-size: clamp(0.95rem, 4.2vh, 1.4rem);
+    width: clamp(1.5rem, 6vh, 2.2rem);
+    height: clamp(1.5rem, 6vh, 2.2rem);
+    flex: none;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -727,18 +766,25 @@
   }
   .gp-pads {
     display: flex;
-    gap: 0.45rem;
+    gap: 0.5rem;
   }
+  /* These are the only tappable things on the panel, so they hold the 44px
+     floor even when everything around them has shrunk. */
   .gp-pads button {
-    font-size: 1.15rem;
-    width: 2.9rem;
-    height: 2.9rem;
-    border-radius: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    background: rgba(255, 255, 255, 0.07);
+    font-size: 1.25rem;
+    width: clamp(var(--tap), 9vh, 3.4rem);
+    height: clamp(var(--tap), 9vh, 3.4rem);
+    flex: none;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.09);
     color: #fff;
     cursor: pointer;
     touch-action: manipulation;
+  }
+  .gp-pads button:active {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.55);
   }
   .gp-back {
     font-family: var(--font-mono);
@@ -753,20 +799,28 @@
     touch-action: manipulation;
   }
 
-  /* Hold-to-run D-pad (touch only) */
+  /* Hold-to-run D-pad (touch only).
+     This is a timed chase game where a mistimed step is usually the breach, so
+     the pad is sized for a thumb in a hurry rather than for tidiness: square
+     keys well above the 44px comfortable floor, and a real gap between them so
+     the miss lands on nothing instead of on the opposite direction. */
   .dpad {
     display: grid;
     grid-template-areas: '. up .' 'left . right' '. down .';
-    gap: 0.3rem;
+    gap: 0.4rem;
     justify-content: center;
+    /* Breathing room from the board so a thumb resting between steps does not
+       cover the row the packet is about to enter. */
+    margin-top: 0.2rem;
+    touch-action: none;
   }
   .dp {
-    /* 40px tall was under the comfortable-touch floor, and a missed step in
-       a chase maze usually means the breach. */
-    width: 3.25rem;
-    height: var(--tap);
-    font-size: 1rem;
-    border-radius: 9px;
+    width: 3.6rem;
+    height: 3.6rem;
+    min-width: var(--tap);
+    min-height: var(--tap);
+    font-size: 1.25rem;
+    border-radius: 12px;
     border: 1px solid color-mix(in srgb, var(--bcolor) 55%, transparent);
     background: color-mix(in srgb, var(--bcolor) 14%, rgba(8, 14, 22, 0.9));
     color: #fff;
@@ -775,7 +829,11 @@
     -webkit-user-select: none;
   }
   .dp:active {
-    background: color-mix(in srgb, var(--bcolor) 34%, rgba(8, 14, 22, 0.9));
+    background: color-mix(in srgb, var(--bcolor) 40%, rgba(8, 14, 22, 0.9));
+    /* Held, not tapped — the press state has to be obvious while the finger is
+       still down and hiding the key it is on. */
+    border-color: var(--bcolor);
+    box-shadow: 0 0 12px color-mix(in srgb, var(--bcolor) 55%, transparent);
   }
   .dp.up {
     grid-area: up;
