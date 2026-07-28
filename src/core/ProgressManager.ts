@@ -314,9 +314,32 @@ export function recordCredits(amount: number): void {
  */
 export function computeExtractionBonus(runTime: number, level: number, victory: boolean): number {
   const minutes = runTime / 60;
-  const depth = Math.round(minutes * 45); // 45/min survived
-  const build = Math.round(Math.max(0, level - 1) * 12); // 12 per level earned
-  return Math.round((depth + build) * (victory ? 1.5 : 1));
+  const depth = Math.round(minutes * 120); // 120/min survived
+  const build = Math.round(Math.max(0, level - 1) * 25); // 25 per level earned
+  return Math.round((depth + build) * (victory ? 2.5 : 1));
+}
+
+/**
+ * Credits picked up during a run are worth full value up to a threshold, then
+ * a small fraction of the excess.
+ *
+ * Farming used to be the entire economy: pickups scale with corruption
+ * (corruptionCredits) AND with how long you survive AND with how much your
+ * build can kill, so a strong player banked ~40,000 in a run while a beginner
+ * banked a few hundred. No fixed shop can serve a 40x income spread — it is
+ * either unreachable for the beginner or already finished for the expert.
+ *
+ * Compressing the tail here, and paying properly for extraction above, moves
+ * the reward from "how long did you grind" to "how deep did you get and did
+ * you get out". A maxed farming run now earns roughly 9x a beginner's run
+ * rather than 40x, and finishing a run out-earns farming it.
+ */
+export const CREDIT_SOFT_CAP = 600;
+export const CREDIT_EXCESS_RATE = 0.08;
+
+export function applyCreditSoftCap(collected: number): number {
+  if (collected <= CREDIT_SOFT_CAP) return collected;
+  return CREDIT_SOFT_CAP + Math.round((collected - CREDIT_SOFT_CAP) * CREDIT_EXCESS_RATE);
 }
 
 /**
@@ -337,7 +360,7 @@ export function bankRunCredits(
   level: number,
   victory: boolean,
 ): { collected: number; bonus: number; total: number } {
-  const collected = Math.max(0, Math.round(uiState.creditsCollected));
+  const collected = applyCreditSoftCap(Math.max(0, Math.round(uiState.creditsCollected)));
   const bonus = computeExtractionBonus(runTime, level, victory);
   const total = collected + bonus;
   uiState.payoutDoubled = false; // a fresh payout is doublable again

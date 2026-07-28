@@ -2,6 +2,7 @@ import type { WeaponSlot, PassiveSlot } from './world';
 import type { ExploitDef } from './ExploitRegistry';
 import type { UpgradeOption } from '../systems/UpgradeSystem';
 import { CORRUPTION_DEFAULT } from './corruption';
+import { getShopDefaults } from './ShopRegistry';
 
 const isClient = typeof window !== 'undefined';
 
@@ -32,19 +33,11 @@ export function saveLocal(key: string, value: string): void {
   }
 }
 
-function getUpgradeDefaults() {
-  const defaults = {
-    might: 0,
-    maxHealth: 0,
-    armor: 0,
-    moveSpeed: 0,
-    magnet: 0,
-    luck: 0,
-    rerolls: 0,
-    banishes: 0,
-  };
-  const saved = getLocalVal<any>('geo_permanent_upgrades', {});
-  return { ...defaults, ...saved };
+function getUpgradeDefaults(): Record<string, number> {
+  // Defaults come from the catalogue so a new track is playable the moment it
+  // is added there, and an old save simply reads 0 for anything it predates.
+  const saved = getLocalVal<Record<string, number>>('geo_permanent_upgrades', {});
+  return { ...getShopDefaults(), ...saved };
 }
 
 export const uiState = $state({
@@ -66,7 +59,14 @@ export const uiState = $state({
   // Run Specific Defrag Modifiers
   runRerolls: 0,
   runBanishes: 0,
+  runSkips: 0,
   bannedUpgradeIds: [] as string[],
+  /**
+   * Items the player has permanently blacklisted with PURGE ranks. Unlike
+   * bannedUpgradeIds (one run) this persists, and is what makes a bad-roll run
+   * recoverable across the whole save rather than only after it has gone wrong.
+   */
+  purgedUpgradeIds: getLocalVal<string[]>('geo_purged_upgrades', []) as string[],
 
   // Active Overload Ability
   overloadCharge: 0,
