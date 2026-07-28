@@ -1,7 +1,29 @@
 /* GeoFighters service worker — app-shell + runtime caching for offline play.
-   Bump CACHE_VERSION whenever the caching strategy changes OR when installed
-   clients must be forced off a stale bundle (activation purges old caches). */
-const CACHE_VERSION = 'geofighters-v2';
+ *
+ * CACHE_VERSION is stamped by the build (see the stamp-sw plugin in
+ * vite.config.ts, which rewrites __BUILD_ID__ in dist/sw.js). It used to be a
+ * hand-maintained constant, which meant it never actually changed: the
+ * activate handler only deletes caches whose NAME differs, so RUNTIME_CACHE
+ * survived every deploy. Two consequences, both real:
+ *
+ *   1. The runtime cache grew without bound. Each deploy adds a new set of
+ *      content-hashed chunks and the superseded ones were never evicted —
+ *      megabytes per deploy, accumulating on the player's device until the
+ *      browser evicted the whole origin under storage pressure.
+ *   2. Stable-URL assets went stale. Hashed JS/CSS is safe (a new build means
+ *      a new URL, so a cache miss), but everything served at a fixed path —
+ *      /textures/**, /icons/**, manifest — is stale-while-revalidate. Change
+ *      one and the next visit still paints the OLD file, updating only the
+ *      visit after that. That is a genuinely confusing bug to chase while
+ *      iterating, because the code is right and the screen disagrees.
+ *
+ * A per-build id fixes both: old caches are purged on activate, and the first
+ * request for a stable-URL asset after a deploy is a miss that goes to network.
+ *
+ * The literal below is the DEV fallback — unstamped, it just means the dev
+ * server reuses one namespace, which is what you want while iterating.
+ */
+const CACHE_VERSION = 'geofighters-__BUILD_ID__';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
