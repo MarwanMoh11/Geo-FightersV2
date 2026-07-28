@@ -138,6 +138,12 @@ function hideLoadingScreen() {
 preloadTextures(updateLoadingProgress).then(async () => {
   if (loadingText) loadingText.textContent = 'INITIALIZING RENDERER';
 
+  // Start the physics download IMMEDIATELY, before awaiting anything else.
+  // rapier is by far the largest chunk in the build (~2 MB raw, ~750 kB gz)
+  // and nothing between here and the menu needs it, so there is no reason for
+  // it to be serial with renderer init — this overlaps the two.
+  const rapierModule = import('./core/RapierWorld');
+
   const { scene, camera, renderer, renderFrame } = await initRenderer();
   setNetworkScene(scene);
 
@@ -210,9 +216,41 @@ preloadTextures(updateLoadingProgress).then(async () => {
     document.body.appendChild(backendDebug);
   }
 
+  onStateChange((newState, oldState) => {
+    if (newState === 'PLAYING' && oldState === 'MENU') {
+      initializePlayerForRun(scene);
+
+      // First solo run ever: show the one-time how-to-play overlay. Skipped in
+      // co-op (teammates are mid-run) and after the player has seen it once.
+      if (!uiState.isMultiplayer && localStorage.getItem('geo_onboarded') !== '1') {
+        uiState.showOnboarding = true;
+      }
+    }
+  });
+
+  // --- MENU FIRST, ENGINE SECOND ---
+  // Everything below this point (physics, level colliders, compute systems,
+  // shader prewarm) is needed to START A RUN, not to show a menu — and the
+  // menu is plain Svelte that touches neither the scene nor the ECS world.
+  // Holding it behind ~750 kB gz of physics wasm put the single biggest chunk
+  // in the build on the critical path to first interaction. On ad portals that
+  // is the metric that decides whether a player ever arrives: time-to-menu
+  // drives bounce, and bounce drives everything downstream of it.
+  //
+  // So the menu paints now and the engine finishes behind it. `engineReady`
+  // gates the Play button so a fast tap cannot start a run into a world with
+  // no colliders — LevelSystem and factories both no-op their physics calls
+  // when Rapier is absent, which would silently produce walkable walls rather
+  // than an error.
+  const { mount } = await import('svelte');
+  const App = (await import('./ui/App.svelte')).default;
+  mount(App, { target: document.getElementById('app')! });
+
+  hideLoadingScreen();
+  portalLoadingFinished();
+
   // --- RAPIER PHYSICS INITIALIZATION ---
-  if (loadingText) loadingText.textContent = 'INITIALIZING PHYSICS';
-  const { initRapier } = await import('./core/RapierWorld');
+  const { initRapier } = await rapierModule;
   await initRapier();
   // ------------------------------------
 
@@ -235,24 +273,8 @@ preloadTextures(updateLoadingProgress).then(async () => {
   prewarmEnemyMeshes(scene);
   renderFrame();
 
-  onStateChange((newState, oldState) => {
-    if (newState === 'PLAYING' && oldState === 'MENU') {
-      initializePlayerForRun(scene);
-
-      // First solo run ever: show the one-time how-to-play overlay. Skipped in
-      // co-op (teammates are mid-run) and after the player has seen it once.
-      if (!uiState.isMultiplayer && localStorage.getItem('geo_onboarded') !== '1') {
-        uiState.showOnboarding = true;
-      }
-    }
-  });
-
-  const { mount } = await import('svelte');
-  const App = (await import('./ui/App.svelte')).default;
-  mount(App, { target: document.getElementById('app')! });
-
-  hideLoadingScreen();
-  portalLoadingFinished();
+  // Physics, colliders and shaders are all in place — release the Play button.
+  uiState.engineReady = true;
 
   startGameLoop(scene, camera, renderer, renderFrame);
 });
