@@ -191,7 +191,38 @@ const _tempScale = new THREE.Vector3();
 const _tempRot = new THREE.Euler();
 const _tempQuat = new THREE.Quaternion();
 const _tempMat = new THREE.Matrix4();
-const _tempColor = new THREE.Color();
+
+// Every instance colour the horde loop can pick, built once.
+//
+// `Color.setHex()` is not a field assignment — it runs an sRGB→linear
+// conversion, three Math.pow calls, on every call. The loop below set a colour
+// on the solid, wire and glow layer of every enemy every frame, so at ~500
+// alive that was ~4500 pow() per frame for values drawn from a fixed palette of
+// six. Prebuilt Color objects make setColorAt a plain three-float copy.
+const _COL_WHITE = new THREE.Color(0xffffff);
+const _COL_FLASH = new THREE.Color(0xff4444);
+const _COL_VAULT = new THREE.Color(0xffcc33);
+const _COL_GLOW = new THREE.Color(0xdddddd);
+const _COL_PHASE_HI = new THREE.Color(0xaa44ff);
+const _COL_PHASE_LO = new THREE.Color(0x6622aa);
+const _COL_WINDUP = new THREE.Color(0x88ffee);
+const _COL_TELEGRAPH = new THREE.Color(0xff66cc);
+
+// Elite aura hexes are data-driven, so they get a small memo instead.
+const _auraColorCache = new Map<number, THREE.Color>();
+function auraColorFor(hex: number): THREE.Color {
+  let c = _auraColorCache.get(hex);
+  if (c === undefined) {
+    c = new THREE.Color(hex);
+    _auraColorCache.set(hex, c);
+  }
+  return c;
+}
+
+// Ground-plane decals (blob shadows, elite auras) all use the same fixed
+// -90° X rotation. Composing it per enemy per frame meant an Euler→quaternion
+// conversion — six more trig calls each — for a value that never changes.
+const _FLAT_QUAT = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
 
 /**
  * Per-frame render pass: syncs transforms, animates sub-meshes, and draws
@@ -734,47 +765,52 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
 
         _tempPos.y = size * 0.35 + hoverY;
         _tempScale.setScalar(size * scaleMult);
-        _tempRot.set(rotX, (entity.rotationY ?? 0) + yawExtra, rotZ);
-        _tempQuat.setFromEuler(_tempRot);
+
+        // Most of the horde only ever yaws — the per-type signatures above
+        // leave rotX/rotZ at zero for every type except FIREWALL, ENFORCER,
+        // WARDEN, HYDRA, SPITTER and STALKER. A Y-only quaternion is two trig
+        // calls; routing it through Euler→quaternion costs six. Same result,
+        // taken on the common path.
+        if (rotX === 0 && rotZ === 0) {
+          const half = ((entity.rotationY ?? 0) + yawExtra) * 0.5;
+          _tempQuat.set(0, Math.sin(half), 0, Math.cos(half));
+        } else {
+          _tempRot.set(rotX, (entity.rotationY ?? 0) + yawExtra, rotZ);
+          _tempQuat.setFromEuler(_tempRot);
+        }
         _tempMat.compose(_tempPos, _tempQuat, _tempScale);
+
+        const flashing = !!entity.hitFlashTimer && entity.hitFlashTimer > 0;
 
         // Set matrices and flash colors
         if (solidMesh) {
           solidMesh.setMatrixAt(count, _tempMat);
-          if (entity.hitFlashTimer && entity.hitFlashTimer > 0) {
-            _tempColor.setHex(0xff4444);
-          } else if (entity.isVault) {
-            _tempColor.setHex(0xffcc33); // data vault reads as gold loot, not threat
-          } else {
-            _tempColor.setHex(0xffffff);
-          }
-          solidMesh.setColorAt(count, _tempColor);
+          solidMesh.setColorAt(
+            count,
+            flashing ? _COL_FLASH : entity.isVault ? _COL_VAULT : _COL_WHITE,
+          );
         }
 
         if (wireMesh) {
           wireMesh.setMatrixAt(count, _tempMat);
-          if (entity.hitFlashTimer && entity.hitFlashTimer > 0) {
-            _tempColor.setHex(0xff4444);
-          } else {
-            _tempColor.setHex(0xffffff);
-          }
-          wireMesh.setColorAt(count, _tempColor);
+          wireMesh.setColorAt(count, flashing ? _COL_FLASH : _COL_WHITE);
         }
 
         if (glowMesh) {
           glowMesh.setMatrixAt(count, _tempMat);
-          if (entity.hitFlashTimer && entity.hitFlashTimer > 0) {
-            _tempColor.setHex(0xffffff);
+          let glowColor: THREE.Color;
+          if (flashing) {
+            glowColor = _COL_WHITE;
           } else if (entity.phased) {
-            _tempColor.setHex(Math.sin(time * 25) > 0 ? 0xaa44ff : 0x6622aa);
+            glowColor = Math.sin(time * 25) > 0 ? _COL_PHASE_HI : _COL_PHASE_LO;
           } else if (entity.dashState === 'windup') {
-            _tempColor.setHex(0x88ffee);
+            glowColor = _COL_WINDUP;
           } else if (entity.abilityKind === 'ranged' && entity.telegraph && entity.telegraph > 0) {
-            _tempColor.setHex(0xff66cc);
+            glowColor = _COL_TELEGRAPH;
           } else {
-            _tempColor.setHex(0xdddddd);
+            glowColor = _COL_GLOW;
           }
-          glowMesh.setColorAt(count, _tempColor);
+          glowMesh.setColorAt(count, glowColor);
         }
 
         // Elite/miniboss ground aura: flat pulsing ring at the enemy's feet
@@ -783,11 +819,9 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
           _tempPos.set(entity.position.x, 0.05, entity.position.z);
           const auraScale = size * (0.62 + 0.05 * Math.sin(time * 2.2 + phase));
           _tempScale.setScalar(auraScale);
-          _tempRot.set(-Math.PI / 2, 0, 0);
-          _tempQuat.setFromEuler(_tempRot);
-          _tempMat.compose(_tempPos, _tempQuat, _tempScale);
+          _tempMat.compose(_tempPos, _FLAT_QUAT, _tempScale);
           eliteAuraInstances.setMatrixAt(auraCount, _tempMat);
-          eliteAuraInstances.setColorAt(auraCount, _tempColor.setHex(auraColor));
+          eliteAuraInstances.setColorAt(auraCount, auraColorFor(auraColor));
           auraCount++;
         }
 
@@ -800,9 +834,7 @@ export function RenderSystem(dt: number, scene: THREE.Scene) {
         _tempPos.y = 0.02;
 
         _tempScale.set(size / 2, size / 2, size / 2);
-        _tempRot.set(-Math.PI / 2, 0, 0);
-        _tempQuat.setFromEuler(_tempRot);
-        _tempMat.compose(_tempPos, _tempQuat, _tempScale);
+        _tempMat.compose(_tempPos, _FLAT_QUAT, _tempScale);
 
         shadowInstances.setMatrixAt(shadowCount, _tempMat);
         shadowCount++;

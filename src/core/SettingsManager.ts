@@ -33,7 +33,14 @@ const DEFAULT_SETTINGS: GameSettings = {
   // Display
   screenShake: true,
   showFps: false,
-  qualityLevel: 'high',
+  // 'auto', not 'high'. detectTier() already reads cores/memory and picks a
+  // sensible starting profile, but nothing reached it: every fresh player was
+  // pinned to the most expensive tier — full-resolution bloom, antialiasing,
+  // shadow maps — and, because the adaptive resolution scaler is only attached
+  // in auto mode, with no safety net to claw the frame rate back. A 2-core
+  // Chromebook ran the same settings as a desktop with a discrete GPU.
+  // Anyone who wants the old behaviour can still pick "High" in Settings.
+  qualityLevel: 'auto',
   fpsLimit: 0,
 
   // Gameplay
