@@ -272,7 +272,22 @@ function generateUpgradePool(player: any): UpgradeOption[] {
     rarity: 'common',
   });
 
-  return pool.filter((opt) => !uiState.bannedUpgradeIds.includes(opt.id));
+  // Two blacklists, with deliberately different reach.
+  //
+  // bannedUpgradeIds is spent in-run with BANISH and removes the option
+  // outright. purgedUpgradeIds is bought once with PURGE ranks and persists
+  // across every run — but it only bars an item from being OFFERED AS NEW.
+  //
+  // That distinction matters: option ids are the raw weapon/passive id, shared
+  // between the "take this" and the "level this up" entries. Filtering purges
+  // by id alone would mean purging a weapon you later start with silently
+  // bricks its level-ups for the whole run.
+  return pool.filter((opt) => {
+    if (uiState.bannedUpgradeIds.includes(opt.id)) return false;
+    const isNewOffer = opt.type === 'weapon_new' || opt.type === 'passive_new';
+    if (isNewOffer && uiState.purgedUpgradeIds.includes(opt.id)) return false;
+    return true;
+  });
 }
 
 // --- WEIGHTED SELECTION ---
@@ -633,5 +648,34 @@ export function banishUpgradeOption(optionId: string) {
   const options = generateUpgradePool(player);
   const choices = selectWeightedChoices(options, UPGRADE_CHOICES);
   uiState.upgradeChoices = choices;
+  haptics.select();
+}
+
+/**
+ * Spend one skip to decline this level-up entirely.
+ *
+ * Declining is a real choice in this genre: taking a weapon you do not want
+ * costs a slot for the rest of the run, and with only three rerolls a bad roll
+ * used to be something you simply had to accept. Skipping advances the queued
+ * level-ups exactly as picking would, so the run keeps moving.
+ */
+export function skipUpgradeChoice() {
+  if (uiState.runSkips <= 0) return;
+  uiState.runSkips--;
+
+  const player = world.with('isLocalPlayer', 'weaponSlots', 'passiveSlots', 'stats').first;
+  if (!player) return;
+
+  if (pendingUpgradesCount > 0) {
+    pendingUpgradesCount--;
+    const options = generateUpgradePool(player);
+    const choices = selectWeightedChoices(options, UPGRADE_CHOICES);
+    uiState.upgradeChoices = choices;
+    uiState.showUpgrade = true;
+  } else {
+    isGamePaused = false;
+    setMusicDucked(false);
+    uiState.showUpgrade = false;
+  }
   haptics.select();
 }

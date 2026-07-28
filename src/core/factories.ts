@@ -12,6 +12,7 @@ import { uiState, announce } from './UIState.svelte';
 import { createCustomProjectileMesh } from './projectileVisuals';
 import { corruptionHp, corruptionSpeed, corruptionCredits } from './corruption';
 import { partyHpMultiplier } from './difficulty';
+import { greedMultiplier } from './ShopRegistry';
 import { getCurrentLevel as getLevelConfig } from './LevelData';
 import { getQualityProfile, isMobile } from './quality';
 import { TEST_MODE } from './debug';
@@ -799,6 +800,7 @@ export function initializePlayerForRun(scene: THREE.Scene) {
   // Initialize active run-specific states
   uiState.runRerolls = uiState.permanentUpgrades.rerolls || 0;
   uiState.runBanishes = uiState.permanentUpgrades.banishes || 0;
+  uiState.runSkips = uiState.permanentUpgrades.skips || 0;
   uiState.bannedUpgradeIds = [];
   uiState.overloadCharge = 0;
   uiState.overloadActive = false;
@@ -968,7 +970,12 @@ export function spawnCredit(
   // every payout passes through. It used to be advertised in the menu
   // ("+125% credits" at threat 5) and then never applied anywhere — the dial
   // paid extra XP but the wallet never saw a cent of it.
-  const amount = Math.max(1, Math.ceil(value * corruptionCredits(uiState.corruption)));
+  const amount = Math.max(
+    1,
+    Math.ceil(
+      value * corruptionCredits(uiState.corruption) * greedMultiplier(uiState.permanentUpgrades),
+    ),
+  );
   if (earnerConnId && uiState.isMultiplayer && uiState.isHost) {
     const me = world.with('isLocalPlayer').first;
     if (me && me.connectionId !== earnerConnId) {

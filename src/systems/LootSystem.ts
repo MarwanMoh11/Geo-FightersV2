@@ -13,6 +13,7 @@ import { triggerLevelUp } from './UpgradeSystem';
 import { playCollect, playLevelUp } from '../core/audio';
 import { uiState } from '../core/UIState.svelte.ts';
 import { corruptionXp } from '../core/corruption';
+import { growthMultiplier } from '../core/ShopRegistry';
 import {
   bankXP,
   XP_DESPAWN_RADIUS_SQ,
@@ -134,7 +135,11 @@ export function LootSystem(dt: number, scene: THREE.Scene) {
       if (inSurge && xp.xpValue) xp.xpValue *= 2;
       if (xp.xpValue && closestPlayer.xp !== undefined && closestPlayer.score !== undefined) {
         // Corruption pays out more XP the higher the threat level.
-        closestPlayer.xp += Math.ceil(xp.xpValue * corruptionXp(uiState.corruption));
+        closestPlayer.xp += Math.ceil(
+          xp.xpValue *
+            corruptionXp(uiState.corruption) *
+            growthMultiplier(uiState.permanentUpgrades),
+        );
 
         if (!uiState.overloadActive && closestPlayer.isLocalPlayer) {
           const maxXp = closestPlayer.xpMax || 100;

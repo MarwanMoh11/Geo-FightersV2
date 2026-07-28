@@ -4,6 +4,7 @@
     selectUpgrade,
     rerollUpgradeChoices,
     banishUpgradeOption,
+    skipUpgradeChoice,
     type UpgradeOption,
   } from '../../systems/UpgradeSystem';
   import { formatBehaviourTag, getExploitById } from '../../core/ExploitRegistry';
@@ -223,6 +224,17 @@
       {#if uiState.runRerolls > 0}
         <button class="ui-btn reroll" onclick={rerollUpgradeChoices}>
           🔄 Reroll <span class="tnum">×{uiState.runRerolls}</span>
+        </button>
+      {/if}
+      {#if uiState.runSkips > 0}
+        <button
+          class="ui-btn skip"
+          onclick={() => {
+            playMenuClick();
+            skipUpgradeChoice();
+          }}
+        >
+          ⏭️ Skip <span class="tnum">×{uiState.runSkips}</span>
         </button>
       {/if}
       {#if uiState.runBanishes > 0}
@@ -491,6 +503,18 @@
   }
   .ui-btn.reroll:hover {
     background: rgba(54, 230, 255, 0.2);
+  }
+  /* Deliberately cooler than Reroll: skipping is the "take nothing" option and
+     should not compete with the cards for attention. */
+  .ui-btn.skip {
+    flex: 0 0 auto;
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.18);
+    color: var(--color-text-faint);
+  }
+  .ui-btn.skip:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--color-text);
   }
   .hint {
     margin-left: auto;

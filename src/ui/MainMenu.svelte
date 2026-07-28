@@ -1,5 +1,16 @@
 <script lang="ts">
   import { uiState, showToast, saveLocal } from '../core/UIState.svelte.ts';
+  import {
+    SHOP_TRACKS,
+    SHOP_TRACKS_BY_ID,
+    SHOP_CATEGORY_LABELS,
+    getTrackCost,
+    totalRanksOwned,
+    type ShopCategory,
+    purgeSlots,
+  } from '../core/ShopRegistry';
+  import { getBaseWeapons } from '../core/WeaponRegistry';
+  import { PASSIVES } from '../core/PassiveRegistry';
   import { setGameState } from '../core/GameState';
   import { resumeAudioContext, playMenuBuy, playMenuClick } from '../core/audio';
   import {
@@ -46,100 +57,14 @@
      `uiState.selectedCharacter` only changes on START RUN. */
   let focusedChar = $state(uiState.selectedCharacter);
 
-  const UPGRADES_LIST = [
-    {
-      id: 'might',
-      name: 'Output Wattage',
-      short: 'MIGHT',
-      icon: '⚔️',
-      desc: '+10% damage output per level',
-      max: 5,
-      baseCost: 150,
-      costScale: 2.0,
-    },
-    {
-      id: 'maxHealth',
-      name: 'Armor Shell',
-      short: 'HP',
-      icon: '❤️',
-      desc: '+10 max HP per level',
-      max: 5,
-      baseCost: 100,
-      costScale: 1.8,
-    },
-    {
-      id: 'armor',
-      name: 'Reinforced Core',
-      short: 'ARMOR',
-      icon: '🛡️',
-      desc: '+1 damage reduction per level',
-      max: 5,
-      baseCost: 200,
-      costScale: 2.2,
-    },
-    {
-      id: 'moveSpeed',
-      name: 'Overclocked Thrusters',
-      short: 'SPEED',
-      icon: '💨',
-      desc: '+5% move speed per level',
-      max: 5,
-      baseCost: 120,
-      costScale: 1.9,
-    },
-    {
-      id: 'magnet',
-      name: 'Tractor Beam',
-      short: 'MAGNET',
-      icon: '🧲',
-      desc: '+20% pickup range per level',
-      max: 5,
-      baseCost: 80,
-      costScale: 1.7,
-    },
-    {
-      id: 'luck',
-      name: 'Precision Luck',
-      short: 'LUCK',
-      icon: '🎲',
-      desc: '+10% crit and rarity chance',
-      max: 5,
-      baseCost: 150,
-      costScale: 2.0,
-    },
-    {
-      id: 'rerolls',
-      name: 'Defrag Reroll',
-      short: 'REROLL',
-      icon: '🔄',
-      desc: '+1 level-up reroll per run',
-      max: 3,
-      baseCost: 200,
-      costScale: 2.2,
-    },
-    {
-      id: 'banishes',
-      name: 'System Banish',
-      short: 'BANISH',
-      icon: '🚫',
-      desc: '+1 level-up banish per run',
-      max: 3,
-      baseCost: 250,
-      costScale: 2.5,
-    },
-  ];
-
-  function getUpgradeCost(up: (typeof UPGRADES_LIST)[0], level: number) {
-    return Math.floor(up.baseCost * Math.pow(up.costScale, level));
-  }
-
   function buyUpgrade(upId: string) {
-    const up = UPGRADES_LIST.find((u) => u.id === upId);
+    const up = SHOP_TRACKS_BY_ID[upId];
     if (!up) return;
     const currentLvl = uiState.permanentUpgrades[upId] || 0;
     if (currentLvl >= up.max) return;
 
-    const cost = getUpgradeCost(up, currentLvl);
+    const cost = getTrackCost(up, currentLvl, totalRanksOwned(uiState.permanentUpgrades));
+    if (cost === null) return;
     if (uiState.credits < cost) {
       showToast(`Need ${cost - uiState.credits} more credits`);
       return;
@@ -339,6 +264,33 @@
       ? Math.floor(Math.min(1, focusedGate.progress(getLifetimeStats()) / focusedGate.target) * 100)
       : 0,
   );
+  const SHOP_CATEGORIES: ShopCategory[] = ['power', 'economy', 'agency'];
+
+  // PURGE picker: every item that can be OFFERED as new, so the player can bar
+  // the ones they never want to be shown again.
+  let purgeCandidates = $derived([
+    ...getBaseWeapons().map((w) => ({ id: w.id, name: w.name, kind: 'WEAPON' })),
+    ...Object.values(PASSIVES).map((pa) => ({ id: pa.id, name: pa.name, kind: 'PASSIVE' })),
+  ]);
+  let purgeMax = $derived(purgeSlots(uiState.permanentUpgrades));
+  let purgedCount = $derived(uiState.purgedUpgradeIds.length);
+
+  function togglePurge(id: string) {
+    const list = uiState.purgedUpgradeIds;
+    const at = list.indexOf(id);
+    if (at >= 0) {
+      list.splice(at, 1);
+    } else {
+      if (list.length >= purgeMax) {
+        showToast('No blacklist slots left — buy another PURGE rank');
+        return;
+      }
+      list.push(id);
+    }
+    saveLocal('geo_purged_upgrades', JSON.stringify(list));
+    playMenuClick();
+  }
+
   let unlockedCount = $derived(CHARACTERS.filter((c) => isCharacterUnlocked(c.id)).length);
   let selectedName = $derived(getCharacter(uiState.selectedCharacter).name);
 </script>
@@ -736,49 +688,79 @@
         <span class="ui-chip gold tnum">🪙 {uiState.credits}</span>
       {/snippet}
 
-      <div class="shop-grid">
-        {#each UPGRADES_LIST as up (up.id)}
-          {@const level = uiState.permanentUpgrades[up.id] || 0}
-          {@const cost = getUpgradeCost(up, level)}
-          {@const maxed = level >= up.max}
-          {@const affordable = uiState.credits >= cost}
-          <div class="shop-card" class:maxed class:poor={!maxed && !affordable}>
-            <!-- Progress wash: how far this line is built out -->
-            <div
-              class="shop-progress"
-              style="width: {(level / up.max) * 100}%"
-              aria-hidden="true"
-            ></div>
-            <div class="shop-body">
-              <span class="shop-icon" aria-hidden="true">{up.icon}</span>
-              <div class="shop-text">
-                <h3 class="shop-name">{up.name}</h3>
-                <p class="shop-desc">{up.desc}</p>
-                <div class="shop-level">
-                  <span class="ui-pips">
-                    {#each Array(up.max) as _, i (i)}
-                      <span class="ui-pip" class:on={i < level}></span>
-                    {/each}
-                  </span>
-                  <span class="shop-lv tnum">LV {level}/{up.max}</span>
+      <p class="shop-note">
+        Every purchase raises the surcharge on the next one, whatever you buy — order never
+        matters, but depth does.
+      </p>
+
+      {#each SHOP_CATEGORIES as cat (cat)}
+        <h4 class="shop-cat">{SHOP_CATEGORY_LABELS[cat]}</h4>
+        <div class="shop-grid">
+          {#each SHOP_TRACKS.filter((t) => t.category === cat) as up (up.id)}
+            {@const level = uiState.permanentUpgrades[up.id] || 0}
+            {@const cost = getTrackCost(up, level, totalRanksOwned(uiState.permanentUpgrades))}
+            {@const maxed = level >= up.max}
+            {@const affordable = cost !== null && uiState.credits >= cost}
+            <div class="shop-card" class:maxed class:poor={!maxed && !affordable}>
+              <!-- Progress wash: how far this line is built out -->
+              <div
+                class="shop-progress"
+                style="width: {(level / up.max) * 100}%"
+                aria-hidden="true"
+              ></div>
+              <div class="shop-body">
+                <span class="shop-icon" aria-hidden="true">{up.icon}</span>
+                <div class="shop-text">
+                  <h3 class="shop-name">{up.name}</h3>
+                  <p class="shop-desc">{up.desc}</p>
+                  <div class="shop-level">
+                    <span class="ui-pips">
+                      {#each Array(up.max) as _, i (i)}
+                        <span class="ui-pip" class:on={i < level}></span>
+                      {/each}
+                    </span>
+                    <span class="shop-lv tnum">LV {level}/{up.max}</span>
+                  </div>
                 </div>
+                <button
+                  class="ui-btn buy"
+                  class:can-buy={!maxed && affordable}
+                  disabled={maxed}
+                  onclick={() => buyUpgrade(up.id)}
+                >
+                  {#if maxed}
+                    MAX
+                  {:else}
+                    <span class="tnum">🪙 {cost}</span>
+                  {/if}
+                </button>
               </div>
-              <button
-                class="ui-btn buy"
-                class:can-buy={!maxed && affordable}
-                disabled={maxed}
-                onclick={() => buyUpgrade(up.id)}
-              >
-                {#if maxed}
-                  MAX
-                {:else}
-                  <span class="tnum">🪙 {cost}</span>
-                {/if}
-              </button>
             </div>
-          </div>
-        {/each}
-      </div>
+          {/each}
+        </div>
+      {/each}
+
+      {#if purgeMax > 0}
+        <h4 class="shop-cat">BLACKLIST · {purgedCount}/{purgeMax}</h4>
+        <p class="shop-note">
+          Barred items are never offered as new picks in any run. Weapons you already carry can
+          still be levelled.
+        </p>
+        <div class="purge-grid">
+          {#each purgeCandidates as item (item.id)}
+            {@const on = uiState.purgedUpgradeIds.includes(item.id)}
+            <button
+              class="purge-chip"
+              class:on
+              onclick={() => togglePurge(item.id)}
+              title={item.kind}
+            >
+              {on ? '🚫' : ''}
+              {item.name}
+            </button>
+          {/each}
+        </div>
+      {/if}
 
       {#snippet footer()}
         <button class="ui-btn primary" onclick={() => (panel = 'none')}>Done</button>
@@ -1661,6 +1643,47 @@
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+  }
+  /* The surcharge is the one rule players must understand to plan a purchase,
+     so it is stated once at the top rather than repeated on every card. */
+  .shop-note {
+    margin: 0 0 0.75rem;
+    font-size: var(--fs-micro);
+    line-height: 1.5;
+    color: var(--color-text-faint);
+  }
+  .shop-cat {
+    margin: 1rem 0 0.45rem;
+    font-family: var(--font-heading);
+    font-size: var(--fs-micro);
+    letter-spacing: 0.14em;
+    color: var(--color-text-faint);
+  }
+  .shop-cat:first-of-type {
+    margin-top: 0;
+  }
+  .purge-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+  .purge-chip {
+    padding: 0.3rem 0.6rem;
+    border-radius: var(--r-sm);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: var(--surface-2);
+    color: var(--color-text-faint);
+    font-size: var(--fs-micro);
+    cursor: pointer;
+  }
+  .purge-chip:hover {
+    border-color: rgba(255, 255, 255, 0.3);
+    color: var(--color-text);
+  }
+  .purge-chip.on {
+    border-color: var(--color-secondary);
+    color: var(--color-secondary);
+    background: rgba(255, 60, 120, 0.12);
   }
   .shop-card {
     position: relative;
