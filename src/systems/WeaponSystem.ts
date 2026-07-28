@@ -16,21 +16,17 @@ import { WEAPONS, getWeaponStatsAtLevel } from '../core/WeaponRegistry';
 import { createCustomProjectileMesh, updateProjectileVisual } from '../core/projectileVisuals';
 import { getActiveExploitBehaviours } from '../core/ExploitRegistry';
 
-const muzzleGeo = new THREE.SphereGeometry(0.4, 8, 8);
-const muzzleMaterials = new Map<number, THREE.MeshBasicMaterial>();
-
-function getMuzzleMaterial(color: number): THREE.MeshBasicMaterial {
-  let mat = muzzleMaterials.get(color);
-  if (!mat) {
-    mat = new THREE.MeshBasicMaterial({
-      color: color,
-      transparent: true,
-      opacity: 0.9,
-    });
-    muzzleMaterials.set(color, mat);
-  }
-  return mat;
-}
+// The muzzle flash that used to live here was removed. It never rendered: it
+// was spawned with lifeTimer already equal to maxLife, so ParticleSystem read
+// its age as 1 on the only frame it existed and scaled it to 0.001 — a
+// sub-pixel dot — before LifecycleSystem reaped it. That was true from the
+// commit that introduced it, so no build has ever shown this effect.
+//
+// It was not free: every shot allocated a Mesh, added it to the scene and the
+// ECS, and removed it again, and ~40 of them sat in the transparent draw list
+// each frame competing for budget on exactly the low-end hardware we care
+// about. If firing feedback is wanted later, build it deliberately on the
+// instanced particle path in ParticleSystem rather than reviving this.
 
 // 3. Reusable Math Objects (No "new" keyword in loops!)
 const _shootDir = new THREE.Vector3();
@@ -234,23 +230,6 @@ function fireWeapon(weaponEntity: any, owner: any, scene: THREE.Scene) {
   addTrauma(isHeavy ? 0.25 : 0.05);
   playShoot();
 
-  // Muzzle Flash
-  const flashMesh = new THREE.Mesh(muzzleGeo, getMuzzleMaterial(weaponStats.bulletColor));
-
-  // Position: Owner + (Dir * 0.8)
-  _posVec.copy(_shootDir).multiplyScalar(0.8).add(owner.position);
-  flashMesh.position.copy(_posVec);
-
-  scene.add(flashMesh);
-  world.add({
-    isParticle: true,
-    position: flashMesh.position,
-    velocity: new THREE.Vector3(),
-    transform: flashMesh,
-    lifeTimer: 0.08,
-    maxLife: 0.08,
-  });
-
   // Spawn Projectiles - Apply global stats
   const baseCount = weaponStats.bulletCount || 1;
   const count = getEffectiveAmount(baseCount, playerStats, owner.overflowAccumulator);
@@ -410,20 +389,6 @@ export function fireWeaponRemote(
   const isHeavy = mockWeapon.weapon.bulletCount > 1 || mockWeapon.weapon.knockback > 15;
   addTrauma(isHeavy ? 0.25 : 0.05);
   playShoot();
-
-  const flashMesh = new THREE.Mesh(muzzleGeo, getMuzzleMaterial(mockWeapon.weapon.bulletColor));
-  _posVec.copy(dir).multiplyScalar(0.8).add(owner.position);
-  flashMesh.position.copy(_posVec);
-  scene.add(flashMesh);
-
-  world.add({
-    isParticle: true,
-    position: flashMesh.position,
-    velocity: new THREE.Vector3(),
-    transform: flashMesh,
-    lifeTimer: 0.08,
-    maxLife: 0.08,
-  });
 
   const count = mockWeapon.weapon.bulletCount || 1;
   const spread = mockWeapon.weapon.bulletSpread || 0;
