@@ -147,7 +147,10 @@ export async function initRenderer() {
   renderer.shadowMap.enabled = quality.shadows;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  // `false` = do not write inline width/height onto the canvas element. CSS
+  // pins it to the viewport instead (see #app > canvas in style.css); this call
+  // only sizes the drawing buffer.
+  renderer.setSize(window.innerWidth, window.innerHeight, false);
 
   // --- IMAGE-BASED LIGHTING (Phase 1.8) ---
   // A PMREM'd RoomEnvironment gives every metallic surface (player rigs,
@@ -367,7 +370,7 @@ export async function initRenderer() {
     const h = window.visualViewport?.height ?? window.innerHeight;
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
-    renderer.setSize(w, h);
+    renderer.setSize(w, h, false); // CSS owns the element; this is the buffer
     composer?.setSize(w, h);
     syncBloomResolution();
     applyPixelRatio(); // devicePixelRatio can change when moving across monitors
@@ -375,7 +378,19 @@ export async function initRenderer() {
   window.addEventListener('resize', applySize);
   window.addEventListener('orientationchange', () => setTimeout(applySize, 250));
   window.visualViewport?.addEventListener('resize', applySize);
-  setTimeout(applySize, 400); // iOS standalone: first paint often has stale metrics
+
+  // An installed PWA settles its insets (status bar, gesture area) some time
+  // after first paint, and does not reliably fire `resize` when it does — which
+  // is why the old single 400ms probe still lost the race on slower phones and
+  // left the player rotating the device to force a re-measure.
+  //
+  // A ResizeObserver on the root element catches the settle whenever it lands,
+  // without guessing. The staggered probes remain as a floor for engines that
+  // resize the layout viewport without reporting it.
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(applySize).observe(document.documentElement);
+  }
+  for (const delay of [100, 400, 1200]) setTimeout(applySize, delay);
 
   return { scene, camera, renderer, renderFrame };
 }

@@ -39,7 +39,24 @@ html {
 
 /* Insurance: even if the body rule is ever relaxed, gameplay drag/pinch on
    the WebGL surface stays suppressed. */
+/* The canvas is pinned to the viewport in CSS, and the renderer is told not to
+   write inline sizes (setSize(w, h, false)). Layout and drawing-buffer
+   resolution are then separate concerns.
+
+   They used to be the same concern, and that was the bug: three.js writes
+   style.width/height in px from whatever it measured, so an installed PWA that
+   reported a short innerHeight at boot got a canvas ELEMENT shorter than the
+   screen — a black strip along the bottom that only cleared once a rotation
+   forced a re-measure. With the element pinned, a stale measurement can at
+   worst scale the image for a frame; it can never uncover the background.
+
+   `!important` is deliberate: it makes the failure unreachable even if some
+   future call path forgets the updateStyle flag. */
 #app > canvas {
+  position: fixed;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
   touch-action: none;
 }
 
