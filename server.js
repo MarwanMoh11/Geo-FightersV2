@@ -30,14 +30,159 @@ function saveLeaderboard() {
   }
 }
 
+// --- NAME MODERATION ------------------------------------------------------
+// Player-supplied names reach two public surfaces: the global leaderboard and
+// the co-op lobby roster. Both are visible to strangers, on a portal whose
+// audience skews young, so neither can take raw input.
+//
+// Matching is done on a NORMALISED copy — lowercased, leet-substituted, and
+// stripped to bare letters — so the usual evasions ("f_u_c_k", "5h1t",
+// "b.i.t.c.h") collapse onto the same string as the plain spelling.
+const LEET = {
+  4: 'a',
+  '@': 'a',
+  3: 'e',
+  1: 'i',
+  '!': 'i',
+  '|': 'i',
+  0: 'o',
+  5: 's',
+  $: 's',
+  7: 't',
+  8: 'b',
+  9: 'g',
+  6: 'g',
+};
+
+function normaliseForMatch(s) {
+  return s
+    .toLowerCase()
+    .replace(/[4@31!|05$78963]/g, (c) => LEET[c] ?? c)
+    .replace(/[^a-z]/g, '');
+}
+
+// Tier 1 — matched anywhere in the normalised name. Reserved for terms with no
+// plausible innocent substring use.
+const BLOCKED_SUBSTRING = [
+  'nigger',
+  'nigga',
+  'faggot',
+  'retard',
+  'chink',
+  'spic',
+  'kike',
+  'tranny',
+  'rape',
+  'rapist',
+  'nazi',
+  'hitler',
+  'pedo',
+  'paedo',
+  'incest',
+  'molest',
+  'cunt',
+  'fuck',
+  'shit',
+  'bitch',
+  'whore',
+  'slut',
+  'penis',
+  'vagina',
+  'pussy',
+  'wank',
+  'jizz',
+  'porn',
+  'blowjob',
+  'handjob',
+];
+
+// Tier 2 — must match the WHOLE normalised name. These appear inside ordinary
+// words (assassin, class, hello, shell, dammit, analysis), so substring
+// matching them would reject perfectly reasonable handles.
+const BLOCKED_EXACT = [
+  'ass',
+  'anal',
+  'hell',
+  'damn',
+  'crap',
+  'tit',
+  'tits',
+  'sex',
+  'butt',
+  'arse',
+  // Substring-matching these would take Cumbria, cumulus, Dickens and Hancock
+  // with them — all plausible 12-character handles.
+  'cum',
+  'dick',
+  'cock',
+];
+
+/**
+ * Clamp, strip and moderate a player-supplied name.
+ *
+ * Returns `fallback` rather than rejecting the whole request: a flagged name
+ * still gets its score or its lobby seat, just anonymously. Rejecting would
+ * also tell an attacker exactly which spellings get through.
+ */
+function sanitizeName(raw, fallback = 'ANON') {
+  const cleaned = String(raw ?? '')
+    .slice(0, 12)
+    .replace(/[^\w \-]/g, '')
+    .trim();
+  if (!cleaned) return fallback;
+  const normalised = normaliseForMatch(cleaned);
+  if (!normalised) return fallback;
+  if (BLOCKED_EXACT.includes(normalised)) return fallback;
+  if (BLOCKED_SUBSTRING.some((term) => normalised.includes(term))) return fallback;
+  return cleaned;
+}
+
+// --- SUBMISSION RATE LIMIT ------------------------------------------------
+// A finished run takes minutes; nothing legitimate submits faster than this.
+// Without a cap one script can own all 100 slots, which is the whole board.
+const RATE_WINDOW_MS = 10 * 60 * 1000;
+const RATE_MAX_SUBMISSIONS = 20;
+/** Hard cap on tracked IPs so the limiter itself cannot be used to exhaust memory. */
+const RATE_MAX_TRACKED_IPS = 5000;
+const submissionLog = new Map();
+
+function clientIp(req) {
+  // Render/HF/most portals put the real client behind a proxy, so the socket
+  // address would otherwise be the proxy's and every player would share one
+  // bucket. Take the first hop of the forwarded chain when present.
+  const fwd = req.headers['x-forwarded-for'];
+  if (typeof fwd === 'string' && fwd.length > 0) return fwd.split(',')[0].trim();
+  return req.socket?.remoteAddress || 'unknown';
+}
+
+/** @returns true when the caller is over quota and should be rejected. */
+function isRateLimited(req) {
+  const ip = clientIp(req);
+  const now = Date.now();
+
+  // Opportunistic sweep — keeps the map bounded without a timer.
+  if (submissionLog.size > RATE_MAX_TRACKED_IPS) {
+    for (const [key, stamps] of submissionLog) {
+      const live = stamps.filter((t) => now - t < RATE_WINDOW_MS);
+      if (live.length === 0) submissionLog.delete(key);
+      else submissionLog.set(key, live);
+    }
+  }
+
+  const recent = (submissionLog.get(ip) ?? []).filter((t) => now - t < RATE_WINDOW_MS);
+  if (recent.length >= RATE_MAX_SUBMISSIONS) {
+    submissionLog.set(ip, recent);
+    return true;
+  }
+  recent.push(now);
+  submissionLog.set(ip, recent);
+  return false;
+}
+
 /** Validate + insert a run, keep the list sorted and capped. Returns the rank. */
 function addLeaderboardEntry(raw) {
   const entry = {
-    name:
-      String(raw.name ?? 'ANON')
-        .slice(0, 12)
-        .replace(/[^\w \-]/g, '')
-        .trim() || 'ANON',
+    name: sanitizeName(raw.name, 'ANON'),
     time: Math.max(0, Math.min(36000, Math.round(Number(raw.time) || 0))),
     level: Math.max(1, Math.min(999, Math.round(Number(raw.level) || 1))),
     kills: Math.max(0, Math.min(1000000, Math.round(Number(raw.kills) || 0))),
@@ -81,6 +226,12 @@ const server = createServer((req, res) => {
 
   // POST /leaderboard — submit a finished run
   if (req.method === 'POST' && url === '/leaderboard') {
+    // Checked before the body is even read, so a flood costs us nothing.
+    if (isRateLimited(req)) {
+      res.writeHead(429, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'rate limited' }));
+      return;
+    }
     let body = '';
     let tooBig = false;
     req.on('data', (chunk) => {
@@ -177,7 +328,14 @@ io.on('connection', (socket) => {
       hostId: socket.id,
       started: false,
       players: new Map([
-        [socket.id, { name: name || 'HOST', character: character || 'cypher', ready: true }],
+        [
+          socket.id,
+          {
+            name: sanitizeName(name, 'HOST'),
+            character: character || 'cypher',
+            ready: true,
+          },
+        ],
       ]),
     });
     socket.join(code);
@@ -204,8 +362,9 @@ io.on('connection', (socket) => {
       return;
     }
 
+    const joinName = sanitizeName(name, 'PLAYER');
     room.players.set(socket.id, {
-      name: name || 'PLAYER',
+      name: joinName,
       character: character || 'cypher',
       ready: false,
     });
@@ -213,7 +372,7 @@ io.on('connection', (socket) => {
 
     socket.emit('joined-room', { roomCode: code, hostId: room.hostId });
     broadcastLobby(code);
-    console.log(`[Server] Client ${socket.id} joined lobby ${code} as "${name || 'PLAYER'}"`);
+    console.log(`[Server] Client ${socket.id} joined lobby ${code} as "${joinName}"`);
   });
 
   // 2b. Lobby updates: ready toggle / character / name changes
@@ -223,7 +382,9 @@ io.on('connection', (socket) => {
     if (!room || !p || room.started) return;
     if (typeof ready === 'boolean') p.ready = ready;
     if (typeof character === 'string') p.character = character;
-    if (typeof name === 'string' && name.trim()) p.name = name.trim().slice(0, 12);
+    // Re-sanitised on every change, not just at join: this is the seam a
+    // client can call repeatedly, so it is the one worth guarding hardest.
+    if (typeof name === 'string' && name.trim()) p.name = sanitizeName(name, p.name || 'PLAYER');
     broadcastLobby(roomCode);
   });
 
