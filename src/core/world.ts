@@ -256,18 +256,19 @@ function createECS() {
     'lifeTimer',
     'transform',
     'abilityKind',
-    // Indexed because their queries were the ones falling through to a full
-    // scan of `entities`. PhysicsSystem asks for ('rigidBody','position',
-    // 'velocity') every frame — none of those used to be indexed, so it walked
-    // every particle, XP gem and projectile in the world to find a few hundred
-    // bodies. `health` and `stats` do the same for the combat and passive
-    // systems. Indexing costs one Set op per key at add/remove, which is paid
-    // once per entity lifetime instead of once per frame.
-    'rigidBody',
-    'health',
-    'stats',
-    'isBoss',
   ];
+
+  // DO NOT add a component here unless it is set in the object literal passed
+  // to world.add(). Membership is computed once, in add() — a component
+  // attached later never lands in its index, and because with() picks the
+  // SMALLEST index as its iteration source, an always-empty index silently
+  // becomes the source and the query matches nothing.
+  //
+  // `rigidBody` is the trap: bodies are created after the entity exists, so
+  // indexing it made PhysicsSystem's ('rigidBody','position','velocity') query
+  // return zero rows and nothing could move. Leaving it unindexed costs a scan
+  // of `entities` per frame and is the correct trade until add() learns to
+  // reindex on mutation.
 
   const indexes = new Map<keyof Entity, Set<Entity>>();
   for (const key of indexKeys) {
@@ -308,10 +309,14 @@ function createECS() {
    *
    * `retarget()` re-picks the smallest matching index as the iteration source;
    * it runs on every `world.with(...)` call because index sizes shift constantly
-   * as the horde spawns and dies. The component that supplied the source is
-   * recorded so the per-entity check can skip re-testing what the bucket already
-   * guarantees — for single-component queries (`with('isEnemy')`, by far the
-   * most common shape) that removes the per-entity work entirely.
+   * as the horde spawns and dies.
+   *
+   * Every component is re-tested per entity, including the one that supplied
+   * the bucket. That looks redundant and isn't: an index entry can go stale
+   * when a flag is flipped or a component deleted after add(), and this re-test
+   * is what filters those out. The win here is purely in allocation — one
+   * cached query object and a hand-rolled cursor instead of a fresh closure and
+   * a generator on every call — not in skipping the check.
    */
   interface Query {
     retarget(): void;
@@ -323,35 +328,29 @@ function createECS() {
 
   function createQuery(components: (keyof Entity)[]): Query {
     let source: Iterable<Entity> = entities;
-    let skipIndex = -1;
 
     return {
       retarget() {
         let bestKey: keyof Entity | null = null;
-        let bestIndex = -1;
         let minSize = Infinity;
         for (let i = 0; i < components.length; i++) {
           const idx = indexes.get(components[i]);
           if (idx !== undefined && idx.size < minSize) {
             minSize = idx.size;
             bestKey = components[i];
-            bestIndex = i;
           }
         }
         source = bestKey !== null ? indexes.get(bestKey)! : entities;
-        skipIndex = bestIndex;
       },
 
       get first(): Entity | undefined {
-        // `source` and `skipIndex` are read once here, not per entity, so a
-        // retarget() triggered by a nested query cannot corrupt this walk.
+        // `source` is read once here, not per entity, so a retarget() triggered
+        // by a nested query cannot corrupt this walk.
         const src = source;
-        const skip = skipIndex;
         for (const e of src) {
           if (e === undefined) continue;
           let ok = true;
           for (let i = 0; i < components.length; i++) {
-            if (i === skip) continue;
             const v = e[components[i]];
             if (v === undefined || v === false) {
               ok = false;
@@ -367,10 +366,9 @@ function createECS() {
         // A hand-rolled cursor rather than a generator: generators allocate a
         // frame per `for..of` and cost several times more per step, and these
         // loops run over hundreds of entities dozens of times a frame. The
-        // cursor snapshots source/skipIndex so nested iteration is safe.
+        // cursor snapshots `source` so nested iteration is safe.
         const cursor = source[Symbol.iterator]();
         const comps = components;
-        const skip = skipIndex;
         return {
           next(): IteratorResult<Entity> {
             for (;;) {
@@ -380,7 +378,6 @@ function createECS() {
               if (e === undefined) continue;
               let ok = true;
               for (let i = 0; i < comps.length; i++) {
-                if (i === skip) continue;
                 const v = e[comps[i]];
                 if (v === undefined || v === false) {
                   ok = false;
