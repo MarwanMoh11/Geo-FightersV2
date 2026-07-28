@@ -13,9 +13,42 @@ import {
 import { onSettingsChange } from './SettingsManager';
 import { isPortalEmbed } from './portal';
 
-// Feature detection: Check if WebGPU is available
-function isWebGPUAvailable(): boolean {
-  return 'gpu' in navigator;
+/**
+ * Does this machine have a usable WebGPU adapter?
+ *
+ * `'gpu' in navigator` is NOT that question. Chrome exposes navigator.gpu on
+ * essentially every desktop install, including the ones whose driver is
+ * blocklisted or absent — so the old check passed everywhere, and we would
+ * download and evaluate the 619 kB `three/webgpu` chunk (175 kB gzipped),
+ * construct a renderer, discover there was no adapter, and throw it all away.
+ * That waste landed hardest on exactly the low-end hardware least able to
+ * afford it: old Chromebooks, Linux without a supported driver, blocklisted
+ * GPUs.
+ *
+ * Asking for the adapter first costs one cheap async call and lets the import
+ * be skipped entirely when it cannot pay off.
+ */
+interface AdapterProvider {
+  requestAdapter(): Promise<unknown>;
+}
+
+const ADAPTER_PROBE_TIMEOUT_MS = 3000;
+
+async function hasWebGPUAdapter(): Promise<boolean> {
+  const gpu = (navigator as Navigator & { gpu?: AdapterProvider }).gpu;
+  if (!gpu) return false;
+  try {
+    // Raced against a timeout because this sits on the critical path to first
+    // paint: a driver that never settles the promise would otherwise hang the
+    // loading screen forever rather than falling back.
+    const adapter = await Promise.race([
+      gpu.requestAdapter(),
+      new Promise((resolve) => setTimeout(() => resolve(null), ADAPTER_PROBE_TIMEOUT_MS)),
+    ]);
+    return adapter != null;
+  } catch {
+    return false;
+  }
 }
 
 export async function initRenderer() {
@@ -49,10 +82,13 @@ export async function initRenderer() {
   // (the CrazyGames target). Desktop keeps WebGPU — except in portal embeds,
   // where WebGPU init can throw uncaught promise rejections (GPUShaderStage
   // undefined in some iframe environments) that escape the try/catch below.
-  if (isWebGPUAvailable() && !isMobile && !isPortalEmbed()) {
+  // The adapter probe runs before the `!isMobile` / portal gates would even let
+  // us in, so short-circuit on those first and skip the probe entirely there.
+  const wantsWebGPU = !isMobile && !isPortalEmbed();
+  if (wantsWebGPU && (await hasWebGPUAdapter())) {
     try {
       console.log(
-        `[Renderer] WebGPU is available. Quality: ${quality.tier}. Attempting to initialize...`,
+        `[Renderer] WebGPU adapter found. Quality: ${quality.tier}. Attempting to initialize...`,
       );
       const { WebGPURenderer } = await import('three/webgpu');
       renderer = new WebGPURenderer({
@@ -75,14 +111,13 @@ export async function initRenderer() {
         // drawn, which silently deletes the entire enemy horde while the arena,
         // HUD, XP and particles keep rendering. It reads as an empty level.
         //
-        // This path is common, not exotic: `navigator.gpu` exists on nearly
-        // every desktop Chrome, but adapter creation fails on old Chromebooks,
-        // Linux without a supported driver, and blocklisted GPUs. Those are
-        // precisely the machines we care about. So when the adapter is missing,
-        // throw the WebGPURenderer away and build the real WebGL renderer,
-        // which draws the horde correctly.
+        // hasWebGPUAdapter() above now catches the common case before the
+        // import, so reaching here means the adapter existed but the context
+        // still failed — a rarer race, and one only this check can catch.
+        // Either way the WebGPURenderer goes in the bin and the real WebGL
+        // renderer, which draws the horde correctly, takes over.
         console.log(
-          '[Renderer] ⚠️ No WebGPU adapter — discarding WebGPURenderer for the real WebGL2 renderer',
+          '[Renderer] ⚠️ Adapter present but no WebGPU context — falling back to the real WebGL2 renderer',
         );
         try {
           renderer.dispose?.();
