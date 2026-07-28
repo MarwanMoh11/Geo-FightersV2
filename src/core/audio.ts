@@ -94,8 +94,17 @@ export function getCtx() {
     masterGainNode.connect(compressor);
 
     // --- Music side ---
+    // Honour musicUserMuted at CREATION, not just on later toggles.
+    //
+    // Settings are applied at boot, but a browser will not give us an
+    // AudioContext until the first user gesture — so setMusicUserEnabled runs
+    // with `ctx` still null, records the flag, and early-returns without a
+    // node to mute. This node is then built on first tap, and opening it at
+    // full musicVolume threw that flag away: a player who had turned music OFF
+    // got music back on every restart while the settings screen still, quite
+    // correctly, read OFF.
     musicGainNode = ctx.createGain();
-    musicGainNode.gain.value = musicVolume;
+    musicGainNode.gain.value = musicUserMuted ? 0 : musicVolume;
     musicGainNode.connect(masterGainNode);
 
     // Lowpass used to "duck" music underwater while paused.
