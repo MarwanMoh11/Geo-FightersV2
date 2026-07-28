@@ -1839,6 +1839,29 @@
 
   /* Short viewports (landscape phones, small laptop windows): shrink the
      hero so Play stays above the fold. */
+  /* Tall portrait phones (modern flagships, and any phone once installed as a
+     PWA reclaims the browser chrome). The column is a fixed stack of six
+     sections, so on a 930px screen it finished around 640px and `margin: auto`
+     split the leftover ~290px evenly above and below — a lot of dead screen
+     with the controls bunched in the middle. Scale the rhythm and the touch
+     targets with the room available instead. */
+  @media (min-height: 820px) and (orientation: portrait) {
+    .menu-content {
+      gap: clamp(1.4rem, 3.4vh, 2.4rem);
+    }
+    /* The wordmark is deliberately NOT grown here. "FIGHTERS" measures ~6.1em
+       in Orbitron 800, so anything past 15cqw overflows the column and the
+       word breaks into "FIGHTER / S" — the exact failure the base rule's
+       comment warns about. Extra height has to come from rhythm and touch
+       targets, not type size. */
+    .play-cta {
+      min-height: 88px;
+    }
+    .tile {
+      min-height: 104px;
+    }
+  }
+
   /* Short portrait phones (~640-740px tall: most budget Androids, and any
      phone once an installed PWA reclaims the browser chrome) fell between the
      full layout and the 560px landscape rule, so they got neither — full
