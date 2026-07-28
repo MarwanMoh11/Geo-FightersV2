@@ -191,6 +191,11 @@
   }
 
   async function startSinglePlayer() {
+    // The menu now paints before physics finishes loading (see main.ts), so a
+    // run must never start until the engine says it is ready — the level's
+    // collider calls silently no-op without Rapier, which would hand the
+    // player an arena whose walls they walk straight through.
+    if (!uiState.engineReady) return;
     await resumeAudioContext();
     uiState.isMultiplayer = false;
     uiState.isHost = false;
@@ -370,7 +375,12 @@
 
         <div class="menu-actions">
           {#if !showMpOptions && uiState.networkStatus === 'disconnected'}
-            <button class="play-cta" onclick={handlePlay}>
+            <button
+              class="play-cta"
+              class:warming={!uiState.engineReady}
+              disabled={!uiState.engineReady}
+              onclick={handlePlay}
+            >
               <span class="play-glyph" aria-hidden="true">
                 <svg viewBox="0 0 24 24" width="20" height="20">
                   <path d="M8 5.5v13l11-6.5z" fill="currentColor" />
@@ -378,7 +388,13 @@
               </span>
               <span class="play-text">
                 <span class="play-label">PLAY</span>
-                <span class="play-sub tnum">{selectedName} · CORRUPTION {uiState.corruption}</span>
+                <span class="play-sub tnum">
+                  {#if uiState.engineReady}
+                    {selectedName} · CORRUPTION {uiState.corruption}
+                  {:else}
+                    LOADING PHYSICS…
+                  {/if}
+                </span>
               </span>
             </button>
 
@@ -996,6 +1012,21 @@
   }
   .play-cta:active {
     transform: scale(0.985);
+  }
+  /* Physics is still downloading. Deliberately still reads as the primary CTA
+     — dimmed and inert, not hidden — so the menu does not visibly reflow the
+     moment it becomes ready, and the player's eye is already on the button. */
+  .play-cta.warming {
+    cursor: default;
+    filter: saturate(0.45) brightness(0.72);
+  }
+  .play-cta.warming:hover {
+    filter: saturate(0.45) brightness(0.72);
+    transform: none;
+    box-shadow: none;
+  }
+  .play-cta.warming:active {
+    transform: none;
   }
   .play-glyph {
     flex: 0 0 auto;

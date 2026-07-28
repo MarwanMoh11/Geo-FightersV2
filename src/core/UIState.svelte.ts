@@ -90,6 +90,12 @@ export const uiState = $state({
   // the player has earned one — three permanently-empty dashed slots taught
   // nothing except that something was missing. The first grant opens
   // ExploitUnlockModal, and dismissing it reveals the row for good.
+  /**
+   * False until physics, level colliders and the shader prewarm have finished.
+   * The menu now paints before any of that (main.ts), so this is what stops a
+   * fast tap from starting a run into a world whose walls have no colliders.
+   */
+  engineReady: false,
   exploitsRevealed: getLocalVal('geo_exploits_revealed', false),
   exploitTutorial: null as null | {
     name: string;
