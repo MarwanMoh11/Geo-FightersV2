@@ -797,6 +797,13 @@
     display: flex;
     flex-direction: column;
     padding: var(--pad-top) var(--pad-right) var(--pad-bottom) var(--pad-left);
+    /* The comment above calls this the scroll column, but it never actually
+       scrolled — so on a short phone the content simply ran past the bottom
+       edge and the footer was cut off with no way to reach it. `margin: auto`
+       on .menu-content still centres when there IS room; this only matters
+       when there is not. */
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   .menu-content {
@@ -805,7 +812,9 @@
     margin: auto;
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    /* Height-aware: six sections at a flat 1.5rem spent 9rem of a 640px phone
+       on gaps alone. Scales with the screen it is actually on. */
+    gap: clamp(0.7rem, 2.4vh, 1.5rem);
     animation: menu-in 0.6s var(--ease-out-expo) both;
   }
 
@@ -847,8 +856,11 @@
        15cqw always leaves headroom inside the column. Sizing by vw instead
        let the word overflow (phones) or break mid-word into "FIGHTER / S"
        (desktop, where the column is far narrower than the window). */
-    font-size: clamp(1.75rem, 13vw, 3.5rem);
-    font-size: clamp(1.75rem, 15cqw, 3.5rem);
+    /* Sized by the column's width, then capped against viewport HEIGHT — the
+       cap only bites on short screens, where a width-derived wordmark was
+       eating room the buttons needed. */
+    font-size: min(clamp(1.75rem, 13vw, 3.5rem), 9vh);
+    font-size: min(clamp(1.75rem, 15cqw, 3.5rem), 9vh);
     font-weight: 800;
     letter-spacing: 0.04em;
     /* Compensate the trailing letter-spacing so centered text stays centered */
@@ -1827,9 +1839,42 @@
 
   /* Short viewports (landscape phones, small laptop windows): shrink the
      hero so Play stays above the fold. */
+  /* Short portrait phones (~640-740px tall: most budget Androids, and any
+     phone once an installed PWA reclaims the browser chrome) fell between the
+     full layout and the 560px landscape rule, so they got neither — full
+     spacing and a full-size wordmark on a screen with no room for either.
+     Compact proportionally rather than waiting for the screen to get tiny. */
+  @media (max-height: 740px) and (orientation: portrait) {
+    .wordmark {
+      font-size: clamp(1.6rem, 13cqw, 2.8rem);
+    }
+    .tagline {
+      margin-top: 0.35rem;
+      letter-spacing: 0.26em;
+      text-indent: 0.26em;
+    }
+    .play-cta {
+      min-height: 60px;
+    }
+    .tile {
+      min-height: 64px;
+    }
+  }
+
   @media (max-height: 560px) {
     .menu-content {
-      gap: 1rem;
+      /* Below the responsive clamp's floor on purpose: at ~390px of height
+         (landscape phone) the column was overflowing by a few pixels, and a
+         flat 1rem here was overriding the height-aware gap with a LARGER
+         value than the screen could afford. */
+      gap: 0.6rem;
+    }
+    /* --gutter is tuned for portrait, where vertical room is plentiful. In
+       landscape it is the last few pixels between fitting and scrolling, and
+       the safe-area inset alone is enough to keep clear of the notch. */
+    .menu-viewport {
+      padding-top: max(var(--safe-top), 0.35rem);
+      padding-bottom: max(var(--safe-bottom), 0.35rem);
     }
     .wordmark {
       font-size: clamp(1.6rem, 12cqw, 2.4rem);
