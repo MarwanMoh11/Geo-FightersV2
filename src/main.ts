@@ -151,6 +151,10 @@ preloadTextures(updateLoadingProgress).then(async () => {
   if (DEBUG) {
     (window as unknown as { uiState: typeof uiState }).uiState = uiState;
     (window as unknown as { world: typeof world }).world = world;
+    // Renderer handle for profiling: renderer.info.render.calls is the only
+    // honest draw-call count. Mesh counts in the scene graph approximate it but
+    // miss batching, shadow passes and post-processing.
+    (window as unknown as { __renderer: typeof renderer }).__renderer = renderer;
     // Swap the local player's model live (character rig inspection)
     (window as unknown as { applyCharacterModel: typeof applyCharacterModel }).applyCharacterModel =
       applyCharacterModel;
