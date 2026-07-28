@@ -69,7 +69,30 @@ export async function initRenderer() {
       if (isUsingWebGPU) {
         console.log('[Renderer] ✅ WebGPU initialized successfully');
       } else {
-        console.log('[Renderer] ⚠️ WebGPU context creation failed, using WebGL2 fallback');
+        // WebGPURenderer's own WebGL2 *backend* is not a safe fallback: it has
+        // the same defect as iOS Safari's WebGPU described above — instanced
+        // MeshStandardMaterial with per-instance colour is submitted and never
+        // drawn, which silently deletes the entire enemy horde while the arena,
+        // HUD, XP and particles keep rendering. It reads as an empty level.
+        //
+        // This path is common, not exotic: `navigator.gpu` exists on nearly
+        // every desktop Chrome, but adapter creation fails on old Chromebooks,
+        // Linux without a supported driver, and blocklisted GPUs. Those are
+        // precisely the machines we care about. So when the adapter is missing,
+        // throw the WebGPURenderer away and build the real WebGL renderer,
+        // which draws the horde correctly.
+        console.log(
+          '[Renderer] ⚠️ No WebGPU adapter — discarding WebGPURenderer for the real WebGL2 renderer',
+        );
+        try {
+          renderer.dispose?.();
+        } catch {
+          /* disposing a half-initialised backend must never block startup */
+        }
+        renderer = new THREE.WebGLRenderer({
+          antialias: quality.antialias,
+          powerPreference: isMobile ? 'low-power' : 'high-performance',
+        });
       }
     } catch (error) {
       console.warn('[Renderer] WebGPU initialization failed, falling back to WebGL:', error);

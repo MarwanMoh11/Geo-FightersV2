@@ -21,6 +21,17 @@ interface DamageLabel {
   life: number;
   world: THREE.Vector3;
   jitterX: number;
+  /**
+   * Last values written to the element. Assigning `className` or `display`
+   * invalidates the element's computed style even when the value is identical,
+   * and at horde density labels are recycled hundreds of times a second — the
+   * profile showed thousands of style recalculations per second coming from
+   * here. Mirroring the state lets us skip the write when nothing changed.
+   * `transform`/`opacity` are exempt: they genuinely change every frame and
+   * are compositor-only, so they never hit style recalc.
+   */
+  lastClass: string;
+  shown: boolean;
 }
 
 let layer: HTMLDivElement | null = null;
@@ -41,7 +52,30 @@ export function initDamageNumbers() {
     el.className = 'damage-number';
     el.style.display = 'none';
     layer.appendChild(el);
-    pool.push({ el, active: false, life: 0, world: new THREE.Vector3(), jitterX: 0 });
+    pool.push({
+      el,
+      active: false,
+      life: 0,
+      world: new THREE.Vector3(),
+      jitterX: 0,
+      lastClass: 'damage-number',
+      shown: false,
+    });
+  }
+}
+
+/** Assign a class / visibility only when it actually differs. */
+function setClass(label: DamageLabel, cls: string): void {
+  if (label.lastClass !== cls) {
+    label.lastClass = cls;
+    label.el.className = cls;
+  }
+}
+
+function setShown(label: DamageLabel, shown: boolean): void {
+  if (label.shown !== shown) {
+    label.shown = shown;
+    label.el.style.display = shown ? 'block' : 'none';
   }
 }
 
@@ -77,20 +111,20 @@ export function spawnDamageNumber(
 
   if (isCrit) {
     label.el.textContent = `${rounded}! CRIT`;
-    label.el.className = `damage-number crit`;
+    setClass(label, 'damage-number crit');
   } else {
     label.el.textContent = variant === 'player' ? `-${rounded}` : String(rounded);
-    label.el.className = `damage-number ${variant}${rounded >= 25 ? ' big' : ''}`;
+    setClass(label, `damage-number ${variant}${rounded >= 25 ? ' big' : ''}`);
   }
 
-  label.el.style.display = 'block';
+  setShown(label, true);
 }
 
 /** Hide everything immediately (used on restart). */
 export function clearDamageNumbers() {
   for (const label of pool) {
     label.active = false;
-    label.el.style.display = 'none';
+    setShown(label, false);
   }
 }
 
@@ -114,7 +148,7 @@ export function DamageNumberSystem(dt: number, camera: THREE.Camera) {
     const t = label.life / LIFETIME;
     if (t >= 1) {
       label.active = false;
-      label.el.style.display = 'none';
+      setShown(label, false);
       continue;
     }
 
@@ -126,7 +160,7 @@ export function DamageNumberSystem(dt: number, camera: THREE.Camera) {
 
     if (_projected.z > 1) {
       // Behind the camera — never visible from the top-down rig, but be safe
-      label.el.style.display = 'none';
+      setShown(label, false);
       label.active = false;
       continue;
     }

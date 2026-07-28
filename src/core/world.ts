@@ -256,6 +256,17 @@ function createECS() {
     'lifeTimer',
     'transform',
     'abilityKind',
+    // Indexed because their queries were the ones falling through to a full
+    // scan of `entities`. PhysicsSystem asks for ('rigidBody','position',
+    // 'velocity') every frame — none of those used to be indexed, so it walked
+    // every particle, XP gem and projectile in the world to find a few hundred
+    // bodies. `health` and `stats` do the same for the combat and passive
+    // systems. Indexing costs one Set op per key at add/remove, which is paid
+    // once per entity lifetime instead of once per frame.
+    'rigidBody',
+    'health',
+    'stats',
+    'isBoss',
   ];
 
   const indexes = new Map<keyof Entity, Set<Entity>>();
@@ -291,6 +302,98 @@ function createECS() {
   // O(1) instead of indexOf+find scans (matters at horde entity counts where
   // hundreds of deaths/pickups happen per second).
   const idIndex = new Map<number, number>();
+
+  /**
+   * A reusable query over a fixed component signature.
+   *
+   * `retarget()` re-picks the smallest matching index as the iteration source;
+   * it runs on every `world.with(...)` call because index sizes shift constantly
+   * as the horde spawns and dies. The component that supplied the source is
+   * recorded so the per-entity check can skip re-testing what the bucket already
+   * guarantees — for single-component queries (`with('isEnemy')`, by far the
+   * most common shape) that removes the per-entity work entirely.
+   */
+  interface Query {
+    retarget(): void;
+    readonly first: Entity | undefined;
+    [Symbol.iterator](): Iterator<Entity>;
+  }
+
+  const queryCache = new Map<string, Query>();
+
+  function createQuery(components: (keyof Entity)[]): Query {
+    let source: Iterable<Entity> = entities;
+    let skipIndex = -1;
+
+    return {
+      retarget() {
+        let bestKey: keyof Entity | null = null;
+        let bestIndex = -1;
+        let minSize = Infinity;
+        for (let i = 0; i < components.length; i++) {
+          const idx = indexes.get(components[i]);
+          if (idx !== undefined && idx.size < minSize) {
+            minSize = idx.size;
+            bestKey = components[i];
+            bestIndex = i;
+          }
+        }
+        source = bestKey !== null ? indexes.get(bestKey)! : entities;
+        skipIndex = bestIndex;
+      },
+
+      get first(): Entity | undefined {
+        // `source` and `skipIndex` are read once here, not per entity, so a
+        // retarget() triggered by a nested query cannot corrupt this walk.
+        const src = source;
+        const skip = skipIndex;
+        for (const e of src) {
+          if (e === undefined) continue;
+          let ok = true;
+          for (let i = 0; i < components.length; i++) {
+            if (i === skip) continue;
+            const v = e[components[i]];
+            if (v === undefined || v === false) {
+              ok = false;
+              break;
+            }
+          }
+          if (ok) return e;
+        }
+        return undefined;
+      },
+
+      [Symbol.iterator](): Iterator<Entity> {
+        // A hand-rolled cursor rather than a generator: generators allocate a
+        // frame per `for..of` and cost several times more per step, and these
+        // loops run over hundreds of entities dozens of times a frame. The
+        // cursor snapshots source/skipIndex so nested iteration is safe.
+        const cursor = source[Symbol.iterator]();
+        const comps = components;
+        const skip = skipIndex;
+        return {
+          next(): IteratorResult<Entity> {
+            for (;;) {
+              const step = cursor.next();
+              if (step.done) return step;
+              const e = step.value;
+              if (e === undefined) continue;
+              let ok = true;
+              for (let i = 0; i < comps.length; i++) {
+                if (i === skip) continue;
+                const v = e[comps[i]];
+                if (v === undefined || v === false) {
+                  ok = false;
+                  break;
+                }
+              }
+              if (ok) return step;
+            }
+          },
+        };
+      },
+    };
+  }
 
   return {
     add: (entity: Entity) => {
@@ -336,51 +439,25 @@ function createECS() {
       removeFromIndexes(entity);
     },
     with: (...components: (keyof Entity)[]) => {
-      let bestKey: keyof Entity | null = null;
-      let minSize = Infinity;
-
-      for (const comp of components) {
-        const idx = indexes.get(comp);
-        if (idx) {
-          if (idx.size < minSize) {
-            minSize = idx.size;
-            bestKey = comp;
-          }
-        }
+      // Query objects are cached per component signature and reused forever.
+      // Profiling a late-game frame at 4x CPU throttle put ~19% of ALL script
+      // time inside this function's iteration: every call allocated a fresh
+      // query object plus a `matches` closure, and every `for..of` allocated a
+      // generator. The systems call `world.with(...)` dozens of times per frame
+      // — several of them from inside other loops — so that allocation churn
+      // was the single largest cost in the game.
+      //
+      // The cache is safe to share because the object carries no iteration
+      // state: `[Symbol.iterator]()` hands out a fresh cursor each time, so
+      // nested and concurrent iteration of the same signature still work.
+      const cacheKey = components.length === 1 ? (components[0] as string) : components.join(' ');
+      let query = queryCache.get(cacheKey);
+      if (query === undefined) {
+        query = createQuery(components.slice());
+        queryCache.set(cacheKey, query);
       }
-
-      const source = bestKey ? indexes.get(bestKey)! : entities;
-
-      // Explicit loop, not `components.every(c => has(e, c))`. `every` with an
-      // arrow closing over `e` allocates a fresh closure FOR EVERY ENTITY
-      // VISITED, and the hottest queries in the game are the un-indexed ones
-      // (PhysicsSystem's `with('position','velocity')` falls back to scanning
-      // the whole entity array). At horde density that was thousands of
-      // throwaway closures per frame, per query, feeding the GC for nothing.
-      const matches = (e: Entity): boolean => {
-        for (let i = 0; i < components.length; i++) {
-          if (!has(e, components[i])) return false;
-        }
-        return true;
-      };
-
-      return {
-        get first() {
-          for (const e of source) {
-            if (e !== undefined && matches(e)) {
-              return e;
-            }
-          }
-          return undefined;
-        },
-        [Symbol.iterator]: function* () {
-          for (const e of source) {
-            if (e !== undefined && matches(e)) {
-              yield e;
-            }
-          }
-        },
-      };
+      query.retarget();
+      return query;
     },
     get: (id: number) => {
       const index = idIndex.get(id);
