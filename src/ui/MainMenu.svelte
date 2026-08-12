@@ -2082,12 +2082,52 @@
        in Orbitron 800, so anything past 15cqw overflows the column and the
        word breaks into "FIGHTER / S" — the exact failure the base rule's
        comment warns about. Extra height has to come from rhythm and touch
-       targets, not type size. */
+       targets, not type size.
+
+       Which is what these two do. Flat pixel minimums left ~40px of surplus
+       on a 874px phone, and surplus can only ever be spent in one of two
+       places: the seams between sections, or the sections themselves. In the
+       seams it just relocates the problem — two dead bands at the screen
+       edges become two holes in the middle. Sized against viewport height,
+       the buttons swallow it instead, so the column lands within ~8px of the
+       available height and the designed rhythm survives. Both are capped so a
+       tablet-height portrait window does not inflate them into slabs. */
     .play-cta {
-      min-height: 88px;
+      min-height: clamp(88px, 10.5vh, 104px);
     }
     .tile {
-      min-height: 104px;
+      min-height: clamp(104px, 13.5vh, 132px);
+    }
+  }
+
+  /* Phone-width portrait only — deliberately NOT the tablets and tall desktop
+     windows that the rule above also covers.
+
+     Two things reclaim the edges here. The safe-area inset already clears the
+     notch and the home indicator by itself, so the full --gutter stacked on
+     top of each spends ~37px letterboxing the menu; a hair past the inset is
+     enough. And stretching the column pins the strip under the notch and the
+     footer above the home indicator instead of letting `margin: auto` pool
+     the remainder into two bands at the edges.
+
+     Width-gated because `space-between` scales with whatever is left over: on
+     an iPad Pro portrait (1024x1366, which satisfies the rule above AND the
+     900px desktop rule) the leftover is ~290px, and splitting that across two
+     seams is far worse than the centring it replaced. On a phone the buttons
+     above have already absorbed all but ~8px, so this only trims the edges.
+
+     margin-inline stays auto: that is what centres the 24rem column
+     horizontally, and zeroing the shorthand outright left-aligns it. */
+  @media (min-height: 820px) and (max-width: 899px) and (orientation: portrait) {
+    .menu-viewport {
+      padding-top: calc(var(--safe-top) + 0.5rem);
+      padding-bottom: calc(var(--safe-bottom) + 0.5rem);
+    }
+    .menu-content {
+      margin-block: 0;
+      margin-inline: auto;
+      flex: 1;
+      justify-content: space-between;
     }
   }
 
