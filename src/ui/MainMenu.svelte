@@ -295,12 +295,67 @@
   let selectedName = $derived(getCharacter(uiState.selectedCharacter).name);
 </script>
 
+<!-- One icon set for the whole menu. Emoji were rendering in the platform's own
+     colour palette — a red-and-gold medal, a grey wrench — which fought the
+     two-colour neon scheme everywhere they appeared. These inherit currentColor
+     instead, so every glyph is tinted by the thing it sits in. -->
+{#snippet glyph(name: string)}
+  <svg
+    class="glyph"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.7"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    {#if name === 'coin'}
+      <circle cx="12" cy="12" r="8.4" />
+      <circle cx="12" cy="12" r="4.3" />
+    {:else if name === 'roster'}
+      <circle cx="12" cy="8.4" r="3.4" />
+      <path d="M5.4 20.2a6.6 6.6 0 0 1 13.2 0" />
+    {:else if name === 'chip'}
+      <rect x="7.2" y="7.2" width="9.6" height="9.6" rx="2.2" />
+      <path
+        d="M10.2 3.5v3.7M13.8 3.5v3.7M10.2 16.8v3.7M13.8 16.8v3.7M3.5 10.2h3.7M3.5 13.8h3.7M16.8 10.2h3.7M16.8 13.8h3.7"
+      />
+    {:else if name === 'trophy'}
+      <path d="M8 4.2h8v4.6a4 4 0 0 1-8 0z" />
+      <path d="M8 5.6H5.4v1.1A3.4 3.4 0 0 0 8.8 10.1" />
+      <path d="M16 5.6h2.6v1.1a3.4 3.4 0 0 1-3.4 3.4" />
+      <path d="M12 12.9v3.1M8.9 20h6.2l-.7-4h-4.8z" />
+    {:else if name === 'tree'}
+      <path d="M12 20.4V9M12 13.4l4.6-3.5M12 13.4 7.4 9.9" />
+      <circle cx="12" cy="6.6" r="2.4" />
+      <circle cx="17.6" cy="8.4" r="1.9" />
+      <circle cx="6.4" cy="8.4" r="1.9" />
+    {:else if name === 'friends'}
+      <circle cx="9.2" cy="8.6" r="3.2" />
+      <path d="M3.5 19.6a5.7 5.7 0 0 1 11.4 0" />
+      <path d="M16.3 6a3.2 3.2 0 0 1 0 5.2M17.7 13.7a5.7 5.7 0 0 1 2.8 5.4" />
+    {:else if name === 'daily'}
+      <rect x="3.6" y="5.4" width="16.8" height="15" rx="2.6" />
+      <path d="M8.2 3.4v4M15.8 3.4v4M3.6 10.3h16.8" />
+      <path d="M12 13v4.4M9.8 15.2h4.4" />
+    {/if}
+  </svg>
+{/snippet}
+
 <div id="main-menu" class:hidden={uiState.gameState !== 'MENU'}>
   <!-- Ambient drifting glows: transform-only animation, GPU-composited -->
   <div class="ambient" aria-hidden="true">
     <div class="glow g1"></div>
     <div class="glow g2"></div>
-    <div class="grid-floor"></div>
+    <!-- The grid pattern lives on an inner element twice the height of its
+         clipped parent, so scrolling it is a transform on a composited layer
+         rather than a background-position repaint on every frame. Travelling
+         exactly one 46px tile makes the loop seamless. -->
+    <!-- Vignette sits under the floor: over it, it washed the grid back out -->
+    <div class="vignette"></div>
+    <div class="grid-floor"><div class="grid-lines"></div></div>
+    <div class="scanlines"></div>
   </div>
 
   <div class="menu-viewport menu-scroll">
@@ -308,10 +363,10 @@
       <!-- Status strip: everything persistent at a glance, above the fold -->
       <div class="status-strip">
         <span class="ui-chip gold" title="Credits earned across all runs">
-          🪙 <span class="tnum">{uiState.credits}</span>
+          {@render glyph('coin')}<span class="tnum">{uiState.credits}</span>
         </span>
         <span class="ui-chip" title="Fighters unlocked">
-          👤 <span class="tnum">{unlockedCount}/{CHARACTERS.length}</span>
+          {@render glyph('roster')}<span class="tnum">{unlockedCount}/{CHARACTERS.length}</span>
         </span>
         <span class="spacer"></span>
         <span class="ui-chip" class:green={dailyAvailable} title="Daily run availability">
@@ -321,7 +376,15 @@
 
       <div class="hero-split">
         <header class="brand">
-          <h1 class="wordmark">GEO<span class="accent">FIGHTERS</span></h1>
+          <!-- Both words were set at the same size, which made the 8-letter one
+               roughly three times the mass of the 3-letter one and left the
+               logo reading as an accident. GEO is now an explicit tracked
+               eyebrow between two hairlines, so the hierarchy is deliberate
+               and the hero word can shrink to leave the menu some air. -->
+          <h1 class="wordmark" aria-label="Geo Fighters">
+            <span class="mark-geo"><span>GEO</span></span>
+            <span class="mark-name">FIGHTERS</span>
+          </h1>
           <div class="tagline">SURVIVE THE HORDE</div>
         </header>
 
@@ -348,10 +411,11 @@
                   {/if}
                 </span>
               </span>
+              <span class="play-sheen" aria-hidden="true"></span>
             </button>
 
             <button class="ui-btn block daily" class:used={!dailyAvailable} onclick={handleDaily}>
-              <span class="daily-dot" class:on={dailyAvailable} aria-hidden="true"></span>
+              <span class="daily-icon" class:on={dailyAvailable}>{@render glyph('daily')}</span>
               <span class="daily-text">
                 <span class="daily-label">Daily Run</span>
                 <span class="daily-sub">
@@ -362,39 +426,46 @@
                   {/if}
                 </span>
               </span>
+              <span class="daily-dot" class:on={dailyAvailable} aria-hidden="true"></span>
             </button>
 
-            <!-- Destination tiles: icon + label, big enough to hit blind -->
+            <!-- Destination tiles: icon + label, big enough to hit blind. Each
+                 carries its own accent so four dark rectangles are told apart
+                 by colour before any label is read. -->
             <div class="tile-grid">
-              <button class="tile" onclick={openRoster}>
-                <span class="tile-icon" aria-hidden="true">🎖️</span>
+              <button class="tile" style="--tile-accent: var(--color-primary)" onclick={openRoster}>
+                <span class="tile-icon">{@render glyph('roster')}</span>
                 <span class="tile-label">Fighters</span>
                 <span class="tile-meta tnum">{unlockedCount}/{CHARACTERS.length}</span>
               </button>
               <button
                 class="tile"
+                style="--tile-accent: var(--color-gold)"
                 onclick={() => {
                   playMenuClick();
                   panel = 'shop';
                 }}
               >
-                <span class="tile-icon" aria-hidden="true">🛠️</span>
+                <span class="tile-icon">{@render glyph('chip')}</span>
                 <span class="tile-label">Upgrades</span>
-                <span class="tile-meta tnum">🪙 {uiState.credits}</span>
+                <span class="tile-meta tnum">{uiState.credits} cr</span>
               </button>
-              <button class="tile" onclick={openRecords}>
-                <span class="tile-icon" aria-hidden="true">🏆</span>
+              <button class="tile" style="--tile-accent: var(--color-accent)" onclick={openRecords}>
+                <span class="tile-icon">{@render glyph('trophy')}</span>
                 <span class="tile-label">Records</span>
+                <span class="tile-meta">Personal bests</span>
               </button>
               <button
                 class="tile"
+                style="--tile-accent: var(--rarity-epic)"
                 onclick={() => {
                   playMenuClick();
                   uiState.showGrimoire = true;
                 }}
               >
-                <span class="tile-icon" aria-hidden="true">📖</span>
+                <span class="tile-icon">{@render glyph('tree')}</span>
                 <span class="tile-label">Evolutions</span>
+                <span class="tile-meta">Weapon paths</span>
               </button>
             </div>
 
@@ -405,7 +476,7 @@
                 showMpOptions = true;
               }}
             >
-              <span aria-hidden="true">🌐</span> Play with friends
+              <span class="coop-icon">{@render glyph('friends')}</span> Play with friends
             </button>
 
             <div class="quiet-row">
@@ -685,12 +756,14 @@
       onclose={() => (panel = 'none')}
     >
       {#snippet readout()}
-        <span class="ui-chip gold tnum">🪙 {uiState.credits}</span>
+        <span class="ui-chip gold"
+          >{@render glyph('coin')}<span class="tnum">{uiState.credits}</span></span
+        >
       {/snippet}
 
       <p class="shop-note">
-        Every purchase raises the surcharge on the next one, whatever you buy — order never
-        matters, but depth does.
+        Every purchase raises the surcharge on the next one, whatever you buy — order never matters,
+        but depth does.
       </p>
 
       {#each SHOP_CATEGORIES as cat (cat)}
@@ -731,7 +804,7 @@
                   {#if maxed}
                     MAX
                   {:else}
-                    <span class="tnum">🪙 {cost}</span>
+                    {@render glyph('coin')}<span class="tnum">{cost}</span>
                   {/if}
                 </button>
               </div>
@@ -830,14 +903,31 @@
   }
 
   /* ---- Status strip ---- */
+  /* A hairline under the row anchors the chips to the top of the column;
+     free-floating, they read as three things dropped on the background. */
   .status-strip {
     display: flex;
     align-items: center;
     gap: 0.4rem;
     flex-wrap: wrap;
+    padding-bottom: 0.7rem;
+    border-bottom: 1px solid var(--color-border);
   }
   .status-strip .spacer {
     flex: 1;
+  }
+
+  /* ---- Icons ---- */
+  .glyph {
+    width: 1em;
+    height: 1em;
+    flex: 0 0 auto;
+    /* Optical centring against a cap-height label sitting beside it */
+    vertical-align: -0.135em;
+  }
+  .ui-chip .glyph {
+    width: 1.15em;
+    height: 1.15em;
   }
 
   /* ---- Brand ---- */
@@ -851,28 +941,55 @@
   .wordmark {
     margin: 0;
     width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.16em;
     font-family: var(--font-heading);
-    /* "FIGHTERS" measures ~6.1em wide in Orbitron 800, so a font-size of
-       15cqw always leaves headroom inside the column. Sizing by vw instead
-       let the word overflow (phones) or break mid-word into "FIGHTER / S"
-       (desktop, where the column is far narrower than the window). */
-    /* Sized by the column's width, then capped against viewport HEIGHT — the
-       cap only bites on short screens, where a width-derived wordmark was
-       eating room the buttons needed. */
-    font-size: min(clamp(1.75rem, 13vw, 3.5rem), 9vh);
-    font-size: min(clamp(1.75rem, 15cqw, 3.5rem), 9vh);
+    /* "FIGHTERS" measures ~6.1em wide in Orbitron 800, so this font-size always
+       leaves headroom inside the column. Sizing by vw instead let the word
+       overflow (phones) or break mid-word into "FIGHTER / S" (desktop, where
+       the column is far narrower than the window).
+
+       11.5cqw rather than the old 15cqw: at 15 the hero word filled 91% of the
+       column and roughly a quarter of the phone's height, which is what made
+       the menu feel top-heavy. Capped against viewport HEIGHT too — that cap
+       only bites on short screens. */
+    font-size: min(clamp(1.5rem, 11.5cqw, 2.9rem), 7.4vh);
     font-weight: 800;
-    letter-spacing: 0.04em;
-    /* Compensate the trailing letter-spacing so centered text stays centered */
-    text-indent: 0.04em;
-    text-align: center;
     line-height: 0.92;
     color: var(--color-text-main);
     /* Last-resort guard if a fallback font measures much wider than Orbitron */
     overflow-wrap: anywhere;
   }
-  .wordmark .accent {
-    display: block;
+  /* GEO: a tracked eyebrow flanked by rules that run out to the column edge. */
+  .mark-geo {
+    display: flex;
+    align-items: center;
+    gap: 0.9em;
+    width: 100%;
+    font-size: 0.34em;
+    font-weight: 700;
+    letter-spacing: 0.58em;
+    color: var(--color-text-dim);
+  }
+  .mark-geo > span {
+    /* Cancel the trailing letter-space so the word optically centres */
+    text-indent: 0.58em;
+    flex: 0 0 auto;
+  }
+  .mark-geo::before,
+  .mark-geo::after {
+    content: '';
+    flex: 1 1 auto;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(54, 230, 255, 0.45));
+  }
+  .mark-geo::after {
+    background: linear-gradient(90deg, rgba(54, 230, 255, 0.45), transparent);
+  }
+  .mark-name {
+    letter-spacing: 0.04em;
     text-indent: 0.04em;
     color: var(--color-primary);
     animation: word-glow 3.4s ease-in-out infinite;
@@ -880,14 +997,16 @@
   @keyframes word-glow {
     0%,
     100% {
-      text-shadow: 0 0 8px rgba(54, 230, 255, 0.12);
+      text-shadow: 0 0 8px rgba(54, 230, 255, 0.14);
     }
     50% {
-      text-shadow: 0 0 26px rgba(54, 230, 255, 0.42);
+      text-shadow:
+        0 0 26px rgba(54, 230, 255, 0.45),
+        0 0 60px rgba(54, 230, 255, 0.18);
     }
   }
   .tagline {
-    margin-top: 0.85rem;
+    margin-top: 0.6rem;
     font-size: var(--fs-micro);
     font-weight: 600;
     letter-spacing: 0.42em;
@@ -918,7 +1037,7 @@
     width: 55vmax;
     height: 55vmax;
     border-radius: 50%;
-    opacity: 0.07;
+    opacity: 0.12;
     filter: blur(60px);
     will-change: transform;
   }
@@ -935,22 +1054,68 @@
     animation: drift2 32s ease-in-out infinite alternate;
   }
   /* Perspective grid floor — sells the cyberspace setting without costing
-     a single draw call on the game canvas. */
+     a single draw call on the game canvas. At 0.16 it was invisible against
+     the near-black page; the whole effect was paying layout cost for nothing. */
   .grid-floor {
     position: absolute;
     left: -25%;
     right: -25%;
-    bottom: -10%;
-    height: 55%;
-    opacity: 0.16;
+    /* `bottom: -10%` resolves against the container HEIGHT, not the 10px of
+       overhang it reads like — it dropped the whole plane 87px below the fold
+       on a phone, and rotating about the bottom edge foreshortened what was
+       left into nothing. The floor has never actually been on screen. */
+    bottom: 0;
+    height: 70%;
+    opacity: 0.34;
+    overflow: hidden;
+    transform: perspective(420px) rotateX(64deg);
+    transform-origin: bottom center;
+    mask-image: linear-gradient(to top, #000 0%, transparent 82%);
+    -webkit-mask-image: linear-gradient(to top, #000 0%, transparent 82%);
+  }
+  .grid-lines {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -100%;
+    height: 200%;
     background-image:
       linear-gradient(rgba(54, 230, 255, 0.5) 1px, transparent 1px),
       linear-gradient(90deg, rgba(54, 230, 255, 0.5) 1px, transparent 1px);
     background-size: 46px 46px;
-    transform: perspective(340px) rotateX(66deg);
-    transform-origin: bottom center;
-    mask-image: linear-gradient(to top, #000 0%, transparent 78%);
-    -webkit-mask-image: linear-gradient(to top, #000 0%, transparent 78%);
+    animation: grid-scroll 3.6s linear infinite;
+    will-change: transform;
+  }
+  /* One tile of travel, so the loop point is invisible */
+  @keyframes grid-scroll {
+    to {
+      transform: translate3d(0, 46px, 0);
+    }
+  }
+
+  /* Pulls the eye off the corners and onto the button column */
+  .vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      ellipse 85% 70% at 50% 45%,
+      transparent 30%,
+      rgba(2, 4, 10, 0.55) 100%
+    );
+  }
+  /* The same CRT weave the .sheet surfaces carry, so the menu background and
+     the panels that open over it read as one machine. */
+  .scanlines {
+    position: absolute;
+    inset: 0;
+    opacity: 0.5;
+    background-image: repeating-linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.022) 0px,
+      rgba(255, 255, 255, 0.022) 1px,
+      transparent 1px,
+      transparent 3px
+    );
   }
   @keyframes drift1 {
     from {
@@ -970,6 +1135,14 @@
   }
 
   /* ---- Actions ---- */
+  /* The brand and the button stack are siblings with nothing between them, so
+     the tagline sat directly on the Play button's top edge. The desktop and
+     landscape rules re-declare this as a grid with their own gap. */
+  .hero-split {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(0.9rem, 2.6vh, 1.75rem);
+  }
   .menu-actions {
     display: flex;
     flex-direction: column;
@@ -981,6 +1154,8 @@
     all: unset;
     box-sizing: border-box;
     cursor: pointer;
+    position: relative;
+    overflow: hidden;
     display: flex;
     align-items: center;
     gap: 0.9rem;
@@ -996,6 +1171,30 @@
       transform var(--transition-fast),
       filter var(--transition-fast),
       box-shadow var(--transition-fast);
+  }
+  /* Slow highlight sweep — the only moving thing in the action column, so the
+     eye lands on Play before it reads a single word. */
+  .play-sheen {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 45%;
+    pointer-events: none;
+    background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.42), transparent);
+    animation: sheen 4.5s ease-in-out infinite;
+  }
+  @keyframes sheen {
+    0%,
+    62% {
+      transform: translateX(-160%);
+    }
+    100% {
+      transform: translateX(360%);
+    }
+  }
+  .play-cta.warming .play-sheen {
+    animation: none;
+    opacity: 0;
   }
   .play-cta:hover {
     filter: brightness(1.06);
@@ -1023,6 +1222,7 @@
     transform: none;
   }
   .play-glyph {
+    position: relative;
     flex: 0 0 auto;
     width: 40px;
     height: 40px;
@@ -1032,6 +1232,7 @@
     background: rgba(4, 6, 15, 0.16);
   }
   .play-text {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 0.1rem;
@@ -1057,16 +1258,48 @@
   /* ---- Daily ---- */
   .ui-btn.daily {
     justify-content: flex-start;
-    gap: 0.7rem;
+    gap: 0.75rem;
     padding: 0.7rem 1rem;
     border-color: rgba(255, 216, 77, 0.3);
-    background: rgba(255, 216, 77, 0.05);
+    background: linear-gradient(
+      100deg,
+      rgba(255, 216, 77, 0.11),
+      rgba(255, 216, 77, 0.03) 55%,
+      transparent
+    );
+  }
+  .ui-btn.daily:hover:not(:disabled) {
+    border-color: rgba(255, 216, 77, 0.5);
+    background: linear-gradient(
+      100deg,
+      rgba(255, 216, 77, 0.18),
+      rgba(255, 216, 77, 0.05) 55%,
+      transparent
+    );
   }
   .ui-btn.daily.used {
     opacity: 0.6;
   }
+  .daily-icon {
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: var(--r-sm);
+    font-size: 1.15rem;
+    color: var(--color-gold);
+    background: rgba(255, 216, 77, 0.1);
+    border: 1px solid rgba(255, 216, 77, 0.24);
+  }
+  .daily-icon:not(.on) {
+    color: var(--color-text-faint);
+    background: var(--surface-2);
+    border-color: var(--color-border);
+  }
   .daily-dot {
     flex: 0 0 auto;
+    margin-left: auto;
     width: 8px;
     height: 8px;
     border-radius: 50%;
@@ -1107,17 +1340,22 @@
     grid-template-columns: 1fr 1fr;
     gap: 0.6rem;
   }
+  /* Content is vertically centred rather than top-aligned: the tall-phone rule
+     grows these to 100px+, and pinning three short lines to the top left the
+     bottom 40% of every tile visibly empty. */
   .tile {
     all: unset;
     box-sizing: border-box;
     cursor: pointer;
     position: relative;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 0.15rem;
+    justify-content: center;
+    gap: 0.3rem;
     min-height: 78px;
-    padding: 0.7rem 0.85rem;
+    padding: 0.75rem 0.85rem;
     border-radius: var(--r-md);
     background: var(--surface-2);
     border: 1px solid var(--color-border);
@@ -1126,39 +1364,77 @@
       border-color var(--transition-fast),
       transform var(--transition-fast);
   }
+  /* A wash of the tile's own accent, bright at the icon corner and gone by the
+     middle — enough to tell the four apart at a glance without four loud cards. */
+  .tile::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.55;
+    background: radial-gradient(
+      ellipse 80% 100% at 0% 0%,
+      color-mix(in srgb, var(--tile-accent) 16%, transparent),
+      transparent 70%
+    );
+    transition: opacity var(--transition-fast);
+  }
   .tile:hover {
     background: var(--surface-3);
-    border-color: var(--color-border-bright);
+    border-color: color-mix(in srgb, var(--tile-accent) 45%, transparent);
     transform: translateY(-2px);
+  }
+  .tile:hover::before {
+    opacity: 1;
   }
   .tile:active {
     transform: scale(0.98);
   }
   .tile-icon {
-    font-size: 1.25rem;
-    line-height: 1.1;
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    font-size: 1.15rem;
+    border-radius: var(--r-sm);
+    color: var(--tile-accent);
+    background: color-mix(in srgb, var(--tile-accent) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--tile-accent) 28%, transparent);
   }
   .tile-label {
+    position: relative;
     font-size: var(--fs-label);
     font-weight: 700;
     color: var(--color-text-main);
   }
   .tile-meta {
+    position: relative;
     font-size: var(--fs-micro);
     font-weight: 600;
+    letter-spacing: 0.04em;
     color: var(--color-text-dim);
   }
 
   .ui-btn.coop {
     justify-content: center;
-    gap: 0.5rem;
+    gap: 0.55rem;
+  }
+  .coop-icon {
+    display: inline-flex;
+    font-size: 1.05rem;
+    color: var(--color-primary);
   }
 
+  /* Tertiary row. The hairline is what separates "quiet" from "unfinished" —
+     without it these read as two stray words floating under the menu. */
   .quiet-row {
     display: flex;
     gap: 0.25rem;
     justify-content: center;
     flex-wrap: wrap;
+    padding-top: 0.35rem;
+    border-top: 1px solid var(--color-border);
   }
   .quiet-row .ui-btn {
     flex: 1;
@@ -1414,6 +1690,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    padding-top: 0.7rem;
+    border-top: 1px solid var(--color-border);
     font-size: var(--fs-micro);
     font-weight: 600;
     letter-spacing: 0.18em;
@@ -1776,10 +2054,15 @@
   }
   .ui-btn.buy {
     flex: 0 0 auto;
+    gap: 0.35rem;
     min-width: 5.2rem;
     padding: 0.6rem 0.7rem;
     font-family: var(--font-mono);
     font-size: var(--fs-caption);
+  }
+  .ui-btn.buy .glyph {
+    width: 1.15em;
+    height: 1.15em;
   }
   .ui-btn.buy.can-buy {
     background: rgba(255, 216, 77, 0.14);
@@ -1816,12 +2099,18 @@
       text-align: left;
     }
     .wordmark {
-      font-size: clamp(2.5rem, 15cqw, 5.5rem);
-      text-align: left;
-      text-indent: 0;
+      /* Same 6.1em measure, against a much wider column: 15cqw here put
+         "FIGHTERS" within a few pixels of the column edge. */
+      font-size: clamp(2.25rem, 12.5cqw, 4.6rem);
+      align-items: flex-start;
+    }
+    /* The rule only reads as a rule when it has somewhere to run to, so on the
+       left-aligned layout it trails the word instead of bracketing it. */
+    .mark-geo::before {
+      display: none;
     }
     .tagline {
-      margin-top: 1.2rem;
+      margin-top: 1rem;
       font-size: 0.72rem;
     }
     .menu-actions {
@@ -1869,7 +2158,7 @@
      Compact proportionally rather than waiting for the screen to get tiny. */
   @media (max-height: 740px) and (orientation: portrait) {
     .wordmark {
-      font-size: clamp(1.6rem, 13cqw, 2.8rem);
+      font-size: clamp(1.4rem, 10.5cqw, 2.3rem);
     }
     .tagline {
       margin-top: 0.35rem;
@@ -1880,7 +2169,12 @@
       min-height: 60px;
     }
     .tile {
-      min-height: 64px;
+      min-height: 66px;
+    }
+    .tile-icon {
+      width: 26px;
+      height: 26px;
+      font-size: 0.95rem;
     }
   }
 
@@ -1900,7 +2194,7 @@
       padding-bottom: max(var(--safe-bottom), 0.35rem);
     }
     .wordmark {
-      font-size: clamp(1.6rem, 12cqw, 2.4rem);
+      font-size: clamp(1.4rem, 10cqw, 2.1rem);
     }
     .tagline {
       margin-top: 0.4rem;
@@ -1913,6 +2207,18 @@
     }
     .tile {
       min-height: 62px;
+    }
+    .tile-icon {
+      width: 24px;
+      height: 24px;
+      font-size: 0.9rem;
+    }
+    /* Every hairline costs ~1.4rem of height it cannot spare here */
+    .status-strip,
+    .quiet-row,
+    .menu-footer {
+      padding: 0;
+      border: 0;
     }
   }
 
@@ -1932,17 +2238,24 @@
       text-align: left;
     }
     .wordmark {
-      text-align: left;
-      text-indent: 0;
-      font-size: clamp(1.9rem, 14cqw, 3rem);
+      align-items: flex-start;
+      font-size: clamp(1.7rem, 12cqw, 2.6rem);
+    }
+    .mark-geo::before {
+      display: none;
     }
     .tile-grid {
       grid-template-columns: repeat(4, 1fr);
     }
+    /* The icon chip is what sets the height here, not min-height — leave the
+       default padding on and the four-across row overflows the 390px screen. */
     .tile {
       min-height: 56px;
       align-items: center;
+      justify-content: center;
       text-align: center;
+      gap: 0.25rem;
+      padding: 0.45rem 0.5rem;
     }
     .tile-meta {
       display: none;
@@ -1951,10 +2264,15 @@
 
   @media (prefers-reduced-motion: reduce) {
     .glow,
-    .wordmark .accent,
+    .grid-lines,
+    .play-sheen,
+    .mark-name,
     .tagline::after,
     .daily-dot.on {
       animation: none;
+    }
+    .play-sheen {
+      display: none;
     }
   }
 </style>
