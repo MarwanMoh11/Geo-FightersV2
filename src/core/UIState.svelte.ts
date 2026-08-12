@@ -178,6 +178,14 @@ export const uiState = $state({
   fps: 60,
   showFps: false,
 
+  // Thermal governor readout, republished on the same 1Hz tick as `fps` so the
+  // overlay costs nothing per frame. `thermalCap` is 0 wherever the governor
+  // does not apply (desktop), which is also the overlay's signal to hide the
+  // row entirely rather than show a meaningless 60.
+  thermalCap: 0,
+  thermalLoadSeconds: 0,
+  thermalNextRungAtS: null as number | null,
+
   // Anomalies
   insideOverclockZone: false,
   // Map 1 shrine buffs (seconds remaining; ticked by ShrineSystem)

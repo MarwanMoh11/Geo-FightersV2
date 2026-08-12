@@ -15,6 +15,7 @@ import {
 } from '../core/audio';
 
 import { uiState } from '../core/UIState.svelte.ts';
+import { getThermalState, getThermalFpsCap } from '../core/quality';
 
 //MainMenu, settingsModal, pauseModal are now handled by Svelte
 // const mobilePauseBtn = document.getElementById('mobile-pause-btn');
@@ -136,6 +137,14 @@ export function updateFPS(currentTime: number): void {
     uiState.fps = frameCount;
     frameCount = 0;
     lastFpsUpdate = currentTime;
+
+    // Piggyback the governor readout on the same 1Hz tick. It changes on the
+    // scale of minutes, so sampling it per frame would only add reactivity
+    // churn to every frame in exchange for nothing.
+    const thermal = getThermalState();
+    uiState.thermalCap = getThermalFpsCap();
+    uiState.thermalLoadSeconds = thermal.loadSeconds;
+    uiState.thermalNextRungAtS = thermal.nextRungAtS;
   }
 }
 

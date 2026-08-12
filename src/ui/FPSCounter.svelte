@@ -30,6 +30,29 @@
       })
       .join(' '),
   );
+
+  // --- Thermal governor readout ---
+  // 0 means the governor does not apply here (desktop), so the whole row goes
+  // away rather than showing a cap nothing is enforcing.
+  const thermalActive = $derived(uiState.thermalCap > 0);
+
+  const loadClock = $derived.by(() => {
+    const s = uiState.thermalLoadSeconds;
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  });
+
+  // Progress toward the next step down. Null on the bottom rung — there is no
+  // next drop to count toward, so the bar fills and stops.
+  const rungProgress = $derived.by(() => {
+    const next = uiState.thermalNextRungAtS;
+    if (next === null || next <= 0) return 1;
+    return Math.max(0, Math.min(1, uiState.thermalLoadSeconds / next));
+  });
+
+  // Green while at the top rung, amber once stepped down, red at the floor.
+  const thermalTone = $derived(
+    uiState.thermalCap >= 60 ? 'ok' : uiState.thermalCap >= 45 ? 'warn' : 'hot',
+  );
 </script>
 
 {#if uiState.showFps}
@@ -75,6 +98,23 @@
         {/if}
       </svg>
     </div>
+
+    {#if thermalActive}
+      <div class="thermal {thermalTone}">
+        <div class="thermal-text">
+          <span class="thermal-cap">CAP {uiState.thermalCap}</span>
+          <span
+            class="thermal-clock"
+            title="Accumulated render time. Charges while drawing, discharges 2.5x faster while idle."
+          >
+            {loadClock}
+          </span>
+        </div>
+        <div class="thermal-track">
+          <div class="thermal-fill" style="transform: scaleX({rungProgress})"></div>
+        </div>
+      </div>
+    {/if}
   </div>
 {/if}
 
@@ -92,7 +132,13 @@
     display: flex;
     flex-direction: column;
     gap: 5px;
-    pointer-events: auto;
+    /* A readout with nothing to click. It used to claim pointer events anyway,
+       which was survivable while it was two rows tall and sat below everything
+       — but the thermal row pushed its top edge up into the main menu's "How
+       to play" button, and an overlay that swallows taps on a real control is
+       a bug even in a debug tool. Nothing in here is interactive, so let every
+       tap fall through to whatever is underneath. */
+    pointer-events: none;
     z-index: 9999;
     box-shadow: var(--glass-shadow);
   }
@@ -127,5 +173,62 @@
   .graph-svg {
     width: 100%;
     height: 100%;
+  }
+
+  /* ---- Thermal governor row ---- */
+  .thermal {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    /* A rule rather than a gap: without it the cap reads as a third statistic
+       about the graph above instead of a separate subsystem. */
+    padding-top: 5px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .thermal-text {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 9px;
+    letter-spacing: 0.05em;
+  }
+
+  .thermal-cap {
+    font-weight: bold;
+    color: var(--tone);
+  }
+
+  .thermal-clock {
+    color: #888;
+  }
+
+  .thermal-track {
+    height: 3px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+  }
+
+  /* scaleX from a left origin: a transform is composited, so the bar can be
+     driven every second without laying the overlay out again. */
+  .thermal-fill {
+    height: 100%;
+    width: 100%;
+    transform-origin: left center;
+    background: var(--tone);
+    transition: transform 0.4s linear;
+  }
+
+  .thermal.ok {
+    --tone: #00ff88;
+  }
+  .thermal.warn {
+    --tone: #ffb648;
+  }
+  .thermal.hot {
+    --tone: #ff5d7a;
   }
 </style>

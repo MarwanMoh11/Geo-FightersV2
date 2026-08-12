@@ -414,11 +414,26 @@ export function getThermalFpsCap(): number {
   return isMobile ? THERMAL_RUNGS[thermalRung] : 0;
 }
 
-/** Diagnostics for the on-screen FPS readout. */
-export function getThermalState(): { rung: number; cap: number; loadSeconds: number } {
+/**
+ * Diagnostics for the on-screen FPS readout.
+ *
+ * `nextRungAtS` is the load figure that trips the next step down, or null once
+ * the governor is on its bottom rung with nothing left to give — which is what
+ * lets the overlay draw progress toward the next drop instead of an opaque
+ * counter. The thresholds here are estimates until someone plays a long session
+ * on a real phone, so being able to watch the accumulator climb is the point.
+ */
+export function getThermalState(): {
+  rung: number;
+  cap: number;
+  loadSeconds: number;
+  nextRungAtS: number | null;
+} {
+  const atFloor = thermalRung >= THERMAL_RUNGS.length - 1;
   return {
     rung: thermalRung,
     cap: THERMAL_RUNGS[thermalRung],
     loadSeconds: Math.round(loadSeconds),
+    nextRungAtS: atFloor ? null : RUNG_THRESHOLDS_S[thermalRung + 1],
   };
 }
