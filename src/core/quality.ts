@@ -18,8 +18,27 @@ export interface QualityProfile {
   shadowMapSize: number;
   /** Multiplier applied to cosmetic particle spawn counts */
   particleScale: number;
-  /** Decorative point lights in the level (expensive on old GPUs) */
+  /** Decorative skyline geometry in the level (atmosphere, not gameplay) */
   neonLights: boolean;
+  /**
+   * How many of the arena's five point lights stay lit (core first, then the
+   * four vault corners).
+   *
+   * This is a per-FRAGMENT cost, not a per-object one. The arena floor is a
+   * full-map plane in MeshStandardMaterial, so it covers most of the screen
+   * and every one of its pixels runs the full PBR BRDF once per light. Five
+   * point lights plus the directional is six evaluations on ~790k pixels a
+   * frame at the mobile pixel-ratio cap — the single largest sustained GPU
+   * load in the game, and sustained GPU load is what heats a phone.
+   *
+   * The corner lights are the ones worth cutting: they sit at (+-52, 14, +-52)
+   * with a 65-unit range, while the camera follows the player through a 35deg
+   * FOV from 40 units up. For most of a run they light geometry that is not on
+   * screen, yet they are still shaded into every visible fragment. The core
+   * light sits at the arena centre where the fight actually happens, so it
+   * survives on every tier that has lighting at all.
+   */
+  arenaLightCount: number;
   /** Seconds between minimap canvas redraws */
   minimapInterval: number;
   /** Adaptive resolution scaling to hold frame rate */
@@ -57,6 +76,7 @@ const PROFILES: Record<QualityTier, QualityProfile> = {
     shadowMapSize: 0,
     particleScale: 0.35,
     neonLights: false,
+    arenaLightCount: 0,
     minimapInterval: 0.25,
     dynamicResolution: true, // can still drop further on truly ancient hardware
     // The only tier without bloom. LOW means 2GB RAM or a dual-core — a device
@@ -76,6 +96,10 @@ const PROFILES: Record<QualityTier, QualityProfile> = {
     shadowMapSize: 512,
     particleScale: 0.7,
     neonLights: true,
+    // Every phone lands on this tier (detectTier sends all mobile here), so
+    // this line is the one that decides the thermal load on the iOS build.
+    // Desktops on MEDIUM are plugged in and fan-cooled; they keep all five.
+    arenaLightCount: isMobile ? 1 : 5,
     minimapInterval: 0.12,
     dynamicResolution: false,
     // Where every phone lands (detectTier sends all mobile here), so this is
@@ -97,6 +121,7 @@ const PROFILES: Record<QualityTier, QualityProfile> = {
     shadowMapSize: 512,
     particleScale: 1.0,
     neonLights: true,
+    arenaLightCount: 5,
     minimapInterval: 0.08,
     dynamicResolution: false,
     bloom: true,
@@ -146,6 +171,7 @@ export function getQualityProfile(): QualityProfile {
       shadowMapSize: 2048,
       particleScale: 2.0,
       neonLights: true,
+      arenaLightCount: 5,
       minimapInterval: 0.04,
       dynamicResolution: false,
       bloom: true,

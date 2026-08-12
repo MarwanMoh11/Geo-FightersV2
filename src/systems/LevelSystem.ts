@@ -1235,9 +1235,15 @@ function addArenaLighting(scene: THREE.Scene): void {
   arenaLights.length = 0;
   arenaLights.push(coreLight, ...corners);
 
+  // arenaLights[0] is the core light and the rest are the vault corners, so
+  // taking the first N drops the corners first — see arenaLightCount for why
+  // those are the ones worth losing. `visible = false` is a real saving here,
+  // not just a skipped draw: three.js collects lights during projectObject, so
+  // an invisible light never enters the lighting uniforms and the material
+  // recompiles without its BRDF evaluation entirely.
   const applyLightQuality = () => {
-    const enabled = getQualityProfile().neonLights;
-    for (const light of arenaLights) light.visible = enabled;
+    const budget = getQualityProfile().arenaLightCount;
+    arenaLights.forEach((light, i) => (light.visible = i < budget));
   };
 
   for (const light of arenaLights) scene.add(light);

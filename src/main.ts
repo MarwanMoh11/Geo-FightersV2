@@ -501,7 +501,19 @@ function startGameLoop(
         } catch (e) {
           logLoopError(e);
         }
-      } else {
+      } else if (uiState.gameState !== 'MENU') {
+        // Everything else that halts the sim — pause, game over, the upgrade
+        // and chest sheets, onboarding — is a translucent overlay sitting on a
+        // live arena, so the arena underneath still has to be painted.
+        //
+        // The main menu is the one exception: #main-menu is `position: fixed;
+        // inset: 0` over an opaque --color-bg-dark (#04060f, no alpha), and
+        // nothing draws a 3D backdrop behind it. Every pixel the renderer
+        // produced in this state was already covered before it reached the
+        // screen — a full scene draw plus the bloom pass's whole mip chain,
+        // thirty times a second, discarded. On a phone that is pure heat for
+        // no image, and menus are exactly where people idle: browsing the
+        // roster, reading upgrades, or just not playing.
         renderFrame();
       }
       return;
