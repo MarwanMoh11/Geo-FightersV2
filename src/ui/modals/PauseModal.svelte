@@ -5,6 +5,7 @@
   import { playMenuClick } from '../../core/audio';
   import { haptics } from '../../core/haptics';
   import Modal from '../Modal.svelte';
+  import Icon from '../Icon.svelte';
 
   /* Quitting a run throws away progress, so it asks once. On a phone the
      Quit row sits a thumb-width from Resume — a mis-tap used to end the run
@@ -87,13 +88,13 @@
 
   <div class="actions">
     <button class="ui-btn block" onclick={openGrimoire}>
-      <span aria-hidden="true">📖</span> Evolutions
+      <Icon name="tree" /> Evolutions
     </button>
     <button class="ui-btn block" onclick={openHowTo}>
-      <span aria-hidden="true">❔</span> How to play
+      <Icon name="help" /> How to play
     </button>
     <button class="ui-btn block" onclick={openSettings}>
-      <span aria-hidden="true">⚙️</span> Settings
+      <Icon name="settings" /> Settings
     </button>
 
     {#if confirmQuit}

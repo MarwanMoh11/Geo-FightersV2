@@ -45,6 +45,7 @@
     beginDailyRun,
   } from '../core/DailyManager';
   import Modal from './Modal.svelte';
+  import Icon from './Icon.svelte';
   import Slider from './controls/Slider.svelte';
 
   /** Which full-screen sub-panel is open. */
@@ -295,54 +296,6 @@
   let selectedName = $derived(getCharacter(uiState.selectedCharacter).name);
 </script>
 
-<!-- One icon set for the whole menu. Emoji were rendering in the platform's own
-     colour palette — a red-and-gold medal, a grey wrench — which fought the
-     two-colour neon scheme everywhere they appeared. These inherit currentColor
-     instead, so every glyph is tinted by the thing it sits in. -->
-{#snippet glyph(name: string)}
-  <svg
-    class="glyph"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    stroke-width="1.7"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-    aria-hidden="true"
-  >
-    {#if name === 'coin'}
-      <circle cx="12" cy="12" r="8.4" />
-      <circle cx="12" cy="12" r="4.3" />
-    {:else if name === 'roster'}
-      <circle cx="12" cy="8.4" r="3.4" />
-      <path d="M5.4 20.2a6.6 6.6 0 0 1 13.2 0" />
-    {:else if name === 'chip'}
-      <rect x="7.2" y="7.2" width="9.6" height="9.6" rx="2.2" />
-      <path
-        d="M10.2 3.5v3.7M13.8 3.5v3.7M10.2 16.8v3.7M13.8 16.8v3.7M3.5 10.2h3.7M3.5 13.8h3.7M16.8 10.2h3.7M16.8 13.8h3.7"
-      />
-    {:else if name === 'trophy'}
-      <path d="M8 4.2h8v4.6a4 4 0 0 1-8 0z" />
-      <path d="M8 5.6H5.4v1.1A3.4 3.4 0 0 0 8.8 10.1" />
-      <path d="M16 5.6h2.6v1.1a3.4 3.4 0 0 1-3.4 3.4" />
-      <path d="M12 12.9v3.1M8.9 20h6.2l-.7-4h-4.8z" />
-    {:else if name === 'tree'}
-      <path d="M12 20.4V9M12 13.4l4.6-3.5M12 13.4 7.4 9.9" />
-      <circle cx="12" cy="6.6" r="2.4" />
-      <circle cx="17.6" cy="8.4" r="1.9" />
-      <circle cx="6.4" cy="8.4" r="1.9" />
-    {:else if name === 'friends'}
-      <circle cx="9.2" cy="8.6" r="3.2" />
-      <path d="M3.5 19.6a5.7 5.7 0 0 1 11.4 0" />
-      <path d="M16.3 6a3.2 3.2 0 0 1 0 5.2M17.7 13.7a5.7 5.7 0 0 1 2.8 5.4" />
-    {:else if name === 'daily'}
-      <rect x="3.6" y="5.4" width="16.8" height="15" rx="2.6" />
-      <path d="M8.2 3.4v4M15.8 3.4v4M3.6 10.3h16.8" />
-      <path d="M12 13v4.4M9.8 15.2h4.4" />
-    {/if}
-  </svg>
-{/snippet}
-
 <div id="main-menu" class:hidden={uiState.gameState !== 'MENU'}>
   <!-- Ambient drifting glows: transform-only animation, GPU-composited -->
   <div class="ambient" aria-hidden="true">
@@ -363,10 +316,10 @@
       <!-- Status strip: everything persistent at a glance, above the fold -->
       <div class="status-strip">
         <span class="ui-chip gold" title="Credits earned across all runs">
-          {@render glyph('coin')}<span class="tnum">{uiState.credits}</span>
+          <Icon name="coin" /><span class="tnum">{uiState.credits}</span>
         </span>
         <span class="ui-chip" title="Fighters unlocked">
-          {@render glyph('roster')}<span class="tnum">{unlockedCount}/{CHARACTERS.length}</span>
+          <Icon name="roster" /><span class="tnum">{unlockedCount}/{CHARACTERS.length}</span>
         </span>
         <span class="spacer"></span>
         <span class="ui-chip" class:green={dailyAvailable} title="Daily run availability">
@@ -415,7 +368,7 @@
             </button>
 
             <button class="ui-btn block daily" class:used={!dailyAvailable} onclick={handleDaily}>
-              <span class="daily-icon" class:on={dailyAvailable}>{@render glyph('daily')}</span>
+              <span class="daily-icon" class:on={dailyAvailable}><Icon name="daily" /></span>
               <span class="daily-text">
                 <span class="daily-label">Daily Run</span>
                 <span class="daily-sub">
@@ -434,7 +387,7 @@
                  by colour before any label is read. -->
             <div class="tile-grid">
               <button class="tile" style="--tile-accent: var(--color-primary)" onclick={openRoster}>
-                <span class="tile-icon">{@render glyph('roster')}</span>
+                <span class="tile-icon"><Icon name="roster" /></span>
                 <span class="tile-label">Fighters</span>
                 <span class="tile-meta tnum">{unlockedCount}/{CHARACTERS.length}</span>
               </button>
@@ -446,12 +399,12 @@
                   panel = 'shop';
                 }}
               >
-                <span class="tile-icon">{@render glyph('chip')}</span>
+                <span class="tile-icon"><Icon name="chip" /></span>
                 <span class="tile-label">Upgrades</span>
                 <span class="tile-meta tnum">{uiState.credits} cr</span>
               </button>
               <button class="tile" style="--tile-accent: var(--color-accent)" onclick={openRecords}>
-                <span class="tile-icon">{@render glyph('trophy')}</span>
+                <span class="tile-icon"><Icon name="trophy" /></span>
                 <span class="tile-label">Records</span>
                 <span class="tile-meta">Personal bests</span>
               </button>
@@ -463,7 +416,7 @@
                   uiState.showGrimoire = true;
                 }}
               >
-                <span class="tile-icon">{@render glyph('tree')}</span>
+                <span class="tile-icon"><Icon name="tree" /></span>
                 <span class="tile-label">Evolutions</span>
                 <span class="tile-meta">Weapon paths</span>
               </button>
@@ -476,7 +429,7 @@
                 showMpOptions = true;
               }}
             >
-              <span class="coop-icon">{@render glyph('friends')}</span> Play with friends
+              <span class="coop-icon"><Icon name="friends" /></span> Play with friends
             </button>
 
             <div class="quiet-row">
@@ -589,7 +542,7 @@
                     style={locked ? undefined : `--char-color: ${charColor(char.color)}`}
                     onclick={() => pickLobbyCharacter(char.id)}
                   >
-                    {locked ? '🔒' : char.icon}
+                    {#if locked}<Icon name="lock" />{:else}{char.icon}{/if}
                   </button>
                 {/each}
               </div>
@@ -651,7 +604,9 @@
         style="--char-color: {charColor(focused.color)}"
       >
         <div class="feature-head">
-          <div class="feature-avatar">{focusedLocked ? '🔒' : focused.icon}</div>
+          <div class="feature-avatar">
+            {#if focusedLocked}<Icon name="lock" />{:else}{focused.icon}{/if}
+          </div>
           <div class="feature-id">
             <h3 class="feature-name">{focusedLocked ? 'LOCKED' : focused.name}</h3>
             <p class="feature-weapon">{focusedLocked ? '???' : focused.weaponName}</p>
@@ -704,7 +659,9 @@
             style="--char-color: {charColor(char.color)}"
             onclick={() => focusCharacter(char.id)}
           >
-            <span class="thumb-icon">{locked ? '🔒' : char.icon}</span>
+            <span class="thumb-icon">
+              {#if locked}<Icon name="lock" />{:else}{char.icon}{/if}
+            </span>
             <span class="thumb-name">{locked ? '???' : char.name}</span>
           </button>
         {/each}
@@ -757,7 +714,7 @@
     >
       {#snippet readout()}
         <span class="ui-chip gold"
-          >{@render glyph('coin')}<span class="tnum">{uiState.credits}</span></span
+          ><Icon name="coin" /><span class="tnum">{uiState.credits}</span></span
         >
       {/snippet}
 
@@ -804,7 +761,7 @@
                   {#if maxed}
                     MAX
                   {:else}
-                    {@render glyph('coin')}<span class="tnum">{cost}</span>
+                    <Icon name="coin" /><span class="tnum">{cost}</span>
                   {/if}
                 </button>
               </div>
@@ -915,19 +872,6 @@
   }
   .status-strip .spacer {
     flex: 1;
-  }
-
-  /* ---- Icons ---- */
-  .glyph {
-    width: 1em;
-    height: 1em;
-    flex: 0 0 auto;
-    /* Optical centring against a cap-height label sitting beside it */
-    vertical-align: -0.135em;
-  }
-  .ui-chip .glyph {
-    width: 1.15em;
-    height: 1.15em;
   }
 
   /* ---- Brand ---- */
@@ -2059,10 +2003,6 @@
     padding: 0.6rem 0.7rem;
     font-family: var(--font-mono);
     font-size: var(--fs-caption);
-  }
-  .ui-btn.buy .glyph {
-    width: 1.15em;
-    height: 1.15em;
   }
   .ui-btn.buy.can-buy {
     background: rgba(255, 216, 77, 0.14);

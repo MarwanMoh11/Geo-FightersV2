@@ -3,6 +3,7 @@
   import { setGameState } from '../core/GameState';
   import { fly } from 'svelte/transition';
   import BreachPrompt from './BreachPrompt.svelte';
+  import Icon from './Icon.svelte';
 
   const isTouchDevice =
     typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
@@ -150,7 +151,7 @@
         <span class="dot">·</span>
         <span class="kills">{uiState.kills}<i>k</i></span>
         <span class="dot">·</span>
-        <span class="credits">🪙 {uiState.creditsCollected}</span>
+        <span class="credits"><Icon name="coin" />{uiState.creditsCollected}</span>
       </div>
     </div>
 
@@ -553,6 +554,9 @@
     color: var(--color-text-faint);
   }
   .meta .credits {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
     color: var(--color-gold);
     font-weight: 700;
   }

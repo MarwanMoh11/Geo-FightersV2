@@ -246,6 +246,35 @@
 }
 
 /* ==================================================================
+   ICONS
+   One stroked set, drawn by Icon.svelte. Emoji render in the platform's
+   own palette — a red-and-gold medal next to a grey wrench — which fights
+   a two-colour scheme wherever menu chrome uses them. These inherit
+   currentColor and size in em, so a glyph is always the colour and scale
+   of the label beside it.
+
+   Global, not scoped to Icon.svelte, because the sizing rules below belong
+   to the CONTAINER (chip, button, tile), and Svelte's style scoping would
+   otherwise stop a parent from reaching the svg it renders.
+
+   Expressive emoji stay where they carry meaning rather than navigation:
+   character and item art, and the in-game coach marks.
+   ================================================================== */
+
+.ui-glyph {
+  width: 1em;
+  height: 1em;
+  flex: 0 0 auto;
+  /* Optical centring against the cap height of a label beside it */
+  vertical-align: -0.135em;
+}
+.ui-chip .ui-glyph,
+.ui-btn .ui-glyph {
+  width: 1.15em;
+  height: 1.15em;
+}
+
+/* ==================================================================
    HEADER GRAMMAR
    Every panel headline is the same three parts: eyebrow, title, readout.
    ================================================================== */

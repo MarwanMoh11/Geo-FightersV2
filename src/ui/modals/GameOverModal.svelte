@@ -7,6 +7,7 @@
   import { playMenuClick } from '../../core/audio';
   import { haptics } from '../../core/haptics';
   import Modal from '../Modal.svelte';
+  import Icon from '../Icon.svelte';
 
   let leaving = $state(false);
   // Guard against double taps while the rewarded request is in flight.
@@ -137,7 +138,9 @@
     <div class="payout">
       <div class="payout-head">
         <span class="payout-label">Credits banked</span>
-        <strong class="payout-total tnum">🪙 {uiState.lastPayout.total}</strong>
+        <strong class="payout-total"
+          ><Icon name="coin" /><span class="tnum">{uiState.lastPayout.total}</span></strong
+        >
       </div>
       <div class="payout-rows">
         <div class="payout-row">
@@ -154,7 +157,9 @@
           </div>
         {/if}
         <div class="payout-row wallet">
-          <span>Wallet</span><span class="tnum">🪙 {uiState.credits}</span>
+          <span>Wallet</span><span class="wallet-amount"
+            ><Icon name="coin" /><span class="tnum">{uiState.credits}</span></span
+          >
         </div>
       </div>
 
@@ -174,7 +179,7 @@
 
   {#if uiState.lastRunRank > 0}
     <div class="rank-badge" class:podium={uiState.lastRunRank <= 3}>
-      <span aria-hidden="true">🌐</span> Global rank
+      <Icon name="globe" /> Global rank
       <strong class="tnum">#{uiState.lastRunRank}</strong>
       {#if uiState.lastRunRankTotal > 0}
         <span class="rank-of tnum">of {uiState.lastRunRankTotal}</span>
@@ -203,7 +208,7 @@
       <h3 class="block-title gold">Unlocked this run</h3>
       {#each earned as a (a.id)}
         <div class="unlock-row earned">
-          <span class="unlock-icon" aria-hidden="true">🏆</span>
+          <span class="unlock-icon"><Icon name="trophy" /></span>
           <span class="unlock-text">
             {a.name}{a.unlock ? ` — ${a.unlock.label} unlocked` : ''}
           </span>
@@ -310,8 +315,16 @@
     color: var(--color-text-dim);
   }
   .payout-total {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
     font-size: var(--fs-heading);
     color: var(--color-gold);
+  }
+  .wallet-amount {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
   }
   .payout-rows {
     display: flex;
@@ -499,6 +512,7 @@
   .unlock-icon {
     flex: 0 0 auto;
     font-size: 1rem;
+    color: var(--color-gold);
   }
   .unlock-info {
     display: flex;

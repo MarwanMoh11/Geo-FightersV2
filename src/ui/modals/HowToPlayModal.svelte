@@ -10,6 +10,7 @@
   import { uiState } from '../../core/UIState.svelte.ts';
   import { playMenuClick } from '../../core/audio';
   import Modal from '../Modal.svelte';
+  import Icon from '../Icon.svelte';
   import TutorialDemo from '../breach/TutorialDemo.svelte';
 
   let tab = $state<'controls' | 'loop' | 'systems'>('controls');
@@ -130,14 +131,14 @@
       </ol>
     {:else}
       <div class="sys">
-        <h3 class="sys-title"><span aria-hidden="true">⚡</span> Overclock</h3>
+        <h3 class="sys-title"><Icon name="bolt" /> Overclock</h3>
         <p class="sys-body">
           The meter under your health fills as you fight. When it's full, trigger it for a short
           window of overwhelming firepower. Each fighter's Overclock behaves differently.
         </p>
       </div>
       <div class="sys">
-        <h3 class="sys-title"><span aria-hidden="true">🔓</span> Breaching</h3>
+        <h3 class="sys-title"><Icon name="unlock" /> Breaching</h3>
         <p class="sys-body">
           Data nodes sit around the arena. Stand at one and jack in to play a short hack for gear.
           Security rating sets both the difficulty and the payout; overclocking a breach doubles the
@@ -155,21 +156,21 @@
         </div>
       </div>
       <div class="sys">
-        <h3 class="sys-title"><span aria-hidden="true">💀</span> Exploits</h3>
+        <h3 class="sys-title"><Icon name="skull" /> Exploits</h3>
         <p class="sys-body">
           Won from breaches. Unlike upgrades, an exploit changes a rule of the run instead of a
           number. You can carry three at a time.
         </p>
       </div>
       <div class="sys">
-        <h3 class="sys-title"><span aria-hidden="true">📖</span> Evolutions</h3>
+        <h3 class="sys-title"><Icon name="tree" /> Evolutions</h3>
         <p class="sys-body">
           Max a weapon, hold its partner passive, then open a chest — the pair fuses into a far
           stronger weapon. The Evolutions screen lists every recipe.
         </p>
       </div>
       <div class="sys">
-        <h3 class="sys-title"><span aria-hidden="true">☠️</span> Threat level</h3>
+        <h3 class="sys-title"><Icon name="gauge" /> Threat level</h3>
         <p class="sys-body">
           Set before a run. Higher means tougher enemies but far more XP and credits. Credits buy
           permanent upgrades that carry into every future run.
@@ -268,6 +269,13 @@
     font-size: var(--fs-label);
     font-weight: 800;
     color: var(--color-text-main);
+  }
+  /* The glyphs carried their own colour as emoji; stroked, they need the tint
+     back or the section list reads as a wall of white text. */
+  .sys-title :global(.ui-glyph) {
+    color: var(--color-primary);
+    width: 1.15em;
+    height: 1.15em;
   }
   .sys-body {
     margin: 0;

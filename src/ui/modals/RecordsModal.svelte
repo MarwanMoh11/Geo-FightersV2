@@ -10,6 +10,7 @@
   import { fetchLeaderboard, type LeaderboardEntry } from '../../core/leaderboard';
   import { getCharacter } from '../../core/CharacterRegistry';
   import Modal from '../Modal.svelte';
+  import Icon from '../Icon.svelte';
 
   let tab = $state<'achievements' | 'stats' | 'global'>('achievements');
 
@@ -81,7 +82,9 @@
   onclose={close}
 >
   {#snippet readout()}
-    <span class="ui-chip gold tnum">🏆 {unlockedCount}/{ACHIEVEMENTS.length}</span>
+    <span class="ui-chip gold"
+      ><Icon name="trophy" /><span class="tnum">{unlockedCount}/{ACHIEVEMENTS.length}</span></span
+    >
   {/snippet}
 
   <div class="ui-tabs" role="tablist" aria-label="Records sections">
@@ -99,7 +102,7 @@
           <h3 class="section-label">Today's quests</h3>
           {#each quests as q (q.def.id)}
             <div class="ach-row" class:done={q.claimed}>
-              <span class="ach-check" aria-hidden="true">{q.claimed ? '✅' : '⬜'}</span>
+              <span class="ach-check"><Icon name={q.claimed ? 'check' : 'box'} /></span>
               <div class="ach-info">
                 <span class="ach-name">{q.def.description}</span>
                 <span class="ach-desc">Reward: {q.def.reward}¢</span>
@@ -113,7 +116,7 @@
           {@const unlockedNow = isAchievementUnlocked(a.id)}
           {@const pct = Math.min(1, a.progress(stats) / a.target)}
           <div class="ach-row" class:done={unlockedNow}>
-            <span class="ach-check" aria-hidden="true">{unlockedNow ? '🏆' : '🔒'}</span>
+            <span class="ach-check"><Icon name={unlockedNow ? 'trophy' : 'lock'} /></span>
             <div class="ach-info">
               <span class="ach-name">{a.name}</span>
               <span class="ach-desc">
@@ -222,6 +225,10 @@
     flex: 0 0 auto;
     font-size: 1rem;
     line-height: 1.3;
+    color: var(--color-text-faint);
+  }
+  .ach-row.done .ach-check {
+    color: var(--color-gold);
   }
   .ach-info {
     flex: 1;
