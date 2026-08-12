@@ -474,7 +474,9 @@
   box-sizing: border-box;
   cursor: pointer;
   flex: 1;
-  min-height: 38px;
+  /* 44px is Apple's minimum touch target; 38 left the tab row the smallest
+     thing to hit in any modal that uses it. */
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;

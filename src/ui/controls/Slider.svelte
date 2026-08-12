@@ -79,9 +79,13 @@
     appearance: none;
     width: 100%;
     /* Tall transparent box = comfortable grab area; the visible track is
-       painted with a background gradient inside it. */
-    height: 28px;
-    margin: 0;
+       painted with a background gradient inside it.
+       44px is Apple's minimum target, and a slider needs it more than a button
+       does — you have to land on it AND drag. The negative margin keeps the
+       row's layout footprint at the old 28px so nothing below shifts down;
+       only the invisible grab box grows. */
+    height: 44px;
+    margin: -8px 0;
     background: transparent;
     outline: none;
     touch-action: pan-y;

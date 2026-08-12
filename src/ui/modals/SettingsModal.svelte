@@ -174,6 +174,14 @@
             onchange={(v) => updateSetting('invertControls', v)}
           />
         </SettingRow>
+        <SettingRow label="Haptics" hint="Vibration on hits, rewards and menu taps.">
+          <Toggle
+            id="hapticsToggle"
+            label="Haptics"
+            checked={settings.haptics}
+            onchange={(v) => updateSetting('haptics', v)}
+          />
+        </SettingRow>
       {:else}
         <!-- Keyboard players get the actual key map instead of touch options
              that do nothing on their device. -->

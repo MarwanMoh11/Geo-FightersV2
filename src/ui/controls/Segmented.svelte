@@ -66,7 +66,9 @@
     box-sizing: border-box;
     cursor: pointer;
     flex: 1;
-    min-height: 38px;
+    /* Matches .ui-tab: 44px is Apple's minimum touch target, and these
+       segments are narrow enough already without also being short. */
+    min-height: 44px;
     display: inline-flex;
     align-items: center;
     justify-content: center;

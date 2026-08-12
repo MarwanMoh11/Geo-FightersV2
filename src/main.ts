@@ -21,6 +21,7 @@ import { isPlaying, onStateChange, setGameState } from './core/GameState';
 import { uiState } from './core/UIState.svelte.ts';
 import { DEBUG, TEST_MODE, dlog } from './core/debug';
 import { initPWA } from './core/pwa';
+import { initWakeLock } from './core/wakeLock';
 import { getFpsLimit } from './core/SettingsManager';
 import { portalLoadingFinished, isPortalEmbed } from './core/portal';
 import { updateDynamicResolution } from './core/quality';
@@ -30,6 +31,10 @@ import { updateDynamicResolution } from './core/quality';
 // SW/install prompt there is at best dead weight, at worst a QA rejection.
 // (Portal SDK boot itself already ran in boot.ts before this module loaded.)
 if (!isPortalEmbed()) initPWA();
+
+// Hold the screen awake for the duration of a run. Safe everywhere: it only
+// subscribes to state changes, and no-ops where the API is missing.
+initWakeLock();
 
 // Systems
 import { InputSystem } from './systems/InputSystem';

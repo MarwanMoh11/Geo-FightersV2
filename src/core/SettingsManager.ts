@@ -19,6 +19,7 @@ export interface GameSettings {
   showDamageNumbers: boolean;
   joystickSensitivity: number; // 25-150
   invertControls: boolean; // false = Joystick Right, true = Joystick Left
+  haptics: boolean; // Taptic/vibration feedback on hits, rewards and taps
 }
 
 const STORAGE_KEY = 'geofighters_settings';
@@ -48,6 +49,7 @@ const DEFAULT_SETTINGS: GameSettings = {
   showDamageNumbers: true,
   joystickSensitivity: 100,
   invertControls: false,
+  haptics: true,
 };
 
 // Current settings in memory
