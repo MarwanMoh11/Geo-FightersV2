@@ -2,6 +2,7 @@
  * PWA glue: registers the service worker and brokers the install prompt so the
  * UI can offer an "Install" button at the right moment.
  */
+import { Capacitor } from '@capacitor/core';
 import { uiState } from './UIState.svelte.ts';
 
 interface BeforeInstallPromptEvent extends Event {
@@ -59,6 +60,15 @@ export function initPWA() {
   // never fire and a service worker would fight the portal's own caching —
   // skip the whole PWA layer there.
   if (isEmbedded()) return;
+
+  // The native iOS/Android shell is already an installed app: its assets are
+  // bundled, so the service worker has nothing to cache and cannot register
+  // on the webview's custom scheme anyway, and an in-game "Install" button
+  // would be nonsense. Report standalone and skip the rest of the PWA layer.
+  if (Capacitor.isNativePlatform()) {
+    uiState.isStandalone = true;
+    return;
+  }
 
   uiState.isStandalone = isStandalone();
 

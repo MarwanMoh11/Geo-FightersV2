@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core';
 import { io, Socket } from 'socket.io-client';
 import * as THREE from 'three';
 import { world, type Entity } from './world';
@@ -118,6 +119,13 @@ function rebuildPartyFromPayload(players: any[]) {
 }
 
 // Helper to determine socket URL
+/**
+ * Public signaling host, same value netlify.toml sets for web deploys. Kept as
+ * a real constant rather than only an env var because the native build has no
+ * usable fallback if the var is missing — see step 3 below.
+ */
+const DEFAULT_SIGNALING_URL = 'https://MarwanMo11-geofighters-signaling.hf.space';
+
 const getSocketUrl = (): string => {
   // 1. Explicit per-user override (Settings → Signaling beacon) always wins.
   if (uiState.customServerUrl) {
@@ -131,7 +139,16 @@ const getSocketUrl = (): string => {
   if (envUrl) {
     return envUrl;
   }
-  // 3. No server configured: on localhost fall back to a local signaling
+  // 3. The native iOS/Android shell serves the bundle from https://localhost,
+  //    so both heuristics below misfire: the hostname IS "localhost" but there
+  //    is no dev machine behind it (that address is the phone itself), and the
+  //    origin carries no dev port to rewrite. Left alone, a shipped app would
+  //    dial itself forever and multiplayer would just never connect. Use the
+  //    same public host the deployed web build points at.
+  if (Capacitor.isNativePlatform()) {
+    return DEFAULT_SIGNALING_URL;
+  }
+  // 4. No server configured: on localhost fall back to a local signaling
   //    server (npm run server), otherwise guess from the page origin.
   const isLocal =
     window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';

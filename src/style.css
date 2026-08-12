@@ -13,6 +13,10 @@
   -webkit-tap-highlight-color: transparent;
   -webkit-user-select: none;
   user-select: none;
+  /* WKWebView still raises the "Copy / Look Up / Share" callout on a long
+     press even with user-select off. In a game a held finger is aiming, not
+     selecting, so the bubble is pure interference. */
+  -webkit-touch-callout: none;
 }
 
 body,
@@ -78,6 +82,9 @@ textarea {
   -webkit-user-select: text;
   -moz-user-select: text;
   user-select: text;
+  /* Give the callout back where it is genuinely useful: paste into a room
+     code field. */
+  -webkit-touch-callout: default;
 }
 
 ::selection {
