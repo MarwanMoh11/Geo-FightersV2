@@ -89,7 +89,16 @@ const PROFILES: Record<QualityTier, QualityProfile> = {
   },
   medium: {
     tier: 'medium',
-    pixelRatioCap: 1.5,
+    // 1.25 rather than 1.5 on a phone. Fill rate is the dominant thermal cost
+    // and it scales with the square of this number: on a 402x874 screen 1.5
+    // renders 603x1311 (~790k pixels) every frame while 1.25 renders 503x1093
+    // (~549k), a 30% cut in everything that is paid per pixel — the PBR floor,
+    // the bloom mip chain, all of it. The image is softer, but it is a 6.3in
+    // display being blurred by a bloom pass, which hides most of the
+    // difference. Desktops on MEDIUM are plugged in and fan-cooled, so they
+    // keep 1.5; someone who explicitly picks HIGH on a phone has asked for the
+    // sharper image and still gets it.
+    pixelRatioCap: isMobile ? 1.25 : 1.5,
     baseRenderScale: 1.0,
     antialias: !isMobile,
     shadows: !isMobile,
@@ -209,9 +218,23 @@ const MIN_SCALE = 0.5;
 const MAX_SCALE = 1.0;
 const STEP_DOWN = 0.1;
 const STEP_UP = 0.05;
-const SLOW_FRAME_MS = 22; // sustained worse than ~45fps → drop resolution
-const FAST_FRAME_MS = 14; // sustained better than ~70fps → try raising it
+// Thresholds are ratios of the frame budget, not fixed milliseconds. They used
+// to be 22ms and 14ms, which silently assumed a 60fps target — the moment the
+// thermal governor below caps the game at 45fps, every frame legitimately takes
+// 22ms and a fixed threshold reads that as the GPU drowning, so the scaler
+// would shred the resolution chasing a frame rate it was itself capped at.
+// Expressed against the live budget, the same ratios mean the same thing at
+// any cap: 1.32x budget is genuinely behind, 0.84x is genuinely ahead.
+const SLOW_FRAME_RATIO = 1.32;
+const FAST_FRAME_RATIO = 0.84;
 const ADJUST_COOLDOWN_S = 1.0;
+
+/** Frame budget the scaler measures against; updated when the cap changes. */
+let targetFrameMs = 1000 / 60;
+
+export function setTargetFrameMs(ms: number): void {
+  targetFrameMs = ms > 0 ? ms : 1000 / 60;
+}
 
 let registeredRenderer: ResizableRenderer | null = null;
 let frameTimeEma = 16.7;
@@ -279,7 +302,10 @@ export function updateDynamicResolution(dt: number): void {
     return;
   }
 
-  if (frameTimeEma > SLOW_FRAME_MS) {
+  const slowFrameMs = targetFrameMs * SLOW_FRAME_RATIO;
+  const fastFrameMs = targetFrameMs * FAST_FRAME_RATIO;
+
+  if (frameTimeEma > slowFrameMs) {
     slowAccum += dt;
     fastAccum = 0;
     // Half a second of sustained slowness → step down fast
@@ -296,7 +322,7 @@ export function updateDynamicResolution(dt: number): void {
       cooldown = ADJUST_COOLDOWN_S;
       slowAccum = 0;
     }
-  } else if (frameTimeEma < FAST_FRAME_MS) {
+  } else if (frameTimeEma < fastFrameMs) {
     fastAccum += dt;
     slowAccum = 0;
     // Three seconds of headroom → give it back. Bloom returns BEFORE
@@ -320,4 +346,79 @@ export function updateDynamicResolution(dt: number): void {
 /** Current adaptive resolution scale (1 = full profile resolution). */
 export function getResolutionScale(): number {
   return resolutionScale;
+}
+
+// --- THERMAL GOVERNOR ---
+//
+// The scaler above is a FRAME RATE controller: it only ever reacts to frames
+// that have already been missed. That leaves the case this governor exists for
+// completely unhandled — a phone comfortably holding 60fps while steadily
+// heating up. Nothing above notices, because nothing is going wrong yet, and by
+// the time iOS throttles the GPU itself the player gets a cliff instead of a
+// slope.
+//
+// There is no temperature to read. A webview gets no ProcessInfo.thermalState,
+// no battery telemetry, nothing — so the honest move is to stop pretending we
+// can measure heat and model its cause instead. Heat is the integral of GPU
+// work over time, so the governor tracks duty cycle: rendering charges an
+// accumulator, idling discharges it several times faster (the menu genuinely
+// idles the GPU now that it no longer renders), and each threshold crossed
+// drops the frame cap a rung.
+//
+// Deliberately slow. The first rung is ten minutes of continuous play, so a
+// short session never sees it, and dropping 60 -> 45 is a far gentler failure
+// than the stutter of an OS-level thermal throttle.
+const THERMAL_RUNGS = [60, 45, 30];
+/** Seconds of accumulated render time needed to reach each rung. */
+const RUNG_THRESHOLDS_S = [0, 600, 1200];
+/** Idling sheds load this many times faster than rendering builds it. */
+const COOL_RATE = 2.5;
+/** Step back up only well below the threshold, so a session hovering at the
+ *  boundary does not oscillate between two frame rates. */
+const RUNG_HYSTERESIS = 0.8;
+
+let loadSeconds = 0;
+let thermalRung = 0;
+
+/**
+ * Advance the duty-cycle model.
+ *
+ * @param dt        Frame delta in seconds.
+ * @param rendering Whether this frame actually drew the 3D scene. Menus do not,
+ *                  so they count as cooling; a paused run still paints the
+ *                  arena behind its overlay, so it counts as load.
+ */
+export function updateThermalGovernor(dt: number, rendering: boolean): void {
+  // Desktops are plugged in and fan-cooled; this is a battery-device problem.
+  if (!isMobile) return;
+  if (dt > 0.25) return; // tab switch / hitch: not real elapsed load
+
+  const ceiling = RUNG_THRESHOLDS_S[RUNG_THRESHOLDS_S.length - 1] * 1.5;
+  loadSeconds = rendering
+    ? Math.min(loadSeconds + dt, ceiling)
+    : Math.max(0, loadSeconds - dt * COOL_RATE);
+
+  while (
+    thermalRung < THERMAL_RUNGS.length - 1 &&
+    loadSeconds >= RUNG_THRESHOLDS_S[thermalRung + 1]
+  ) {
+    thermalRung++;
+  }
+  while (thermalRung > 0 && loadSeconds < RUNG_THRESHOLDS_S[thermalRung] * RUNG_HYSTERESIS) {
+    thermalRung--;
+  }
+}
+
+/** Frame cap the governor currently wants, or 0 where it does not apply. */
+export function getThermalFpsCap(): number {
+  return isMobile ? THERMAL_RUNGS[thermalRung] : 0;
+}
+
+/** Diagnostics for the on-screen FPS readout. */
+export function getThermalState(): { rung: number; cap: number; loadSeconds: number } {
+  return {
+    rung: thermalRung,
+    cap: THERMAL_RUNGS[thermalRung],
+    loadSeconds: Math.round(loadSeconds),
+  };
 }

@@ -24,7 +24,12 @@ import { initPWA } from './core/pwa';
 import { initWakeLock } from './core/wakeLock';
 import { getFpsLimit } from './core/SettingsManager';
 import { portalLoadingFinished, isPortalEmbed } from './core/portal';
-import { updateDynamicResolution } from './core/quality';
+import {
+  updateDynamicResolution,
+  updateThermalGovernor,
+  getThermalFpsCap,
+  setTargetFrameMs,
+} from './core/quality';
 
 // Register service worker + install-prompt brokering as early as possible —
 // but never inside a portal iframe: the portal's CDN origin isn't ours, and a
@@ -402,7 +407,12 @@ function startGameLoop(
 
     const userCap = getFpsLimit(); // 0 = uncapped
     const inGame = uiState.gameState === 'PLAYING';
-    const cap = inGame ? userCap : userCap > 0 ? Math.min(userCap, MENU_FPS) : MENU_FPS;
+    // The thermal governor (mobile only; 0 elsewhere) can lower the ceiling
+    // after a long session, but never raise it past what the player asked for.
+    const thermalCap = getThermalFpsCap();
+    const playCap =
+      thermalCap > 0 ? (userCap > 0 ? Math.min(userCap, thermalCap) : thermalCap) : userCap;
+    const cap = inGame ? playCap : playCap > 0 ? Math.min(playCap, MENU_FPS) : MENU_FPS;
     if (cap > 0) {
       const now = performance.now();
       const budget = 1000 / cap;
@@ -430,11 +440,21 @@ function startGameLoop(
     // intensity from live state, so it runs before the shouldRunGame gate.
     MusicDirector(dt);
 
+    // Duty cycle for the thermal governor. The menu no longer renders the 3D
+    // scene, so it is genuine idle time and counts as cooling; a paused run
+    // still paints the arena behind its overlay and counts as load.
+    updateThermalGovernor(rawDt, uiState.gameState !== 'MENU');
+
     // Adaptive resolution: feed the un-clamped frame time so sustained slowness
     // scales the render resolution down (and back up when there's headroom).
-    // Skip while intentionally capped below its "slow" threshold (menu 30fps /
-    // a user 30fps cap) or it would misread the cap as GPU overload.
-    if (inGame && (userCap === 0 || userCap >= 60)) {
+    // This used to be skipped whenever the game was capped below the scaler's
+    // fixed 22ms "slow" threshold, which switched adaptation off entirely for
+    // anyone on a 30fps cap — and would have done the same the moment the
+    // governor stepped in. The thresholds now scale with the budget instead
+    // (see SLOW_FRAME_RATIO), so the scaler stays useful at every cap and just
+    // needs to be told what it is aiming at.
+    if (inGame) {
+      setTargetFrameMs(cap > 0 ? 1000 / cap : 1000 / 60);
       updateDynamicResolution(rawDt);
     }
 
