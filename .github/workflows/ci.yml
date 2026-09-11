@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, staging ]
+    branches: [ main, staging, ios ]
   pull_request:
-    branches: [ main, staging ]
+    branches: [ main, staging, ios ]
 
 jobs:
   # Does it compile, and does it pass lint? This is the job that answers
