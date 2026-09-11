@@ -5,6 +5,12 @@
 [![Three.js](https://img.shields.io/badge/three.js%20-%23000000.svg?style=for-the-badge&logo=three.js&logoColor=white)](https://threejs.org/)
 [![Svelte](https://img.shields.io/badge/svelte-%23f1413d.svg?style=for-the-badge&logo=svelte&logoColor=white)](https://svelte.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
+[![Play now](https://img.shields.io/badge/PLAY%20NOW-in%20your%20browser-E8622C?style=for-the-badge)](https://marwanmoh11.github.io/Geo-FightersV2/)
+
+### ▶ [Play it in your browser](https://marwanmoh11.github.io/Geo-FightersV2/)
+
+No install, no account — it runs on GitHub Pages, which is reachable from networks that block
+the Netlify deploy domain.
 
 **GeoFighters** is a Vampire Survivors-inspired cyberpunk survival shooter built with **Three.js**, **Svelte 5**, **Rapier physics**, and **Miniplex-style ECS**. Survive 10 minutes inside a corrupted system: mow down hordes, level up, build a weapon loadout, evolve it, and outlast the SYSTEM CORRUPTION boss.
 
