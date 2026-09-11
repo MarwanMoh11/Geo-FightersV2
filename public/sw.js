@@ -28,16 +28,26 @@ const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
 // Minimal app shell — hashed JS/CSS are picked up at runtime (stale-while-revalidate).
+// Paths are relative to this script's own URL, not to the origin root. The
+// build is served from '/' on Netlify, from '/Geo-FightersV2/' on GitHub
+// Pages, and from a nested path on the game portals vite.config.ts already
+// targets with base: './'. An absolute '/' here 404s everywhere but the first
+// of those — and because addAll() rejects as a unit, one missing entry means
+// install fails and the worker never activates, taking offline play with it.
 const SHELL_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.webmanifest',
-  '/favicon.svg',
-  '/icons/favicon-32.png',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
-  '/icons/apple-touch-icon.png',
+  './',
+  './index.html',
+  './manifest.webmanifest',
+  './favicon.svg',
+  './icons/favicon-32.png',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
+  './icons/apple-touch-icon.png',
 ];
+
+// Same reason: the offline shell has to be addressed the way it was cached.
+const SHELL_URL = new URL('./index.html', self.location).href;
+const ROOT_URL = new URL('./', self.location).href;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -80,7 +90,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
 
   // Never intercept websocket / socket.io traffic.
-  if (url.pathname.startsWith('/socket.io')) return;
+  if (url.pathname.includes('/socket.io')) return;
 
   // Navigation requests: network-first, fall back to cached shell (offline).
   if (request.mode === 'navigate') {
@@ -88,10 +98,10 @@ self.addEventListener('fetch', (event) => {
       fetch(request)
         .then((response) => {
           const copy = response.clone();
-          caches.open(SHELL_CACHE).then((cache) => cache.put('/index.html', copy));
+          caches.open(SHELL_CACHE).then((cache) => cache.put(SHELL_URL, copy));
           return response;
         })
-        .catch(() => caches.match('/index.html').then((r) => r || caches.match('/'))),
+        .catch(() => caches.match(SHELL_URL).then((r) => r || caches.match(ROOT_URL))),
     );
     return;
   }

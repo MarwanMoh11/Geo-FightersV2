@@ -1,0 +1,66 @@
+name: Deploy to GitHub Pages
+
+# Netlify stays the primary host. This is a second, independently reachable
+# copy, because *.netlify.app is blocked by some ISPs — Egypt among them —
+# which silently hides the playable build from a chunk of the audience that
+# most wants to see it. github.io is reachable there, so the mirror is not a
+# nicety: it is the difference between the demo existing and not.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One in-flight deploy at a time. Never cancel a running one: a half-published
+# Pages deployment is a broken site, which is worse than a slightly stale one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build
+        # Mirrors netlify.toml's [build.environment]. The signaling URL has to
+        # be present at BUILD time — Vite inlines VITE_* into the bundle — so
+        # leaving it out produces a build that looks fine and cannot host a
+        # co-op game. TURN stays unset here exactly as it is on Netlify, which
+        # means the Open Relay free tier (see rtc.ts).
+        env:
+          VITE_SIGNALING_SERVER_URL: https://MarwanMo11-geofighters-signaling.hf.space
+        run: npm run build
+
+      - name: Add SPA fallback
+        # Pages has no redirect engine, so netlify.toml's /* -> /index.html 200
+        # rule has no equivalent. Serving index.html as the 404 document is the
+        # standard substitute: a deep link still boots the app instead of
+        # showing GitHub's 404 page.
+        run: cp dist/index.html dist/404.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
