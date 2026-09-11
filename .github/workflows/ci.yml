@@ -7,12 +7,14 @@ on:
     branches: [ main, staging ]
 
 jobs:
+  # Does it compile, and does it pass lint? This is the job that answers
+  # "is the code broken", so nothing cosmetic is allowed to gate it.
   build:
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
-        node-version: [20.x, 22.x]
+        node-version: [ 20.x, 22.x ]
 
     steps:
     - uses: actions/checkout@v4
@@ -22,6 +24,19 @@ jobs:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
     - run: npm ci
-    - run: npm run format:check
-    - run: npm run lint
     - run: npm run build
+    - run: npm run lint
+
+  # Formatting is independent of the Node version, so it runs once rather
+  # than once per matrix leg, and reports separately from the build.
+  format:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22.x
+        cache: 'npm'
+    - run: npm ci
+    - run: npm run format:check
