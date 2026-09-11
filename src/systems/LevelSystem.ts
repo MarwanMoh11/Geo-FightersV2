@@ -47,13 +47,30 @@ const C = {
   beaconRed: 0xff2244,
 };
 
+/**
+ * Resolve a `public/` asset path against the build's base URL.
+ *
+ * vite.config.ts sets `base: './'` so the build runs from a nested path — a
+ * portal's CDN, or the GitHub Pages project site under /Geo-FightersV2/.
+ * Vite rewrites the URLs it owns (`assets/`, index.html), but a string
+ * literal sitting in a data file is invisible to it, so a leading '/' here
+ * addresses the ORIGIN root and 404s on every deploy that is not root-hosted.
+ * That is the documented failure mode in docs/PUBLISHING_AND_MONETIZATION.md
+ * §7; resolving at this one chokepoint means a path added to LevelData later
+ * cannot quietly reintroduce it.
+ */
+function resolveAssetUrl(url: string): string {
+  if (/^[a-z]+:/i.test(url) || url.startsWith('//')) return url;
+  return import.meta.env.BASE_URL + url.replace(/^\/+/, '');
+}
+
 // CC0 texture cache (kept for generic/prop fallback + debug sandbox)
 const textureCache = new Map<string, THREE.Texture>();
 function loadTexture(url: string, repeatX = 1, repeatY = repeatX): THREE.Texture {
   const key = `${url}|${repeatX}|${repeatY}`;
   let tex = textureCache.get(key);
   if (!tex) {
-    tex = new THREE.TextureLoader().load(url);
+    tex = new THREE.TextureLoader().load(resolveAssetUrl(url));
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(repeatX, repeatY);
