@@ -84,7 +84,32 @@ export async function initRenderer() {
   // undefined in some iframe environments) that escape the try/catch below.
   // The adapter probe runs before the `!isMobile` / portal gates would even let
   // us in, so short-circuit on those first and skip the probe entirely there.
-  const wantsWebGPU = !isMobile && !isPortalEmbed();
+  // PINNED TO WEBGL2 EVERYWHERE (Sep 2026).
+  //
+  // The defect described above is not iOS-specific. It is the WebGPU path for
+  // InstancedMesh + MeshStandardMaterial with per-instance colour, and it bites
+  // the same way on a desktop Chromium with a real, healthy adapter: the horde
+  // is submitted with correct matrices and never drawn, so the arena, HUD, XP
+  // gems, damage numbers and particles all render into what reads as an empty
+  // level. Confirmed on the GitHub Pages build with the ?enemydebug readout —
+  //
+  //     backend WebGPU | enemies 45 (world) | solidDraw 45 vis:true
+  //     1st real -12,2 | 1st inst -12,2     | err none
+  //
+  // — 45 enemies in the draw list, visible, correctly positioned, no error, and
+  // nothing on screen. The existing fallback cannot catch this: it only fires
+  // when the WebGPU *context* fails to come up, and here it came up fine.
+  //
+  // Note that LAUNCH_PLAN.md's Phase 1.8 sign-off was measured on "the
+  // WebGPURenderer/WebGL2-backend path that real players hit" — the true-WebGPU
+  // backend was never the verified path, which is how this survived.
+  //
+  // WebGL2 draws the horde correctly, is universally supported, and was already
+  // what mobile and portal embeds used. Flip this back to false to re-enable the
+  // desktop WebGPU path once three.js draws instanced standard materials with
+  // per-instance colour on a WebGPU backend; keep ?enemydebug handy when you do.
+  const PIN_TO_WEBGL2: boolean = true;
+  const wantsWebGPU = !PIN_TO_WEBGL2 && !isMobile && !isPortalEmbed();
   if (wantsWebGPU && (await hasWebGPUAdapter())) {
     try {
       console.log(
