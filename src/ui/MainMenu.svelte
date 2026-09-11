@@ -689,8 +689,8 @@
       {/snippet}
 
       <p class="shop-note">
-        Every purchase raises the surcharge on the next one, whatever you buy — order never
-        matters, but depth does.
+        Every purchase raises the surcharge on the next one, whatever you buy — order never matters,
+        but depth does.
       </p>
 
       {#each SHOP_CATEGORIES as cat (cat)}
